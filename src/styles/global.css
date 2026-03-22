@@ -1,0 +1,116 @@
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Design tokens ──────────────────────────────────────────── */
+:root {
+  --bg: #0f0f0f;
+  --surface: #1a1a1a;
+  --surface-2: #242424;
+  --surface-3: #2e2e2e;
+  --border: #333;
+  --primary: #7c6bf0;
+  --primary-dim: #5a4bc7;
+  --accent: #5eead4;
+  --text: #e5e5e5;
+  --text-muted: #888;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Reset ──────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  cursor: pointer;
+}
+textarea,
+input {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* ── Shared button styles ────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  transition:
+    opacity 0.15s,
+    transform 0.1s;
+}
+.btn:hover {
+  opacity: 0.85;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.btn-secondary {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.btn-icon {
+  font-size: 16px;
+}
+
+.btn-icon-only {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+.btn-icon-only:hover {
+  color: var(--text);
+}

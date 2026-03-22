@@ -1,0 +1,528 @@
+/* ── Incoming call modal ─────────────────────────────────────── */
+.call-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+}
+
+.call-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 320px;
+  width: 90%;
+  box-shadow: var(--shadow);
+  animation: modal-in 0.2s ease;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.call-modal-icon {
+  font-size: 40px;
+}
+
+.call-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.call-modal-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.call-modal-actions .btn {
+  flex: 1;
+  justify-content: center;
+}
+
+/* ── Call in progress indicator ──────────────────────────────── */
+.call-in-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(94, 234, 212, 0.08);
+  border-top: 1px solid rgba(94, 234, 212, 0.2);
+  border-bottom: 1px solid rgba(94, 234, 212, 0.2);
+}
+
+.call-in-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5eead4;
+  flex-shrink: 0;
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.7);
+  }
+}
+
+.call-in-progress-text {
+  flex: 1;
+  font-size: 12px;
+  color: #5eead4;
+  font-weight: 500;
+}
+
+.call-in-progress-join {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  background: #5eead4;
+  color: #0f0f0f;
+  border: none;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.call-in-progress-join:hover {
+  opacity: 0.85;
+}
+
+/* Mobile: pulse button when call in progress */
+.btn-mobile-call--pulse {
+  background: #5eead4;
+  color: #0f0f0f;
+  animation: pulse-btn 1.5s ease-in-out infinite;
+}
+@keyframes pulse-btn {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* ── Room layout ─────────────────────────────────────────────── */
+.room-layout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* When call is active, video fills the center */
+.room-layout--call .room-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ── Left sidebar: participants ──────────────────────────────── */
+.room-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.room-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.room-sidebar-header-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.room-sidebar-header-spacer {
+  flex: 1;
+}
+
+.room-home-icon {
+  border-radius: 5px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.room-beta-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  border-radius: 5px;
+  padding: 2px 6px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.room-code-display {
+  min-width: 0;
+}
+.room-code-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.room-code-value {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-status {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.room-banner {
+  margin: 8px 10px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+}
+.room-banner a {
+  color: #f59e0b;
+  text-decoration: underline;
+}
+
+/* Peer list */
+.peer-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+}
+.peer-list-title {
+  padding: 4px 14px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.peer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+.peer-item.self {
+  opacity: 0.7;
+}
+.peer-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.peer-dot.online {
+  background: var(--success);
+}
+.peer-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-call-start {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 8px;
+  padding: 10px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-call-start:hover {
+  opacity: 0.85;
+}
+
+/* ── Center: video (only during call) ───────────────────────── */
+.room-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ── Right: chat panel (always visible) ─────────────────────── */
+.room-chat {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* When no call active, chat expands to fill the space */
+.room-layout:not(.room-layout--call) .room-chat:not(.room-chat--collapsed) {
+  flex: 1;
+  width: auto;
+  border-left: none;
+}
+
+/* ── Video grid fills the entire center area ─────────────────── */
+.room-layout--call .video-container {
+  flex: 1;
+  height: 100%;
+}
+.room-layout--call .video-grid {
+  height: 100%;
+}
+
+/* ── Collapsible panels ──────────────────────────────────────── */
+.room-sidebar,
+.room-chat {
+  transition:
+    width 0.25s ease,
+    min-width 0.25s ease;
+}
+
+.room-sidebar--collapsed {
+  width: 40px !important;
+  min-width: 40px;
+  overflow: hidden;
+}
+.room-sidebar--collapsed .room-sidebar-header > :not(.btn-collapse),
+.room-sidebar--collapsed .room-status,
+.room-sidebar--collapsed .room-banner,
+.room-sidebar--collapsed .peer-list,
+.room-sidebar--collapsed .room-sidebar-footer {
+  display: none;
+}
+
+.room-chat--collapsed {
+  width: 40px !important;
+  min-width: 40px;
+  overflow: hidden;
+}
+.room-chat--collapsed > :not(.btn-collapse-chat) {
+  display: none;
+}
+
+/* Collapse toggle buttons */
+.btn-collapse,
+.btn-collapse-chat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.btn-collapse:hover,
+.btn-collapse-chat:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Collapsed sidebar: show only the expand button */
+.room-sidebar--collapsed .room-sidebar-header {
+  justify-content: center;
+  padding: 8px 6px;
+}
+
+/* Collapsed chat: centered expand button */
+.room-chat--collapsed {
+  align-items: center;
+  padding: 8px 6px;
+  border-left: 1px solid var(--border);
+}
+
+/* ── Mobile top bar (hidden on desktop) ──────────────────────── */
+.room-mobile-header {
+  display: none;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .room-sidebar {
+    width: 180px;
+  }
+  .room-chat {
+    width: 260px;
+  }
+}
+
+@media (max-width: 560px) {
+  .room-layout {
+    flex-direction: column;
+  }
+
+  /* Hide collapse buttons — not needed on mobile */
+  .btn-collapse,
+  .btn-collapse-chat {
+    display: none;
+  }
+
+  /* Override collapsed states on mobile */
+  .room-sidebar--collapsed,
+  .room-sidebar {
+    display: none !important;
+  }
+
+  .room-chat--collapsed {
+    width: 100% !important;
+    min-width: unset;
+    padding: 0;
+    align-items: stretch;
+  }
+  .room-chat--collapsed > * {
+    display: flex !important;
+  }
+
+  .room-mobile-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .room-mobile-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .room-mobile-title .room-code-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+  .room-mobile-title .room-code-value {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .room-mobile-peers {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .btn-mobile-call {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn-mobile-call--danger {
+    background: var(--danger);
+  }
+
+  .room-chat {
+    flex: 1;
+    width: 100% !important;
+    border-left: none;
+    min-height: 0;
+  }
+
+  /* Video on mobile: fixed height above chat */
+  .room-layout--call {
+    flex-direction: column;
+  }
+  .room-layout--call .room-main {
+    flex: none;
+    height: 40vh;
+  }
+  .room-layout--call .room-chat {
+    flex: 1;
+  }
+}

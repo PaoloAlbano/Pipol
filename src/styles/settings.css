@@ -1,0 +1,201 @@
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+  padding: 16px;
+}
+
+.settings-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  animation: modal-in 0.2s ease;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.settings-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.settings-close:hover {
+  color: var(--text);
+}
+
+.settings-section {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.settings-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.settings-input:focus {
+  border-color: var(--primary);
+}
+
+.settings-error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+/* ── Video quality selector ──────────────────────────────────── */
+.settings-quality-group {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-quality-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.settings-quality-option input {
+  display: none;
+}
+.settings-quality-option:hover {
+  border-color: var(--primary);
+}
+
+.settings-quality-option--active {
+  border-color: var(--primary);
+  background: rgba(124, 107, 240, 0.1);
+}
+
+.settings-quality-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.settings-quality-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Toggle row (debug section) ──────────────────────────────── */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.settings-toggle-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  min-width: 0;
+}
+
+.settings-toggle-desc {
+  width: 100%;
+  font-size: 11px;
+  color: var(--text-muted);
+  order: 3;
+}
+
+.settings-toggle {
+  flex-shrink: 0;
+  position: relative;
+  width: 40px;
+  height: 22px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+  padding: 0;
+}
+
+.settings-toggle--on {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.settings-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  display: block;
+}
+
+.settings-toggle--on .settings-toggle-thumb {
+  transform: translateX(18px);
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+.settings-footer {
+  display: flex;
+  gap: 10px;
+  padding: 16px 24px;
+  justify-content: flex-end;
+}
+.settings-footer .btn {
+  min-width: 80px;
+  justify-content: center;
+}

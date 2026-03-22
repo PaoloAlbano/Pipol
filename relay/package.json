@@ -1,0 +1,14 @@
+{
+  "name": "p2p-chat-relay",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@hyperswarm/dht-relay": "^0.4.3",
+    "hyperdht": "*",
+    "selfsigned": "^5.5.0",
+    "ws": "^8.0.0"
+  }
+}
