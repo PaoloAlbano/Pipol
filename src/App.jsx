@@ -21,10 +21,15 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(isFirstVisit)
   const [showStats, setShowStatsState] = useState(getShowStats)
   const [roomCode, setRoomCode] = useState(() => {
+    if (window.location.pathname !== '/') {
+      window.history.replaceState({}, '', '/')
+      return ''
+    }
     const params = new URLSearchParams(window.location.search)
     return params.get('room') || ''
   })
   const [view, setView] = useState(() => {
+    if (window.location.pathname !== '/') return 'home'
     const params = new URLSearchParams(window.location.search)
     return params.get('room') ? 'room' : 'home'
   })

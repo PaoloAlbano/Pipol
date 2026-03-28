@@ -34,6 +34,7 @@ function httpRedirectPlugin({ httpPort = 5174, httpsPort = 5173 } = {}) {
 const noSsl = process.env.VITE_NO_SSL === '1'
 
 export default defineConfig({
+  base: '/',
   plugins: [
     react(),
     ...(noSsl ? [] : [basicSsl()]),

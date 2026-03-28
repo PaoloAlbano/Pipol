@@ -80,7 +80,7 @@ The beam key is derived symmetrically — no additional key exchange needed.
 
 ```bash
 pnpm install
-pnpm run dev
+pnpm run dev 
 ```
 
 Open `http://localhost:5173` in two browser tabs, on two devices on the same network, or anywhere with internet access (Hyperswarm uses public DHT relay nodes for NAT traversal).
