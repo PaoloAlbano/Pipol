@@ -96,11 +96,9 @@ server.on('upgrade', (req, socket, head) => {
 })
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[relay] Listening on ws://localhost:${PORT}`)
-  console.log(`[relay]   DHT relay:  ws://localhost:${PORT}/`)
-  console.log(`[relay]   Signaling:  ws://localhost:${PORT}/signal`)
-  console.log('[relay] Vite proxies /signal → this server (no wss:// needed)')
-
+  console.log(`[relay] Listening on port ${PORT}`)
+  console.log(`[relay]   DHT relay:  /`)
+  console.log(`[relay]   Signaling:  /signal`)
 })
 
 process.on('SIGINT', async () => {
