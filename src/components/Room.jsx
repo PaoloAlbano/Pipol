@@ -518,7 +518,13 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       {/* ── Mobile top bar (visible only on small screens) ── */}
       <div className="room-mobile-header">
         <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
-          <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
+          <img
+            src="/icons/icon.svg"
+            alt="Pipol"
+            width="20"
+            height="20"
+            className="room-home-icon"
+          />
         </button>
         <span className="room-beta-badge">beta</span>
         <button className="btn-icon-only" onClick={onOpenSettings} title="Settings">
@@ -556,7 +562,13 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         <div className="room-sidebar-header">
           <div className="room-sidebar-header-top">
             <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
-              <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
+              <img
+                src="/icons/icon.svg"
+                alt="Pipol"
+                width="20"
+                height="20"
+                className="room-home-icon"
+              />
             </button>
             {sidebarOpen && <span className="room-beta-badge">beta</span>}
             <div className="room-sidebar-header-spacer" />
