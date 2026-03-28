@@ -1,4 +1,13 @@
+<div align="center">
+  <img src="public/icons/icon.svg" alt="Pipol" width="96" />
+
 # Pipol
+
+[![CI](https://github.com/PaoloAlbano/Pipol/actions/workflows/ci.yml/badge.svg)](https://github.com/PaoloAlbano/Pipol/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/PaoloAlbano/Pipol/branch/main/graph/badge.svg)](https://codecov.io/gh/PaoloAlbano/Pipol)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
+
+</div>
 
 **Pipol** ([pipol.dev](https://pipol.dev)) is a fully peer-to-peer group chat and video call Progressive Web App (PWA). No backend, no central server — all data stays on your device.
 

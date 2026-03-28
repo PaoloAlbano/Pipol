@@ -40,4 +40,4 @@ yarn-error.log*
 serveo_key
 
 # claude
-.claude/*
+.claude/
