@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { getVideoQuality, setVideoQuality } from '../p2p/storage.js'
+import { getVideoQuality, setVideoQuality, getRelayUrl, setRelayUrl } from '../p2p/storage.js'
 import { applyVideoQuality } from '../webrtc/media.js'
 import '../styles/settings.css'
 
@@ -19,6 +19,8 @@ export default function SettingsModal({
   const [name, setName] = useState(identity.username)
   const [nameError, setNameError] = useState('')
   const [quality, setQuality] = useState(getVideoQuality)
+  const [relayUrl, setRelayUrlState] = useState(getRelayUrl)
+  const [relayError, setRelayError] = useState('')
   const [saved, setSaved] = useState(false)
 
   function handleSave() {
@@ -36,9 +38,16 @@ export default function SettingsModal({
       return
     }
 
+    const trimmedRelay = relayUrl.trim()
+    if (trimmedRelay && !/^wss?:\/\/.+/.test(trimmedRelay)) {
+      setRelayError('Must be a valid ws:// or wss:// URL.')
+      return
+    }
+
     onUsernameChange(trimmed)
     setVideoQuality(quality)
     applyVideoQuality(quality)
+    setRelayUrl(trimmedRelay)
 
     setSaved(true)
     setTimeout(() => {
@@ -99,6 +108,24 @@ export default function SettingsModal({
               </label>
             ))}
           </div>
+        </div>
+
+        <div className="settings-section">
+          <label className="settings-label">Relay server</label>
+          <input
+            className="settings-input"
+            value={relayUrl}
+            onChange={(e) => {
+              setRelayUrlState(e.target.value)
+              setRelayError('')
+            }}
+            placeholder="wss://relay.example.com  (leave empty for default)"
+            spellCheck={false}
+          />
+          {relayError && <p className="settings-error">{relayError}</p>}
+          <p className="settings-hint">
+            Custom signaling relay. Changes take effect on the next room join.
+          </p>
         </div>
 
         <div className="settings-section">

@@ -18,7 +18,7 @@
  */
 
 import b4a from 'b4a'
-import { getIdentity } from './storage.js'
+import { getIdentity, getRelayUrl } from './storage.js'
 
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -26,10 +26,11 @@ const ICE_SERVERS = [
 ]
 
 /** Build the signaling WebSocket URL.
- *  - If VITE_DHT_RELAY_URL is set, append /signal to it.
- *  - Otherwise derive from window.location so the proxy path works on any host.
+ *  Priority: user setting (localStorage) → VITE_DHT_RELAY_URL env → auto-derive from window.location.
  */
 function signalUrl() {
+  const stored = getRelayUrl()
+  if (stored) return stored.replace(/\/?$/, '') + '/signal'
   if (import.meta.env.VITE_DHT_RELAY_URL) {
     return import.meta.env.VITE_DHT_RELAY_URL.replace(/\/?$/, '') + '/signal'
   }

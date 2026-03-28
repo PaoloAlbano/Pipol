@@ -12,6 +12,8 @@ import userEvent from '@testing-library/user-event'
 vi.mock('../../src/p2p/storage.js', () => ({
   getVideoQuality: vi.fn(() => '1080p'),
   setVideoQuality: vi.fn(),
+  getRelayUrl: vi.fn(() => ''),
+  setRelayUrl: vi.fn(),
 }))
 
 vi.mock('../../src/webrtc/media.js', () => ({

@@ -16,6 +16,7 @@ import b4a from 'b4a'
 const IDENTITY_STORAGE_KEY = 'p2p-chat:identity'
 const QUALITY_KEY = 'p2p-chat:video-quality'
 const SHOW_STATS_KEY = 'p2p-chat:show-stats'
+const RELAY_URL_KEY = 'p2p-chat:relay-url'
 
 export function getVideoQuality() {
   return localStorage.getItem(QUALITY_KEY) || '1080p'
@@ -29,6 +30,20 @@ export function getShowStats() {
 }
 export function setShowStats(v) {
   localStorage.setItem(SHOW_STATS_KEY, String(v))
+}
+
+/** Returns the custom relay base URL (e.g. "wss://relay.example.com"), or '' if using the default. */
+export function getRelayUrl() {
+  return localStorage.getItem(RELAY_URL_KEY) || ''
+}
+
+/** Persists a custom relay base URL. Pass '' or null to reset to default. */
+export function setRelayUrl(url) {
+  if (url) {
+    localStorage.setItem(RELAY_URL_KEY, url)
+  } else {
+    localStorage.removeItem(RELAY_URL_KEY)
+  }
 }
 
 const ONBOARDED_KEY = 'p2p-chat:onboarded'
