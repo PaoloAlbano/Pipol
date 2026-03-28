@@ -7,6 +7,9 @@ dist/
 dist-ssr/
 coverage/
 
+# npm lock file (project uses pnpm)
+package-lock.json
+
 # Environment variables (contain secrets/local URLs)
 .env
 .env.local

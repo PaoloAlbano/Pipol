@@ -79,8 +79,8 @@ The beam key is derived symmetrically — no additional key exchange needed.
 ## Getting started
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 Open `http://localhost:5173` in two browser tabs, on two devices on the same network, or anywhere with internet access (Hyperswarm uses public DHT relay nodes for NAT traversal).
@@ -88,15 +88,18 @@ Open `http://localhost:5173` in two browser tabs, on two devices on the same net
 ### Production build
 
 ```bash
-npm run build
-npm run preview
+pnpm run build
+pnpm run preview
 ```
 
 ## Development
 
 ```bash
+make install       # install dependencies
+make dev           # start dev server
 make test          # run tests once
 make test-watch    # watch mode
+make coverage      # test coverage report
 make lint          # ESLint
 make format        # Prettier
 ```

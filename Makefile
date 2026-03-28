@@ -1,13 +1,16 @@
-.PHONY: dev dev-tunnel check-key expose start-relay test test-watch coverage lint format
+.PHONY: install dev dev-tunnel check-key expose start-relay test test-watch coverage lint format
 
 SERVEO_SUBDOMAIN ?= pipol
 SERVEO_KEY       ?= ./serveo_key
 
+install:
+	pnpm install
+
 dev:
-	npm run dev
+	pnpm run dev
 
 dev-tunnel:
-	VITE_NO_SSL=1 npm run dev
+	VITE_NO_SSL=1 pnpm run dev
 
 check-key:
 	@test -f $(SERVEO_KEY) || { echo "Error: key file '$(SERVEO_KEY)' not found. Set SERVEO_KEY=<path> or place it at $(SERVEO_KEY)"; exit 1; }
@@ -20,16 +23,16 @@ start-relay:
 	cd relay && npm run start
 
 test:
-	npm run test:run
+	pnpm run test:run
 
 test-watch:
-	npm run test
+	pnpm run test
 
 coverage:
-	npm run test:coverage
+	pnpm run test:coverage
 
 lint:
-	npm run lint
+	pnpm run lint
 
 format:
-	npm run format
+	pnpm run format
