@@ -14,12 +14,12 @@ export default function VideoControls({
   audioMuted,
   videoMuted,
   screenSharing,
-  pipOpen,
+  pipActive,
   onToggleAudio,
   onToggleVideo,
   onSwitchCamera,
   onToggleScreenShare,
-  onOpenPiP,
+  onTogglePiP,
   onEndCall,
 }) {
   return (
@@ -60,14 +60,13 @@ export default function VideoControls({
         </button>
       )}
 
-      {onOpenPiP && 'documentPictureInPicture' in window && (
+      {onTogglePiP && document.pictureInPictureEnabled && (
         <button
-          className={`control-btn ${pipOpen ? 'control-btn--active' : ''}`}
-          onClick={onOpenPiP}
-          title={pipOpen ? 'Close picture-in-picture' : 'Open picture-in-picture'}
+          className={`control-btn ${pipActive ? 'control-btn--active' : ''}`}
+          onClick={onTogglePiP}
+          title={pipActive ? 'Close picture-in-picture' : 'Open picture-in-picture'}
         >
-          ⧉
-          <span className="control-label">PiP</span>
+          ⧉<span className="control-label">PiP</span>
         </button>
       )}
 

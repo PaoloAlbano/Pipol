@@ -198,7 +198,10 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
             const swarm = await createRoomSwarm(roomCode, {
               messageCoreKey: msgStore.getLocalCoreKey(),
             })
-            if (cancelled) { swarm.leave(); return }
+            if (cancelled) {
+              swarm.leave()
+              return
+            }
             swarmRef.current = swarm
             attachSwarmListeners(swarm, msgStore)
             setRelayUnreachable(false)
@@ -321,79 +324,58 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     return () => clearInterval(id)
   }, [showStats, callActive])
 
-  // ── Document Picture-in-Picture ───────────────────────────────────────────
+  // ── Picture-in-Picture ────────────────────────────────────────────────────
 
-  // Opens a Document PiP window and copies all stylesheets so CSS classes work inside it.
-  // Must be called from a user gesture (button click) — browsers block programmatic open.
-  async function openDocumentPiP() {
-    if (!('documentPictureInPicture' in window)) return
-    if (pipWinRef.current) { pipWinRef.current.close(); return }
+  function getPiPVideo() {
+    // React sets `muted` as a JS property, not an HTML attribute,
+    // so :not([muted]) doesn't work — filter via .muted property instead
+    const all = [...document.querySelectorAll('.video-element')]
+    return (
+      document.querySelector('.video-spotlight-main video') ||
+      all.find((v) => !v.muted && v.readyState >= 1) ||
+      all.find((v) => v.readyState >= 1)
+    )
+  }
 
+  // Manual toggle via VideoControls button
+  async function handleTogglePiP() {
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture().catch(() => {})
+      return
+    }
+    const video = getPiPVideo()
+    if (!video) return
     try {
-      const pipWin = await window.documentPictureInPicture.requestWindow({ width: 360, height: 230 })
-
-      // Copy all stylesheets so CSS classes (control-btn etc.) work in PiP
-      for (const sheet of document.styleSheets) {
-        try {
-          const css = [...sheet.cssRules].map((r) => r.cssText).join('')
-          const el = pipWin.document.createElement('style')
-          el.textContent = css
-          pipWin.document.head.appendChild(el)
-        } catch {
-          if (sheet.href) {
-            const el = pipWin.document.createElement('link')
-            el.rel = 'stylesheet'
-            el.href = new URL(sheet.href, document.baseURI).href
-            pipWin.document.head.appendChild(el)
-          }
-        }
-      }
-
-      pipWin.document.body.style.cssText = 'margin:0;overflow:hidden;height:100%;background:#0f0f0f'
-      const root = createRoot(pipWin.document.body)
-      pipWinRef.current = pipWin
-      pipRootRef.current = root
-      setPipOpen(true)
-
-      pipWin.addEventListener('pagehide', () => {
-        pipRootRef.current?.unmount()
-        pipWinRef.current = null
-        pipRootRef.current = null
-        setPipOpen(false)
-      })
+      await video.requestPictureInPicture()
+      setPipActive(true)
+      video.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true })
     } catch (err) {
-      console.warn('[pip] could not open Document PiP', err.message)
+      console.warn('[pip] requestPictureInPicture failed', err.message)
     }
   }
 
-  // Auto-trigger standard video PiP on tab switch (works without user gesture
-  // because the video is already playing — same mechanism used by Google Meet).
-  // Auto-close when the user returns to the main tab.
+  // Auto-trigger on tab switch (Chrome allows this without user gesture
+  // when the video is already playing — same mechanism as Google Meet)
   useEffect(() => {
     if (!callActive) return
 
     async function onVisibilityChange() {
       if (document.visibilityState === 'hidden') {
-        // Close Document PiP if open — standard PiP takes over
-        if (pipWinRef.current) return
-
-        // React sets `muted` as a JS property, not an HTML attribute,
-        // so :not([muted]) doesn't work — filter via property instead
-        const allVideos = [...document.querySelectorAll('.video-element')]
-        const video =
-          document.querySelector('.video-spotlight-main video') ||
-          allVideos.find((v) => !v.muted && v.readyState >= 1) ||
-          allVideos.find((v) => v.readyState >= 1)
-
+        const video = getPiPVideo()
         if (video && !document.pictureInPictureElement) {
-          await video.requestPictureInPicture().catch(() => {})
+          try {
+            await video.requestPictureInPicture()
+            setPipActive(true)
+            video.addEventListener('leavepictureinpicture', () => setPipActive(false), {
+              once: true,
+            })
+          } catch {
+            // Browser may deny in some contexts — fail silently
+          }
         }
       } else if (document.visibilityState === 'visible') {
         if (document.pictureInPictureElement) {
           await document.exitPictureInPicture().catch(() => {})
-        }
-        if (pipWinRef.current) {
-          pipWinRef.current.close()
         }
       }
     }
@@ -402,26 +384,11 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [callActive])
 
-  // Keep PiP content in sync with call state
+  // Close PiP when the call ends
   useEffect(() => {
-    if (!pipOpen || !pipRootRef.current) return
-    pipRootRef.current.render(
-      <PiPOverlay
-        localStream={localStream}
-        remoteStreams={remoteStreams}
-        peers={peers}
-        audioMuted={audioMuted}
-        videoMuted={videoMuted}
-        onToggleAudio={handleToggleAudio}
-        onToggleVideo={handleToggleVideo}
-      />
-    )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipOpen, localStream, remoteStreams, peers, audioMuted, videoMuted])
-
-  // Close PiP if the call ends
-  useEffect(() => {
-    if (!callActive && pipWinRef.current) pipWinRef.current.close()
+    if (!callActive && document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {})
+    }
   }, [callActive])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -623,9 +590,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   return (
     <div className={`room-layout ${callActive ? 'room-layout--call' : ''}`}>
       {relayUnreachable && (
-        <div className="room-relay-banner">
-          Cannot reach relay server — retrying…
-        </div>
+        <div className="room-relay-banner">Cannot reach relay server — retrying…</div>
       )}
       {/* ── Incoming call modal ── */}
       {incomingCall && !callActive && (
@@ -776,12 +741,12 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
               audioMuted={audioMuted}
               videoMuted={videoMuted}
               screenSharing={screenSharing}
-              pipOpen={pipOpen}
+              pipActive={pipActive}
               onToggleAudio={handleToggleAudio}
               onToggleVideo={handleToggleVideo}
               onSwitchCamera={handleSwitchCamera}
               onToggleScreenShare={handleToggleScreenShare}
-              onOpenPiP={openDocumentPiP}
+              onTogglePiP={handleTogglePiP}
               onEndCall={handleEndCall}
             />
           )}
