@@ -31,6 +31,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const [messages, setMessages] = useState([])
   const [status, setStatus] = useState('connecting…')
   const [p2pError, setP2pError] = useState(null)
+  const [relayUnreachable, setRelayUnreachable] = useState(false)
 
   // Panel collapse state (auto-reset on mobile)
   const isMobile = () => window.innerWidth <= 560
@@ -63,6 +64,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const rtcPeersRef = useRef({}) // peerId → WebRTCPeer
   const callActiveRef = useRef(false)
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
+  const retryTimerRef = useRef(null)
 
   useEffect(() => {
     callActiveRef.current = callActive
@@ -188,20 +190,36 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         const history = await msgStore.getHistory()
         if (!cancelled) setMessages(history)
 
-        // 2. Peer discovery via WebRTC swarm
-        const swarm = await createRoomSwarm(roomCode, {
-          messageCoreKey: msgStore.getLocalCoreKey(),
-        })
-        swarmRef.current = swarm
-        attachSwarmListeners(swarm, msgStore)
+        // 2. Peer discovery via WebRTC swarm (with auto-retry on relay failure)
+        async function connectSwarm() {
+          if (cancelled) return
+          try {
+            const swarm = await createRoomSwarm(roomCode, {
+              messageCoreKey: msgStore.getLocalCoreKey(),
+            })
+            if (cancelled) { swarm.leave(); return }
+            swarmRef.current = swarm
+            attachSwarmListeners(swarm, msgStore)
+            setRelayUnreachable(false)
+            setStatus('waiting for peers…')
+          } catch (err) {
+            if (cancelled) return
+            if (err.code === 'BROWSER_UNSUPPORTED') {
+              setP2pError('browser')
+              setStatus(`⚠ ${err.message}`)
+              return
+            }
+            console.warn('[room] relay unreachable, retrying in 10s…', err.message)
+            setStatus('relay unreachable — retrying in 10s…')
+            setRelayUnreachable(true)
+            retryTimerRef.current = setTimeout(connectSwarm, 10_000)
+          }
+        }
 
-        if (!cancelled) setStatus('waiting for peers…')
+        await connectSwarm()
       } catch (err) {
         console.error('[room] setup error', err)
-        if (!cancelled) {
-          if (err.code === 'BROWSER_UNSUPPORTED') setP2pError('browser')
-          setStatus(`⚠ ${err.message}`)
-        }
+        if (!cancelled) setStatus(`⚠ ${err.message}`)
       }
     }
 
@@ -209,6 +227,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
     return () => {
       cancelled = true
+      clearTimeout(retryTimerRef.current)
       teardown()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -498,6 +517,11 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   return (
     <div className={`room-layout ${callActive ? 'room-layout--call' : ''}`}>
+      {relayUnreachable && (
+        <div className="room-relay-banner">
+          Cannot reach relay server — retrying…
+        </div>
+      )}
       {/* ── Incoming call modal ── */}
       {incomingCall && !callActive && (
         <div className="call-modal-overlay">
@@ -619,6 +643,21 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
               Join
             </button>
           </div>
+        )}
+
+        {/* GitHub link */}
+        {sidebarOpen && (
+          <a
+            href="https://github.com/PaoloAlbano/Pipol"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="room-github-link"
+          >
+            <svg className="room-github-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.342-3.369-1.342-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+            </svg>
+            View on GitHub
+          </a>
         )}
 
         {/* Call controls */}

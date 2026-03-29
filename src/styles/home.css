@@ -183,3 +183,30 @@
   text-align: center;
   line-height: 1.6;
 }
+
+.home-github {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.home-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.home-github-link:hover {
+  color: var(--text);
+}
+
+.home-github-icon {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
