@@ -33,10 +33,25 @@ function httpRedirectPlugin({ httpPort = 5174, httpsPort = 5173 } = {}) {
 
 const noSsl = process.env.VITE_NO_SSL === '1'
 
+/** Convert render-blocking <link rel="stylesheet"> tags to async preload in production builds. */
+function cssPreloadPlugin() {
+  return {
+    name: 'css-preload',
+    apply: 'build',
+    transformIndexHtml(html) {
+      return html.replace(
+        /<link rel="stylesheet" crossorigin href="([^"]+)">/g,
+        '<link rel="preload" as="style" crossorigin href="$1" onload="this.onload=null;this.rel=\'stylesheet\'">'
+      )
+    },
+  }
+}
+
 export default defineConfig({
   base: '/',
   plugins: [
     react(),
+    cssPreloadPlugin(),
     ...(noSsl ? [] : [basicSsl()]),
     ...(noSsl ? [] : [httpRedirectPlugin({ httpPort: 5174, httpsPort: 5173 })]),
     nodePolyfills({
@@ -105,6 +120,15 @@ export default defineConfig({
     target: 'esnext',
     commonjsOptions: {
       transformMixedEsModules: true,
+    },
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'react-vendor'
+          }
+        },
+      },
     },
   },
 })

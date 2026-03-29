@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, lazy, Suspense } from 'react'
 import Home from './components/Home.jsx'
-import Room from './components/Room.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
+
+// Lazy-load Room and the entire P2P stack — only downloaded when the user enters a room
+const Room = lazy(() => import('./components/Room.jsx'))
 import {
   getIdentity,
   setUsername,
@@ -110,14 +112,16 @@ export default function App() {
         />
       )}
       {view === 'room' && (
-        <Room
-          key={roomCode}
-          roomCode={roomCode}
-          identity={identity}
-          showStats={showStats}
-          onLeave={handleLeaveRoom}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
+        <Suspense fallback={null}>
+          <Room
+            key={roomCode}
+            roomCode={roomCode}
+            identity={identity}
+            showStats={showStats}
+            onLeave={handleLeaveRoom}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        </Suspense>
       )}
       {settingsOpen && (
         <SettingsModal
