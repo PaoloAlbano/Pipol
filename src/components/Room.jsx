@@ -67,6 +67,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const pipWindowRef = useRef(null) // Document PiP window
   const pipBtnsRef = useRef(null) // { aBtn, vBtn } for label sync
   const pipHandlersRef = useRef(null) // always-fresh toggle handlers
+  const openDocPiPRef = useRef(null) // always-fresh openDocumentPiP fn
   const [pipActive, setPipActive] = useState(false)
 
   useEffect(() => {
@@ -329,45 +330,25 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   // Keep a stable ref to the latest toggle handlers so PiP event listeners
   // never call stale closures (handlers capture audioMuted/videoMuted by value).
-  pipHandlersRef.current = { audio: handleToggleAudio, video: handleToggleVideo }
+  pipHandlersRef.current = { audio: handleToggleAudio, video: handleToggleVideo, end: handleEndCall }
 
   function getPiPVideo() {
     const all = [...document.querySelectorAll('.video-element')]
+    const playing = (v) => !v.paused && v.readyState >= 2
     return (
       document.querySelector('.video-spotlight-main video') ||
+      all.find((v) => !v.muted && playing(v)) ||
+      all.find((v) => playing(v)) ||
       all.find((v) => !v.muted && v.readyState >= 1) ||
       all.find((v) => v.readyState >= 1)
     )
   }
 
-  // Manual toggle — Document PiP with the already-playing video element moved in.
+  // Opens a Document PiP window and moves the already-playing video element into it.
   // Chrome's recommended pattern: move the existing DOM element rather than
   // creating a new one with srcObject (new elements don't inherit playback state).
-  async function handleTogglePiP() {
-    if (pipWindowRef.current && !pipWindowRef.current.closed) {
-      pipWindowRef.current.close()
-      return
-    }
-
-    const videoEl = getPiPVideo()
-    if (!videoEl) return
-
-    if (!('documentPictureInPicture' in window)) {
-      // Fallback: standard video PiP (browser-native controls, no mute buttons)
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture().catch(() => {})
-        return
-      }
-      try {
-        await videoEl.requestPictureInPicture()
-        setPipActive(true)
-        videoEl.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true })
-      } catch (err) {
-        console.warn('[pip] requestPictureInPicture failed', err.message)
-      }
-      return
-    }
-
+  // Assigned to openDocPiPRef.current on every render so event listeners are always fresh.
+  async function openDocumentPiP(videoEl) {
     try {
       const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 240 })
       pipWindowRef.current = win
@@ -427,8 +408,17 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       const vBtn = makeBtn(videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
       vBtn.addEventListener('click', () => pipHandlersRef.current.video())
 
+      const endBtn = makeBtn('✕', 'End call', false)
+      endBtn.style.background = '#7f1d1d'
+      endBtn.style.borderColor = '#991b1b'
+      endBtn.addEventListener('click', () => {
+        win.close()
+        pipHandlersRef.current.end()
+      })
+
       bar.appendChild(aBtn)
       bar.appendChild(vBtn)
+      bar.appendChild(endBtn)
       doc.body.appendChild(bar)
       pipBtnsRef.current = { aBtn, vBtn }
 
@@ -450,18 +440,56 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       console.warn('[pip] documentPictureInPicture failed', err.message)
     }
   }
+  openDocPiPRef.current = openDocumentPiP
 
-  // Auto-trigger: switch tabs → standard video PiP appears automatically.
-  // Chrome 120+ allows requestPictureInPicture() from visibilitychange without
-  // a user gesture when a video is already playing (same mechanism as Meet).
+  // Manual toggle button handler
+  async function handleTogglePiP() {
+    if (pipWindowRef.current && !pipWindowRef.current.closed) {
+      pipWindowRef.current.close()
+      return
+    }
+
+    const videoEl = getPiPVideo()
+    if (!videoEl) return
+
+    if (!('documentPictureInPicture' in window)) {
+      // Fallback: standard video PiP (browser-native controls, no mute buttons)
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture().catch(() => {})
+        return
+      }
+      try {
+        await videoEl.requestPictureInPicture()
+        setPipActive(true)
+        videoEl.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true })
+      } catch (err) {
+        console.warn('[pip] requestPictureInPicture failed', err.message)
+      }
+      return
+    }
+
+    await openDocPiPRef.current(videoEl)
+  }
+
+  // Auto-trigger: when the tab/window is hidden, open Document PiP automatically
+  // (same behaviour as Google Meet). Chrome 123+ allows documentPictureInPicture
+  // from visibilitychange without a prior user gesture.
+  // Falls back to standard video PiP on unsupported browsers.
   useEffect(() => {
     if (!callActive) return
     function onVisibilityChange() {
       if (document.visibilityState !== 'hidden') return
-      if (pipWindowRef.current && !pipWindowRef.current.closed) return // Doc PiP already open
+      if (pipWindowRef.current && !pipWindowRef.current.closed) return
       const video = getPiPVideo()
-      if (!video || document.pictureInPictureElement) return
-      video.requestPictureInPicture().catch(() => {})
+      if (!video) return
+
+      if ('documentPictureInPicture' in window) {
+        openDocPiPRef.current(video)
+      } else if (!document.pictureInPictureElement) {
+        video.requestPictureInPicture().catch((err) => {
+          console.warn('[pip] auto-trigger failed:', err.message)
+        })
+      }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
