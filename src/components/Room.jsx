@@ -1,6 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { createRoot } from 'react-dom/client'
-import PiPOverlay from './PiPOverlay.jsx'
 import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
@@ -67,7 +65,8 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
   const retryTimerRef = useRef(null)
   const pipWindowRef = useRef(null) // Document PiP window
-  const pipRootRef = useRef(null) // React root inside PiP window
+  const pipBtnsRef = useRef(null) // { aBtn, vBtn } for label sync
+  const pipHandlersRef = useRef(null) // always-fresh toggle handlers
   const [pipActive, setPipActive] = useState(false)
 
   useEffect(() => {
@@ -328,9 +327,11 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   // ── Picture-in-Picture ────────────────────────────────────────────────────
 
+  // Keep a stable ref to the latest toggle handlers so PiP event listeners
+  // never call stale closures (handlers capture audioMuted/videoMuted by value).
+  pipHandlersRef.current = { audio: handleToggleAudio, video: handleToggleVideo }
+
   function getPiPVideo() {
-    // React sets `muted` as a JS property, not an HTML attribute,
-    // so :not([muted]) doesn't work — filter via .muted property instead
     const all = [...document.querySelectorAll('.video-element')]
     return (
       document.querySelector('.video-spotlight-main video') ||
@@ -339,49 +340,89 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     )
   }
 
-  function renderDocPiP(win) {
-    const container = win.document.createElement('div')
-    container.style.cssText = 'width:100%;height:100%;overflow:hidden'
-    win.document.body.style.cssText = 'margin:0;padding:0;background:#111;height:100vh'
-    win.document.body.appendChild(container)
-    // Copy styles from main window
-    ;[...document.styleSheets].forEach((ss) => {
-      try {
-        const style = document.createElement('style')
-        style.textContent = [...ss.cssRules].map((r) => r.cssText).join('\n')
-        win.document.head.appendChild(style)
-      } catch (_e) {
-        // Cross-origin stylesheets may throw SecurityError — skip them
+  // Build Document PiP content using vanilla DOM so srcObject is set
+  // synchronously — React's async useEffect inside createRoot can miss the
+  // first render frame and leave the video blank.
+  function buildDocPiP(win) {
+    const doc = win.document
+    doc.documentElement.style.cssText = 'height:100%;margin:0;padding:0'
+    doc.body.style.cssText =
+      'margin:0;padding:0;background:#111;height:100%;display:flex;flex-direction:column;overflow:hidden;font-family:sans-serif'
+
+    // ── Video row ──────────────────────────────────────────────────────────
+    const row = doc.createElement('div')
+    row.style.cssText = 'flex:1;min-height:0;display:flex;gap:4px;padding:4px'
+
+    const remoteEntries = Object.entries(remoteStreams)
+    const tiles = remoteEntries.length > 0 ? remoteEntries : [[null, localStream]]
+
+    tiles.forEach(([id, stream]) => {
+      const label =
+        id == null ? 'You' : (peers.find((p) => p.id === id)?.username ?? id.slice(0, 8))
+      const isMuted = id == null
+
+      const tile = doc.createElement('div')
+      tile.style.cssText =
+        'flex:1;min-width:0;position:relative;background:#1a1a1a;border-radius:6px;overflow:hidden'
+
+      if (stream) {
+        const video = doc.createElement('video')
+        video.autoplay = true
+        video.playsInline = true
+        video.muted = isMuted
+        video.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
+        video.srcObject = stream // synchronous — no useEffect needed
+        tile.appendChild(video)
+      } else {
+        const ph = doc.createElement('div')
+        ph.style.cssText =
+          'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px'
+        ph.textContent = '👤'
+        tile.appendChild(ph)
       }
+
+      const lbl = doc.createElement('span')
+      lbl.style.cssText =
+        'position:absolute;bottom:4px;left:6px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+      lbl.textContent = label
+      tile.appendChild(lbl)
+      row.appendChild(tile)
     })
-    const root = createRoot(container)
-    pipRootRef.current = root
-    function update() {
-      root.render(
-        React.createElement(PiPOverlay, {
-          localStream,
-          remoteStreams,
-          peers,
-          audioMuted,
-          videoMuted,
-          onToggleAudio: handleToggleAudio,
-          onToggleVideo: handleToggleVideo,
-        })
-      )
+
+    // ── Controls bar ───────────────────────────────────────────────────────
+    const bar = doc.createElement('div')
+    bar.style.cssText =
+      'flex-shrink:0;display:flex;justify-content:center;gap:10px;padding:8px;background:#1a1a1a'
+
+    function makeBtn(icon, text, active) {
+      const b = doc.createElement('button')
+      b.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 14px;background:${active ? '#374151' : 'transparent'};color:#d1d5db;border:1px solid ${active ? '#9ca3af' : '#374151'};border-radius:8px;cursor:pointer;min-width:60px`
+      b.innerHTML = `<span style="font-size:16px">${icon}</span><span style="font-size:10px;color:#9ca3af">${text}</span>`
+      return b
     }
-    update()
-    return update
+
+    const aBtn = makeBtn(audioMuted ? '🔇' : '🎙️', audioMuted ? 'Unmute' : 'Mute', audioMuted)
+    aBtn.addEventListener('click', () => pipHandlersRef.current.audio())
+
+    const vBtn = makeBtn(videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
+    vBtn.addEventListener('click', () => pipHandlersRef.current.video())
+
+    bar.appendChild(aBtn)
+    bar.appendChild(vBtn)
+    doc.body.appendChild(row)
+    doc.body.appendChild(bar)
+
+    pipBtnsRef.current = { aBtn, vBtn }
   }
 
   // Manual toggle via VideoControls button — uses Document PiP for custom controls
   async function handleTogglePiP() {
-    // Close if already open
     if (pipWindowRef.current && !pipWindowRef.current.closed) {
       pipWindowRef.current.close()
       return
     }
     if (!('documentPictureInPicture' in window)) {
-      // Fallback: standard video PiP (no custom controls)
+      // Fallback: standard video PiP
       const video = getPiPVideo()
       if (!video) return
       if (document.pictureInPictureElement) {
@@ -401,10 +442,10 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 240 })
       pipWindowRef.current = win
       setPipActive(true)
-      renderDocPiP(win)
+      buildDocPiP(win)
       win.addEventListener('pagehide', () => {
         pipWindowRef.current = null
-        pipRootRef.current = null
+        pipBtnsRef.current = null
         setPipActive(false)
       })
     } catch (err) {
@@ -412,32 +453,18 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     }
   }
 
-  // Auto-trigger on tab switch (Chrome allows this without user gesture
-  // when the video is already playing — same mechanism as Google Meet)
+  // Auto-trigger: switch tabs → standard video PiP appears automatically.
+  // Chrome 120+ allows requestPictureInPicture() from visibilitychange without
+  // a user gesture when a video is already playing (same mechanism as Meet).
   useEffect(() => {
     if (!callActive) return
-
-    async function onVisibilityChange() {
-      const docPipOpen = pipWindowRef.current && !pipWindowRef.current.closed
-      if (document.visibilityState === 'hidden') {
-        // If Document PiP is already open, no need to open standard PiP too
-        if (docPipOpen) return
-        const video = getPiPVideo()
-        if (video && !document.pictureInPictureElement) {
-          try {
-            await video.requestPictureInPicture()
-            video.addEventListener('leavepictureinpicture', () => {}, { once: true })
-          } catch {
-            // Browser may deny in some contexts — fail silently
-          }
-        }
-      } else if (document.visibilityState === 'visible') {
-        if (document.pictureInPictureElement) {
-          await document.exitPictureInPicture().catch(() => {})
-        }
-      }
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'hidden') return
+      if (pipWindowRef.current && !pipWindowRef.current.closed) return // Doc PiP already open
+      const video = getPiPVideo()
+      if (!video || document.pictureInPictureElement) return
+      video.requestPictureInPicture().catch(() => {})
     }
-
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [callActive])
@@ -450,22 +477,18 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     }
   }, [callActive])
 
-  // Keep Document PiP content in sync with state changes
+  // Sync Document PiP button labels when mute state changes
   useEffect(() => {
-    const win = pipWindowRef.current
-    if (!win || win.closed || !pipRootRef.current) return
-    pipRootRef.current.render(
-      React.createElement(PiPOverlay, {
-        localStream,
-        remoteStreams,
-        peers,
-        audioMuted,
-        videoMuted,
-        onToggleAudio: handleToggleAudio,
-        onToggleVideo: handleToggleVideo,
-      })
-    )
-  }, [localStream, remoteStreams, peers, audioMuted, videoMuted])
+    const btns = pipBtnsRef.current
+    if (!btns || !pipWindowRef.current || pipWindowRef.current.closed) return
+    function syncBtn(btn, icon, text, active) {
+      btn.style.background = active ? '#374151' : 'transparent'
+      btn.style.borderColor = active ? '#9ca3af' : '#374151'
+      btn.innerHTML = `<span style="font-size:16px">${icon}</span><span style="font-size:10px;color:#9ca3af">${text}</span>`
+    }
+    syncBtn(btns.aBtn, audioMuted ? '🔇' : '🎙️', audioMuted ? 'Unmute' : 'Mute', audioMuted)
+    syncBtn(btns.vBtn, videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
+  }, [audioMuted, videoMuted])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 

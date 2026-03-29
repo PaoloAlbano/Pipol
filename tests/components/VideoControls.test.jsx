@@ -3,7 +3,6 @@
  * Tests the in-call control buttons: mute, camera, screen share, flip, end call.
  */
 
-import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import VideoControls from '../../src/components/VideoControls.jsx'
@@ -150,5 +149,54 @@ describe('VideoControls — handlers', () => {
     setup({ onToggleScreenShare })
     await user.click(screen.getByTitle(/share screen/i))
     expect(onToggleScreenShare).toHaveBeenCalledOnce()
+  })
+})
+
+describe('VideoControls — PiP button', () => {
+  beforeEach(() => {
+    Object.defineProperty(document, 'pictureInPictureEnabled', {
+      value: true,
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('shows PiP button when onTogglePiP is provided and pictureInPictureEnabled=true', () => {
+    setup({ onTogglePiP: vi.fn() })
+    expect(screen.getByTitle(/open picture-in-picture/i)).toBeInTheDocument()
+  })
+
+  it('hides PiP button when onTogglePiP is not provided', () => {
+    setup()
+    expect(screen.queryByTitle(/picture-in-picture/i)).toBeNull()
+  })
+
+  it('hides PiP button when pictureInPictureEnabled=false', () => {
+    Object.defineProperty(document, 'pictureInPictureEnabled', { value: false, configurable: true })
+    setup({ onTogglePiP: vi.fn() })
+    expect(screen.queryByTitle(/picture-in-picture/i)).toBeNull()
+  })
+
+  it('shows "Close picture-in-picture" title when pipActive=true', () => {
+    setup({ onTogglePiP: vi.fn(), pipActive: true })
+    expect(screen.getByTitle(/close picture-in-picture/i)).toBeInTheDocument()
+  })
+
+  it('applies --active class when pipActive=true', () => {
+    setup({ onTogglePiP: vi.fn(), pipActive: true })
+    expect(screen.getByTitle(/close picture-in-picture/i)).toHaveClass('control-btn--active')
+  })
+
+  it('does not apply --active class when pipActive=false', () => {
+    setup({ onTogglePiP: vi.fn(), pipActive: false })
+    expect(screen.getByTitle(/open picture-in-picture/i)).not.toHaveClass('control-btn--active')
+  })
+
+  it('calls onTogglePiP when clicked', async () => {
+    const user = userEvent.setup()
+    const onTogglePiP = vi.fn()
+    setup({ onTogglePiP })
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+    expect(onTogglePiP).toHaveBeenCalledOnce()
   })
 })
