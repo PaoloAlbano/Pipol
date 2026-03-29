@@ -340,110 +340,108 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     )
   }
 
-  // Build Document PiP content using vanilla DOM so srcObject is set
-  // synchronously — React's async useEffect inside createRoot can miss the
-  // first render frame and leave the video blank.
-  function buildDocPiP(win) {
-    const doc = win.document
-    doc.documentElement.style.cssText = 'height:100%;margin:0;padding:0'
-    doc.body.style.cssText =
-      'margin:0;padding:0;background:#111;height:100%;display:flex;flex-direction:column;overflow:hidden;font-family:sans-serif'
-
-    // ── Video row ──────────────────────────────────────────────────────────
-    const row = doc.createElement('div')
-    row.style.cssText = 'flex:1;min-height:0;display:flex;gap:4px;padding:4px'
-
-    const remoteEntries = Object.entries(remoteStreams)
-    const tiles = remoteEntries.length > 0 ? remoteEntries : [[null, localStream]]
-
-    tiles.forEach(([id, stream]) => {
-      const label =
-        id == null ? 'You' : (peers.find((p) => p.id === id)?.username ?? id.slice(0, 8))
-      const isMuted = id == null
-
-      const tile = doc.createElement('div')
-      tile.style.cssText =
-        'flex:1;min-width:0;position:relative;background:#1a1a1a;border-radius:6px;overflow:hidden'
-
-      if (stream) {
-        const video = doc.createElement('video')
-        video.autoplay = true
-        video.playsInline = true
-        video.muted = isMuted
-        video.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
-        video.srcObject = stream // synchronous — no useEffect needed
-        tile.appendChild(video)
-      } else {
-        const ph = doc.createElement('div')
-        ph.style.cssText =
-          'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px'
-        ph.textContent = '👤'
-        tile.appendChild(ph)
-      }
-
-      const lbl = doc.createElement('span')
-      lbl.style.cssText =
-        'position:absolute;bottom:4px;left:6px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
-      lbl.textContent = label
-      tile.appendChild(lbl)
-      row.appendChild(tile)
-    })
-
-    // ── Controls bar ───────────────────────────────────────────────────────
-    const bar = doc.createElement('div')
-    bar.style.cssText =
-      'flex-shrink:0;display:flex;justify-content:center;gap:10px;padding:8px;background:#1a1a1a'
-
-    function makeBtn(icon, text, active) {
-      const b = doc.createElement('button')
-      b.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 14px;background:${active ? '#374151' : 'transparent'};color:#d1d5db;border:1px solid ${active ? '#9ca3af' : '#374151'};border-radius:8px;cursor:pointer;min-width:60px`
-      b.innerHTML = `<span style="font-size:16px">${icon}</span><span style="font-size:10px;color:#9ca3af">${text}</span>`
-      return b
-    }
-
-    const aBtn = makeBtn(audioMuted ? '🔇' : '🎙️', audioMuted ? 'Unmute' : 'Mute', audioMuted)
-    aBtn.addEventListener('click', () => pipHandlersRef.current.audio())
-
-    const vBtn = makeBtn(videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
-    vBtn.addEventListener('click', () => pipHandlersRef.current.video())
-
-    bar.appendChild(aBtn)
-    bar.appendChild(vBtn)
-    doc.body.appendChild(row)
-    doc.body.appendChild(bar)
-
-    pipBtnsRef.current = { aBtn, vBtn }
-  }
-
-  // Manual toggle via VideoControls button — uses Document PiP for custom controls
+  // Manual toggle — Document PiP with the already-playing video element moved in.
+  // Chrome's recommended pattern: move the existing DOM element rather than
+  // creating a new one with srcObject (new elements don't inherit playback state).
   async function handleTogglePiP() {
     if (pipWindowRef.current && !pipWindowRef.current.closed) {
       pipWindowRef.current.close()
       return
     }
+
+    const videoEl = getPiPVideo()
+    if (!videoEl) return
+
     if (!('documentPictureInPicture' in window)) {
-      // Fallback: standard video PiP
-      const video = getPiPVideo()
-      if (!video) return
+      // Fallback: standard video PiP (browser-native controls, no mute buttons)
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture().catch(() => {})
         return
       }
       try {
-        await video.requestPictureInPicture()
+        await videoEl.requestPictureInPicture()
         setPipActive(true)
-        video.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true })
+        videoEl.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true })
       } catch (err) {
         console.warn('[pip] requestPictureInPicture failed', err.message)
       }
       return
     }
+
     try {
       const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 240 })
       pipWindowRef.current = win
       setPipActive(true)
-      buildDocPiP(win)
+
+      // ── Set up PiP window ────────────────────────────────────────────────
+      const doc = win.document
+      doc.documentElement.style.cssText = 'height:100vh;margin:0;padding:0'
+      doc.body.style.cssText =
+        'margin:0;padding:0;background:#111;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:sans-serif'
+
+      // ── Save original position so we can restore on close ────────────────
+      const origParent = videoEl.parentElement
+      const origNext = videoEl.nextSibling
+      const origStyle = videoEl.style.cssText
+
+      // Insert a placeholder where the video was so the tile doesn't collapse
+      const placeholder = document.createElement('div')
+      placeholder.style.cssText =
+        'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#555;font-size:11px;pointer-events:none'
+      placeholder.textContent = '📺 In PiP'
+      origParent.insertBefore(placeholder, videoEl)
+
+      // ── Video wrapper ────────────────────────────────────────────────────
+      const wrapper = doc.createElement('div')
+      wrapper.style.cssText = 'flex:1;min-height:0;position:relative;overflow:hidden;background:#000'
+
+      videoEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
+      wrapper.appendChild(videoEl) // move the playing element into PiP
+
+      // Derive label from the sibling .video-label span in the original tile
+      const labelText =
+        origParent.querySelector('.video-label')?.textContent ??
+        (videoEl.muted ? 'You' : 'Remote')
+      const lbl = doc.createElement('span')
+      lbl.style.cssText =
+        'position:absolute;bottom:4px;left:6px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+      lbl.textContent = labelText
+      wrapper.appendChild(lbl)
+      doc.body.appendChild(wrapper)
+
+      // ── Controls bar ─────────────────────────────────────────────────────
+      const bar = doc.createElement('div')
+      bar.style.cssText =
+        'flex-shrink:0;display:flex;justify-content:center;gap:10px;padding:8px;background:#1a1a1a'
+
+      function makeBtn(icon, text, active) {
+        const b = doc.createElement('button')
+        b.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 14px;background:${active ? '#374151' : 'transparent'};color:#d1d5db;border:1px solid ${active ? '#9ca3af' : '#374151'};border-radius:8px;cursor:pointer;min-width:60px`
+        b.innerHTML = `<span style="font-size:16px">${icon}</span><span style="font-size:10px;color:#9ca3af">${text}</span>`
+        return b
+      }
+
+      const aBtn = makeBtn(audioMuted ? '🔇' : '🎙️', audioMuted ? 'Unmute' : 'Mute', audioMuted)
+      aBtn.addEventListener('click', () => pipHandlersRef.current.audio())
+
+      const vBtn = makeBtn(videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
+      vBtn.addEventListener('click', () => pipHandlersRef.current.video())
+
+      bar.appendChild(aBtn)
+      bar.appendChild(vBtn)
+      doc.body.appendChild(bar)
+      pipBtnsRef.current = { aBtn, vBtn }
+
+      // ── Restore on close ─────────────────────────────────────────────────
       win.addEventListener('pagehide', () => {
+        // Move the video element back to its original position
+        videoEl.style.cssText = origStyle
+        if (origNext && origNext.parentNode === origParent) {
+          origParent.insertBefore(videoEl, origNext)
+        } else {
+          origParent.appendChild(videoEl)
+        }
+        placeholder.remove()
         pipWindowRef.current = null
         pipBtnsRef.current = null
         setPipActive(false)
