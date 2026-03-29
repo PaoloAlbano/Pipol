@@ -1,4 +1,3 @@
-import React from 'react'
 import '../styles/video.css'
 
 /**
@@ -14,10 +13,12 @@ export default function VideoControls({
   audioMuted,
   videoMuted,
   screenSharing,
+  pipActive,
   onToggleAudio,
   onToggleVideo,
   onSwitchCamera,
   onToggleScreenShare,
+  onTogglePiP,
   onEndCall,
 }) {
   return (
@@ -55,6 +56,16 @@ export default function VideoControls({
         >
           🖥️
           <span className="control-label">{screenSharing ? 'Stop share' : 'Share'}</span>
+        </button>
+      )}
+
+      {onTogglePiP && document.pictureInPictureEnabled && (
+        <button
+          className={`control-btn ${pipActive ? 'control-btn--active' : ''}`}
+          onClick={onTogglePiP}
+          title={pipActive ? 'Close picture-in-picture' : 'Open picture-in-picture'}
+        >
+          ⧉<span className="control-label">PiP</span>
         </button>
       )}
 

@@ -30,7 +30,6 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const [peers, setPeers] = useState([])
   const [messages, setMessages] = useState([])
   const [status, setStatus] = useState('connecting…')
-  const [p2pError, setP2pError] = useState(null)
   const [relayUnreachable, setRelayUnreachable] = useState(false)
 
   // Panel collapse state (auto-reset on mobile)
@@ -65,6 +64,11 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const callActiveRef = useRef(false)
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
   const retryTimerRef = useRef(null)
+  const pipWindowRef = useRef(null) // Document PiP window
+  const pipBtnsRef = useRef(null) // { aBtn, vBtn } for label sync
+  const pipHandlersRef = useRef(null) // always-fresh toggle handlers
+  const openDocPiPRef = useRef(null) // always-fresh openDocumentPiP fn
+  const [pipActive, setPipActive] = useState(false)
 
   useEffect(() => {
     callActiveRef.current = callActive
@@ -197,7 +201,10 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
             const swarm = await createRoomSwarm(roomCode, {
               messageCoreKey: msgStore.getLocalCoreKey(),
             })
-            if (cancelled) { swarm.leave(); return }
+            if (cancelled) {
+              swarm.leave()
+              return
+            }
             swarmRef.current = swarm
             attachSwarmListeners(swarm, msgStore)
             setRelayUnreachable(false)
@@ -205,7 +212,6 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
           } catch (err) {
             if (cancelled) return
             if (err.code === 'BROWSER_UNSUPPORTED') {
-              setP2pError('browser')
               setStatus(`⚠ ${err.message}`)
               return
             }
@@ -237,7 +243,8 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   useEffect(() => {
     async function handleVisibilityChange() {
       if (document.visibilityState === 'hidden') {
-        pauseVideoTracks()
+        // Keep video tracks alive so PiP can display them
+        if (!callActiveRef.current) pauseVideoTracks()
         return
       }
 
@@ -318,6 +325,196 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     const id = setInterval(pollStats, 2000)
     return () => clearInterval(id)
   }, [showStats, callActive])
+
+  // ── Picture-in-Picture ────────────────────────────────────────────────────
+
+  // Keep a stable ref to the latest toggle handlers so PiP event listeners
+  // never call stale closures (handlers capture audioMuted/videoMuted by value).
+  pipHandlersRef.current = { audio: handleToggleAudio, video: handleToggleVideo, end: handleEndCall }
+
+  function getPiPVideo() {
+    const all = [...document.querySelectorAll('.video-element')]
+    const playing = (v) => !v.paused && v.readyState >= 2
+    return (
+      document.querySelector('.video-spotlight-main video') ||
+      all.find((v) => !v.muted && playing(v)) ||
+      all.find((v) => playing(v)) ||
+      all.find((v) => !v.muted && v.readyState >= 1) ||
+      all.find((v) => v.readyState >= 1)
+    )
+  }
+
+  // Opens a Document PiP window and moves the already-playing video element into it.
+  // Chrome's recommended pattern: move the existing DOM element rather than
+  // creating a new one with srcObject (new elements don't inherit playback state).
+  // Assigned to openDocPiPRef.current on every render so event listeners are always fresh.
+  async function openDocumentPiP(videoEl) {
+    try {
+      const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 240 })
+      pipWindowRef.current = win
+      setPipActive(true)
+
+      // ── Set up PiP window ────────────────────────────────────────────────
+      const doc = win.document
+      doc.documentElement.style.cssText = 'height:100vh;margin:0;padding:0'
+      doc.body.style.cssText =
+        'margin:0;padding:0;background:#111;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:sans-serif'
+
+      // ── Save original position so we can restore on close ────────────────
+      const origParent = videoEl.parentElement
+      const origNext = videoEl.nextSibling
+      const origStyle = videoEl.style.cssText
+
+      // Insert a placeholder where the video was so the tile doesn't collapse
+      const placeholder = document.createElement('div')
+      placeholder.style.cssText =
+        'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#555;font-size:11px;pointer-events:none'
+      placeholder.textContent = '📺 In PiP'
+      origParent.insertBefore(placeholder, videoEl)
+
+      // ── Video wrapper ────────────────────────────────────────────────────
+      const wrapper = doc.createElement('div')
+      wrapper.style.cssText = 'flex:1;min-height:0;position:relative;overflow:hidden;background:#000'
+
+      videoEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
+      wrapper.appendChild(videoEl) // move the playing element into PiP
+
+      // Derive label from the sibling .video-label span in the original tile
+      const labelText =
+        origParent.querySelector('.video-label')?.textContent ??
+        (videoEl.muted ? 'You' : 'Remote')
+      const lbl = doc.createElement('span')
+      lbl.style.cssText =
+        'position:absolute;bottom:4px;left:6px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+      lbl.textContent = labelText
+      wrapper.appendChild(lbl)
+      doc.body.appendChild(wrapper)
+
+      // ── Controls bar ─────────────────────────────────────────────────────
+      const bar = doc.createElement('div')
+      bar.style.cssText =
+        'flex-shrink:0;display:flex;justify-content:center;gap:10px;padding:8px;background:#1a1a1a'
+
+      function makeBtn(icon, text, active) {
+        const b = doc.createElement('button')
+        b.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 14px;background:${active ? '#374151' : 'transparent'};color:#d1d5db;border:1px solid ${active ? '#9ca3af' : '#374151'};border-radius:8px;cursor:pointer;min-width:60px`
+        b.innerHTML = `<span style="font-size:16px">${icon}</span><span style="font-size:10px;color:#9ca3af">${text}</span>`
+        return b
+      }
+
+      const aBtn = makeBtn(audioMuted ? '🔇' : '🎙️', audioMuted ? 'Unmute' : 'Mute', audioMuted)
+      aBtn.addEventListener('click', () => pipHandlersRef.current.audio())
+
+      const vBtn = makeBtn(videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
+      vBtn.addEventListener('click', () => pipHandlersRef.current.video())
+
+      const endBtn = makeBtn('✕', 'End call', false)
+      endBtn.style.background = '#7f1d1d'
+      endBtn.style.borderColor = '#991b1b'
+      endBtn.addEventListener('click', () => {
+        win.close()
+        pipHandlersRef.current.end()
+      })
+
+      bar.appendChild(aBtn)
+      bar.appendChild(vBtn)
+      bar.appendChild(endBtn)
+      doc.body.appendChild(bar)
+      pipBtnsRef.current = { aBtn, vBtn }
+
+      // ── Restore on close ─────────────────────────────────────────────────
+      win.addEventListener('pagehide', () => {
+        // Move the video element back to its original position
+        videoEl.style.cssText = origStyle
+        if (origNext && origNext.parentNode === origParent) {
+          origParent.insertBefore(videoEl, origNext)
+        } else {
+          origParent.appendChild(videoEl)
+        }
+        placeholder.remove()
+        pipWindowRef.current = null
+        pipBtnsRef.current = null
+        setPipActive(false)
+      })
+    } catch (err) {
+      console.warn('[pip] documentPictureInPicture failed', err.message)
+    }
+  }
+  openDocPiPRef.current = openDocumentPiP
+
+  // Manual toggle button handler
+  async function handleTogglePiP() {
+    if (pipWindowRef.current && !pipWindowRef.current.closed) {
+      pipWindowRef.current.close()
+      return
+    }
+
+    const videoEl = getPiPVideo()
+    if (!videoEl) return
+
+    if (!('documentPictureInPicture' in window)) {
+      // Fallback: standard video PiP (browser-native controls, no mute buttons)
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture().catch(() => {})
+        return
+      }
+      try {
+        await videoEl.requestPictureInPicture()
+        setPipActive(true)
+        videoEl.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true })
+      } catch (err) {
+        console.warn('[pip] requestPictureInPicture failed', err.message)
+      }
+      return
+    }
+
+    await openDocPiPRef.current(videoEl)
+  }
+
+  // Auto-trigger: when the tab/window is hidden, open Document PiP automatically
+  // (same behaviour as Google Meet). Chrome 123+ allows documentPictureInPicture
+  // from visibilitychange without a prior user gesture.
+  // Falls back to standard video PiP on unsupported browsers.
+  useEffect(() => {
+    if (!callActive) return
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'hidden') return
+      if (pipWindowRef.current && !pipWindowRef.current.closed) return
+      const video = getPiPVideo()
+      if (!video) return
+
+      if ('documentPictureInPicture' in window) {
+        openDocPiPRef.current(video)
+      } else if (!document.pictureInPictureElement) {
+        video.requestPictureInPicture().catch((err) => {
+          console.warn('[pip] auto-trigger failed:', err.message)
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [callActive])
+
+  // Close PiP when the call ends
+  useEffect(() => {
+    if (!callActive) {
+      if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
+      if (pipWindowRef.current && !pipWindowRef.current.closed) pipWindowRef.current.close()
+    }
+  }, [callActive])
+
+  // Sync Document PiP button labels when mute state changes
+  useEffect(() => {
+    const btns = pipBtnsRef.current
+    if (!btns || !pipWindowRef.current || pipWindowRef.current.closed) return
+    function syncBtn(btn, icon, text, active) {
+      btn.style.background = active ? '#374151' : 'transparent'
+      btn.style.borderColor = active ? '#9ca3af' : '#374151'
+      btn.innerHTML = `<span style="font-size:16px">${icon}</span><span style="font-size:10px;color:#9ca3af">${text}</span>`
+    }
+    syncBtn(btns.aBtn, audioMuted ? '🔇' : '🎙️', audioMuted ? 'Unmute' : 'Mute', audioMuted)
+    syncBtn(btns.vBtn, videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
+  }, [audioMuted, videoMuted])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -518,9 +715,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   return (
     <div className={`room-layout ${callActive ? 'room-layout--call' : ''}`}>
       {relayUnreachable && (
-        <div className="room-relay-banner">
-          Cannot reach relay server — retrying…
-        </div>
+        <div className="room-relay-banner">Cannot reach relay server — retrying…</div>
       )}
       {/* ── Incoming call modal ── */}
       {incomingCall && !callActive && (
@@ -671,10 +866,12 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
               audioMuted={audioMuted}
               videoMuted={videoMuted}
               screenSharing={screenSharing}
+              pipActive={pipActive}
               onToggleAudio={handleToggleAudio}
               onToggleVideo={handleToggleVideo}
               onSwitchCamera={handleSwitchCamera}
               onToggleScreenShare={handleToggleScreenShare}
+              onTogglePiP={handleTogglePiP}
               onEndCall={handleEndCall}
             />
           )}

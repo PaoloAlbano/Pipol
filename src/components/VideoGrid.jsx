@@ -154,8 +154,14 @@ function VideoTile({
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream
+      // Set via DOM API — React filters this attribute in JSX
+      if (!muted) {
+        videoRef.current.setAttribute('autopictureinpicture', '')
+      } else {
+        videoRef.current.removeAttribute('autopictureinpicture')
+      }
     }
-  }, [stream])
+  }, [stream, muted])
 
   return (
     <div

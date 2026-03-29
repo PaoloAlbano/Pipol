@@ -212,6 +212,58 @@ describe('VideoGrid — layout spotlight', () => {
   })
 })
 
+// ── autopictureinpicture ───────────────────────────────────────────────────────
+
+describe('VideoGrid — autopictureinpicture attribute', () => {
+  const peer1 = { id: 'peer-1', username: 'alice' }
+
+  it('remote (unmuted) videos have the autopictureinpicture attribute', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-1': makeFakeStream() }}
+        peers={[peer1]}
+        localUsername="me"
+        showStats={false}
+        peerStats={{}}
+        layout="grid"
+        spotlightPeerId={null}
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+      />
+    )
+    const videos = container.querySelectorAll('video')
+    const remoteVideos = [...videos].filter((v) => !v.muted)
+    expect(remoteVideos.length).toBeGreaterThan(0)
+    remoteVideos.forEach((v) => {
+      expect(v.hasAttribute('autopictureinpicture')).toBe(true)
+    })
+  })
+
+  it('local (muted) video does not have the autopictureinpicture attribute', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-1': makeFakeStream() }}
+        peers={[peer1]}
+        localUsername="me"
+        showStats={false}
+        peerStats={{}}
+        layout="grid"
+        spotlightPeerId={null}
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+      />
+    )
+    const videos = container.querySelectorAll('video')
+    const localVideos = [...videos].filter((v) => v.muted)
+    expect(localVideos.length).toBeGreaterThan(0)
+    localVideos.forEach((v) => {
+      expect(v.hasAttribute('autopictureinpicture')).toBe(false)
+    })
+  })
+})
+
 // ── Stats overlay ─────────────────────────────────────────────────────────────
 
 describe('VideoGrid — stats overlay', () => {
