@@ -31,6 +31,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const [messages, setMessages] = useState([])
   const [status, setStatus] = useState('connecting…')
   const [p2pError, setP2pError] = useState(null)
+  const [relayUnreachable, setRelayUnreachable] = useState(false)
 
   // Panel collapse state (auto-reset on mobile)
   const isMobile = () => window.innerWidth <= 560
@@ -63,6 +64,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const rtcPeersRef = useRef({}) // peerId → WebRTCPeer
   const callActiveRef = useRef(false)
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
+  const retryTimerRef = useRef(null)
 
   useEffect(() => {
     callActiveRef.current = callActive
@@ -188,20 +190,36 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         const history = await msgStore.getHistory()
         if (!cancelled) setMessages(history)
 
-        // 2. Peer discovery via WebRTC swarm
-        const swarm = await createRoomSwarm(roomCode, {
-          messageCoreKey: msgStore.getLocalCoreKey(),
-        })
-        swarmRef.current = swarm
-        attachSwarmListeners(swarm, msgStore)
+        // 2. Peer discovery via WebRTC swarm (with auto-retry on relay failure)
+        async function connectSwarm() {
+          if (cancelled) return
+          try {
+            const swarm = await createRoomSwarm(roomCode, {
+              messageCoreKey: msgStore.getLocalCoreKey(),
+            })
+            if (cancelled) { swarm.leave(); return }
+            swarmRef.current = swarm
+            attachSwarmListeners(swarm, msgStore)
+            setRelayUnreachable(false)
+            setStatus('waiting for peers…')
+          } catch (err) {
+            if (cancelled) return
+            if (err.code === 'BROWSER_UNSUPPORTED') {
+              setP2pError('browser')
+              setStatus(`⚠ ${err.message}`)
+              return
+            }
+            console.warn('[room] relay unreachable, retrying in 10s…', err.message)
+            setStatus('relay unreachable — retrying in 10s…')
+            setRelayUnreachable(true)
+            retryTimerRef.current = setTimeout(connectSwarm, 10_000)
+          }
+        }
 
-        if (!cancelled) setStatus('waiting for peers…')
+        await connectSwarm()
       } catch (err) {
         console.error('[room] setup error', err)
-        if (!cancelled) {
-          if (err.code === 'BROWSER_UNSUPPORTED') setP2pError('browser')
-          setStatus(`⚠ ${err.message}`)
-        }
+        if (!cancelled) setStatus(`⚠ ${err.message}`)
       }
     }
 
@@ -209,6 +227,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
     return () => {
       cancelled = true
+      clearTimeout(retryTimerRef.current)
       teardown()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -498,6 +517,11 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   return (
     <div className={`room-layout ${callActive ? 'room-layout--call' : ''}`}>
+      {relayUnreachable && (
+        <div className="room-relay-banner">
+          Cannot reach relay server — retrying…
+        </div>
+      )}
       {/* ── Incoming call modal ── */}
       {incomingCall && !callActive && (
         <div className="call-modal-overlay">
