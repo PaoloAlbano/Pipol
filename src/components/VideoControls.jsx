@@ -14,10 +14,12 @@ export default function VideoControls({
   audioMuted,
   videoMuted,
   screenSharing,
+  pipOpen,
   onToggleAudio,
   onToggleVideo,
   onSwitchCamera,
   onToggleScreenShare,
+  onOpenPiP,
   onEndCall,
 }) {
   return (
@@ -55,6 +57,17 @@ export default function VideoControls({
         >
           🖥️
           <span className="control-label">{screenSharing ? 'Stop share' : 'Share'}</span>
+        </button>
+      )}
+
+      {onOpenPiP && 'documentPictureInPicture' in window && (
+        <button
+          className={`control-btn ${pipOpen ? 'control-btn--active' : ''}`}
+          onClick={onOpenPiP}
+          title={pipOpen ? 'Close picture-in-picture' : 'Open picture-in-picture'}
+        >
+          ⧉
+          <span className="control-label">PiP</span>
         </button>
       )}
 
