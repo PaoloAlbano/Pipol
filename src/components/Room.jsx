@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { createRoot } from 'react-dom/client'
+import PiPOverlay from './PiPOverlay.jsx'
 import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
@@ -30,7 +32,6 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const [peers, setPeers] = useState([])
   const [messages, setMessages] = useState([])
   const [status, setStatus] = useState('connecting…')
-  const [p2pError, setP2pError] = useState(null)
   const [relayUnreachable, setRelayUnreachable] = useState(false)
 
   // Panel collapse state (auto-reset on mobile)
@@ -65,6 +66,8 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const callActiveRef = useRef(false)
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
   const retryTimerRef = useRef(null)
+  const pipWindowRef = useRef(null) // Document PiP window
+  const pipRootRef = useRef(null) // React root inside PiP window
   const [pipActive, setPipActive] = useState(false)
 
   useEffect(() => {
@@ -209,7 +212,6 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
           } catch (err) {
             if (cancelled) return
             if (err.code === 'BROWSER_UNSUPPORTED') {
-              setP2pError('browser')
               setStatus(`⚠ ${err.message}`)
               return
             }
@@ -337,20 +339,76 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     )
   }
 
-  // Manual toggle via VideoControls button
+  function renderDocPiP(win) {
+    const container = win.document.createElement('div')
+    container.style.cssText = 'width:100%;height:100%;overflow:hidden'
+    win.document.body.style.cssText = 'margin:0;padding:0;background:#111;height:100vh'
+    win.document.body.appendChild(container)
+    // Copy styles from main window
+    ;[...document.styleSheets].forEach((ss) => {
+      try {
+        const style = document.createElement('style')
+        style.textContent = [...ss.cssRules].map((r) => r.cssText).join('\n')
+        win.document.head.appendChild(style)
+      } catch (_e) {
+        // Cross-origin stylesheets may throw SecurityError — skip them
+      }
+    })
+    const root = createRoot(container)
+    pipRootRef.current = root
+    function update() {
+      root.render(
+        React.createElement(PiPOverlay, {
+          localStream,
+          remoteStreams,
+          peers,
+          audioMuted,
+          videoMuted,
+          onToggleAudio: handleToggleAudio,
+          onToggleVideo: handleToggleVideo,
+        })
+      )
+    }
+    update()
+    return update
+  }
+
+  // Manual toggle via VideoControls button — uses Document PiP for custom controls
   async function handleTogglePiP() {
-    if (document.pictureInPictureElement) {
-      await document.exitPictureInPicture().catch(() => {})
+    // Close if already open
+    if (pipWindowRef.current && !pipWindowRef.current.closed) {
+      pipWindowRef.current.close()
       return
     }
-    const video = getPiPVideo()
-    if (!video) return
+    if (!('documentPictureInPicture' in window)) {
+      // Fallback: standard video PiP (no custom controls)
+      const video = getPiPVideo()
+      if (!video) return
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture().catch(() => {})
+        return
+      }
+      try {
+        await video.requestPictureInPicture()
+        setPipActive(true)
+        video.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true })
+      } catch (err) {
+        console.warn('[pip] requestPictureInPicture failed', err.message)
+      }
+      return
+    }
     try {
-      await video.requestPictureInPicture()
+      const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 240 })
+      pipWindowRef.current = win
       setPipActive(true)
-      video.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true })
+      renderDocPiP(win)
+      win.addEventListener('pagehide', () => {
+        pipWindowRef.current = null
+        pipRootRef.current = null
+        setPipActive(false)
+      })
     } catch (err) {
-      console.warn('[pip] requestPictureInPicture failed', err.message)
+      console.warn('[pip] documentPictureInPicture failed', err.message)
     }
   }
 
@@ -360,15 +418,15 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     if (!callActive) return
 
     async function onVisibilityChange() {
+      const docPipOpen = pipWindowRef.current && !pipWindowRef.current.closed
       if (document.visibilityState === 'hidden') {
+        // If Document PiP is already open, no need to open standard PiP too
+        if (docPipOpen) return
         const video = getPiPVideo()
         if (video && !document.pictureInPictureElement) {
           try {
             await video.requestPictureInPicture()
-            setPipActive(true)
-            video.addEventListener('leavepictureinpicture', () => setPipActive(false), {
-              once: true,
-            })
+            video.addEventListener('leavepictureinpicture', () => {}, { once: true })
           } catch {
             // Browser may deny in some contexts — fail silently
           }
@@ -386,10 +444,28 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   // Close PiP when the call ends
   useEffect(() => {
-    if (!callActive && document.pictureInPictureElement) {
-      document.exitPictureInPicture().catch(() => {})
+    if (!callActive) {
+      if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
+      if (pipWindowRef.current && !pipWindowRef.current.closed) pipWindowRef.current.close()
     }
   }, [callActive])
+
+  // Keep Document PiP content in sync with state changes
+  useEffect(() => {
+    const win = pipWindowRef.current
+    if (!win || win.closed || !pipRootRef.current) return
+    pipRootRef.current.render(
+      React.createElement(PiPOverlay, {
+        localStream,
+        remoteStreams,
+        peers,
+        audioMuted,
+        videoMuted,
+        onToggleAudio: handleToggleAudio,
+        onToggleVideo: handleToggleVideo,
+      })
+    )
+  }, [localStream, remoteStreams, peers, audioMuted, videoMuted])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
