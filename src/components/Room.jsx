@@ -34,10 +34,12 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   // Panel collapse state (auto-reset on mobile)
   const isMobile = () => window.innerWidth <= 560
+  const [mobileView, setMobileView] = useState(() => isMobile())
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [chatOpen, setChatOpen] = useState(true)
   useEffect(() => {
     const onResize = () => {
+      setMobileView(isMobile())
       if (isMobile()) setChatOpen(true)
     }
     window.addEventListener('resize', onResize)
@@ -69,6 +71,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const pipHandlersRef = useRef(null) // always-fresh toggle handlers
   const openDocPiPRef = useRef(null) // always-fresh openDocumentPiP fn
   const [pipActive, setPipActive] = useState(false)
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false)
 
   useEffect(() => {
     callActiveRef.current = callActive
@@ -588,6 +591,11 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       setLocalStream(stream)
       setCallActive(true)
 
+      navigator.mediaDevices?.enumerateDevices().then((devices) => {
+        const videoInputs = devices.filter((d) => d.kind === 'videoinput')
+        setHasMultipleCameras(videoInputs.length > 1)
+      })
+
       // Notify all peers that we're starting a call
       swarmRef.current?.sendToAll({ type: 'CALL_INIT' })
 
@@ -738,47 +746,49 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
           </div>
         </div>
       )}
-      {/* ── Mobile top bar (visible only on small screens) ── */}
-      <div className="room-mobile-header">
-        <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
-          <img
-            src="/icons/icon.svg"
-            alt="Pipol"
-            width="20"
-            height="20"
-            className="room-home-icon"
-          />
-        </button>
-        <span className="room-beta-badge">beta</span>
-        <button className="btn-icon-only" onClick={onOpenSettings} title="Settings">
-          ⚙️
-        </button>
-        <div className="room-mobile-title">
-          <span className="room-code-label">Room</span>
-          <span className="room-code-value">{roomCode}</span>
-        </div>
-        <span className="room-mobile-peers">👥 {peers.length + 1}</span>
-        {callInProgress && !callActive && (
-          <button className="btn-mobile-call btn-mobile-call--pulse" onClick={handleJoinCall}>
-            📹 {callPeerIds.size}
+      {/* ── Mobile top bar (mounted only on small screens) ── */}
+      {mobileView && (
+        <div className="room-mobile-header">
+          <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
+            <img
+              src="/icons/icon.svg"
+              alt="Pipol"
+              width="20"
+              height="20"
+              className="room-home-icon"
+            />
           </button>
-        )}
-        {!callInProgress && !callActive && (
-          <button className="btn-mobile-call" onClick={handleStartCall}>
-            📹 Call
+          <span className="room-beta-badge">beta</span>
+          <button className="btn-icon-only" onClick={onOpenSettings} title="Settings">
+            ⚙️
           </button>
-        )}
-        {callActive && (
-          <>
+          <div className="room-mobile-title">
+            <span className="room-code-label">Room</span>
+            <span className="room-code-value">{roomCode}</span>
+          </div>
+          <span className="room-mobile-peers">👥 {peers.length + 1}</span>
+          {callInProgress && !callActive && (
+            <button className="btn-mobile-call btn-mobile-call--pulse" onClick={handleJoinCall}>
+              📹 {callPeerIds.size}
+            </button>
+          )}
+          {!callInProgress && !callActive && (
+            <button className="btn-mobile-call" onClick={handleStartCall}>
+              📹 Call
+            </button>
+          )}
+          {callActive && hasMultipleCameras && (
             <button className="btn-mobile-call" onClick={handleSwitchCamera} title="Switch camera">
               🔄
             </button>
+          )}
+          {callActive && (
             <button className="btn-mobile-call btn-mobile-call--danger" onClick={handleEndCall}>
               ✕ End
             </button>
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* ── Left sidebar: participants + controls ── */}
       <aside className={`room-sidebar ${sidebarOpen ? '' : 'room-sidebar--collapsed'}`}>
@@ -873,8 +883,10 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
               pipActive={pipActive}
               onToggleAudio={handleToggleAudio}
               onToggleVideo={handleToggleVideo}
-              onSwitchCamera={handleSwitchCamera}
-              onToggleScreenShare={handleToggleScreenShare}
+              onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
+              onToggleScreenShare={
+                navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined
+              }
               onTogglePiP={handleTogglePiP}
               onEndCall={handleEndCall}
             />
