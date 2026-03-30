@@ -229,6 +229,13 @@
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
+.toolbar-btn--active {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--primary);
+}
+.toolbar-btn--active:hover {
+  background: color-mix(in srgb, var(--primary) 28%, transparent);
+}
 
 /* Textarea row */
 .chat-input-row {
@@ -240,8 +247,8 @@
 
 .chat-input-field {
   flex: 1;
-  resize: none;
-  /* 25 rows × (14px × 1.4) + 12px vertical padding */
+  /* ~1.5 rows initial height; grows up to 25 rows before showing scrollbar */
+  min-height: calc(1.4em * 1.5);
   max-height: 502px;
   padding: 6px 8px;
   background: transparent;
@@ -252,9 +259,53 @@
   line-height: 1.4;
   overflow-y: auto;
   font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
 }
-.chat-input-field::placeholder {
+
+/* Placeholder via ::before when the editor is empty */
+.chat-input-field--empty::before {
+  content: attr(data-placeholder);
   color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* WYSIWYG formatting preview inside the editor */
+.chat-input-field strong,
+.chat-input-field b {
+  font-weight: 700;
+}
+.chat-input-field em,
+.chat-input-field i {
+  font-style: italic;
+}
+.chat-input-field del,
+.chat-input-field s {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+.chat-input-field code {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 0.85em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.chat-input-field pre {
+  margin: 4px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+.chat-input-field pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
 }
 
 .chat-send-btn {

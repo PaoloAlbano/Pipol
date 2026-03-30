@@ -1,142 +1,257 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import '../styles/chat.css'
 
-// Static toolbar config — no closures over component state/refs
+// execCommand-based commands toggle a "pending format" mode — subsequent typing
+// is wrapped automatically. For code/pre there is no native command, so we
+// insert an empty element and place the cursor inside.
 const TOOLBAR = [
-  {
-    label: 'B',
-    title: 'Bold',
-    className: 'toolbar-btn--bold',
-    before: '**',
-    after: '**',
-    placeholder: 'text',
-  },
-  {
-    label: 'I',
-    title: 'Italic',
-    className: 'toolbar-btn--italic',
-    before: '_',
-    after: '_',
-    placeholder: 'text',
-  },
+  { label: 'B', title: 'Bold', className: 'toolbar-btn--bold', command: 'bold', tag: null },
+  { label: 'I', title: 'Italic', className: 'toolbar-btn--italic', command: 'italic', tag: null },
   {
     label: 'S',
     title: 'Strikethrough',
     className: 'toolbar-btn--strike',
-    before: '~~',
-    after: '~~',
-    placeholder: 'text',
+    command: 'strikeThrough',
+    tag: null,
   },
-  { label: '`', title: 'Inline code', className: '', before: '`', after: '`', placeholder: 'code' },
-  {
-    label: '```',
-    title: 'Code block',
-    className: 'toolbar-btn--mono',
-    before: null,
-    after: null,
-    placeholder: null,
-  },
+  { label: '</>', title: 'Code block', className: 'toolbar-btn--mono', command: null, tag: 'pre' },
 ]
+
+// Serialize the editor's DOM tree back to markdown for sending
+function serializeNode(node) {
+  // Strip zero-width spaces used as cursor anchors in empty code elements
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent.replace(/\u200B/g, '')
+  const tag = node.tagName?.toLowerCase()
+  const children = Array.from(node.childNodes).map(serializeNode).join('')
+  switch (tag) {
+    case 'strong':
+    case 'b':
+      return `**${children}**`
+    case 'em':
+    case 'i':
+      return `_${children}_`
+    case 'del':
+    case 's':
+    case 'strike':
+      return `~~${children}~~`
+    case 'code':
+      if (node.parentNode?.tagName?.toLowerCase() === 'pre') return children
+      return `\`${children}\``
+    case 'pre':
+      return `\`\`\`\n${children}\n\`\`\``
+    case 'br':
+      return '\n'
+    case 'div':
+      return '\n' + children
+    default:
+      return children
+  }
+}
+
+function editorToMarkdown(el) {
+  return Array.from(el.childNodes).map(serializeNode).join('').trim()
+}
+
+function findAncestor(node, tag, boundary) {
+  let current = node
+  while (current && current !== boundary) {
+    if (current.tagName?.toLowerCase() === tag) return current
+    current = current.parentNode
+  }
+  return null
+}
+
+function exitAfter(el, sel) {
+  // Ensure there is a node after the element to land on (needed when el is the
+  // last child — otherwise the cursor stays visually glued to the block end)
+  if (!el.nextSibling) {
+    el.parentNode.insertBefore(document.createElement('br'), null)
+  }
+  const range = document.createRange()
+  range.setStartAfter(el)
+  range.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(range)
+}
 
 /**
  * Message composition input.
  * - Enter sends, Shift+Enter inserts a newline.
  * - Formatting toolbar (visible on focus): bold, italic, strikethrough,
  *   inline code, code block.
+ * - Toolbar buttons stay highlighted while the cursor is inside that format.
  */
 export default function ChatInput({ onSend }) {
-  const [text, setText] = useState('')
-  const textareaRef = useRef(null)
+  const [hasContent, setHasContent] = useState(false)
+  const [activeFormats, setActiveFormats] = useState(new Set())
+  const editorRef = useRef(null)
 
-  // Auto-resize: grow with content, show scrollbar only once max-height is hit
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.overflowY = 'hidden'
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-    const maxH = parseInt(getComputedStyle(el).maxHeight, 10)
-    el.style.overflowY = el.scrollHeight >= maxH ? 'auto' : 'hidden'
-  }, [text])
+  function updateActiveFormats() {
+    const editor = editorRef.current
+    if (!editor) return
+    const next = new Set()
+    try {
+      if (document.queryCommandState('bold')) next.add('bold')
+      if (document.queryCommandState('italic')) next.add('italic')
+      if (document.queryCommandState('strikeThrough')) next.add('strikeThrough')
+    } catch {
+      /* not supported */
+    }
+    // Walk DOM to detect cursor inside code / pre
+    const sel = window.getSelection()
+    if (sel?.anchorNode) {
+      let node = sel.anchorNode
+      while (node && node !== editor) {
+        const t = node.tagName?.toLowerCase()
+        if (t === 'code' && node.parentNode?.tagName?.toLowerCase() !== 'pre') next.add('code')
+        if (t === 'pre') next.add('pre')
+        node = node.parentNode
+      }
+    }
+    setActiveFormats(next)
+  }
 
-  function handleSubmit(e) {
-    e.preventDefault()
-    const content = text.trim()
-    if (!content) return
-    onSend(content)
-    setText('')
+  function handleInput() {
+    const el = editorRef.current
+    setHasContent(!!el && el.textContent.trim() !== '')
+    updateActiveFormats()
   }
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
-      handleSubmit(e)
+      e.preventDefault()
+      doSend()
     }
+  }
+
+  function doSend() {
+    const el = editorRef.current
+    if (!el) return
+    const content = editorToMarkdown(el)
+    if (!content.trim()) return
+    onSend(content)
+    el.innerHTML = ''
+    setHasContent(false)
+    setActiveFormats(new Set())
   }
 
   function handleToolbarClick(e, btn) {
-    // Prevent textarea from losing focus before we read the selection
     e.preventDefault()
-    const el = textareaRef.current
-    if (!el) return
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
 
-    const start = el.selectionStart
-    const end = el.selectionEnd
-
-    let newText, selStart, selEnd
-
-    if (btn.before === null) {
-      // Code block
-      const selected = text.slice(start, end) || 'code'
-      const block = `\`\`\`\n${selected}\n\`\`\``
-      newText = text.slice(0, start) + block + text.slice(end)
-      selStart = start + 4
-      selEnd = selStart + selected.length
+    if (btn.command) {
+      // execCommand toggles format mode; browser handles wrapping typed text
+      document.execCommand(btn.command)
     } else {
-      const selected = text.slice(start, end) || btn.placeholder
-      newText = text.slice(0, start) + btn.before + selected + btn.after + text.slice(end)
-      selStart = start + btn.before.length
-      selEnd = selStart + selected.length
+      // code / pre — insert empty element and place cursor inside
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return
+      const range = sel.getRangeAt(0)
+
+      if (btn.tag === 'pre') {
+        // Toggle off: if already inside a <pre>, move cursor after it
+        const existingPre = findAncestor(sel.anchorNode, 'pre', editor)
+        if (existingPre) {
+          exitAfter(existingPre, sel)
+        } else {
+          const pre = document.createElement('pre')
+          const code = document.createElement('code')
+          if (range.collapsed) {
+            code.textContent = '\u200B'
+          } else {
+            code.textContent = range.toString()
+            range.deleteContents()
+          }
+          pre.appendChild(code)
+          range.insertNode(pre)
+          const newRange = document.createRange()
+          newRange.setStart(code.firstChild, code.firstChild.length)
+          newRange.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(newRange)
+        }
+      } else {
+        // Toggle off: if already inside a standalone <code>, move cursor after it
+        const existingCode = findAncestor(sel.anchorNode, 'code', editor)
+        if (existingCode && existingCode.parentNode?.tagName?.toLowerCase() !== 'pre') {
+          exitAfter(existingCode, sel)
+        } else if (!existingCode) {
+          const el = document.createElement('code')
+          if (range.collapsed) {
+            el.textContent = '\u200B'
+            range.insertNode(el)
+            const newRange = document.createRange()
+            newRange.setStart(el.firstChild, el.firstChild.length)
+            newRange.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(newRange)
+          } else {
+            const fragment = range.extractContents()
+            el.appendChild(fragment)
+            range.insertNode(el)
+            const newRange = document.createRange()
+            newRange.selectNodeContents(el)
+            newRange.collapse(false)
+            sel.removeAllRanges()
+            sel.addRange(newRange)
+          }
+        }
+      }
     }
 
-    setText(newText)
-    requestAnimationFrame(() => {
-      el.focus()
-      el.setSelectionRange(selStart, selEnd)
-    })
+    updateActiveFormats()
+    setHasContent((editorRef.current?.textContent ?? '').trim() !== '')
   }
 
   return (
-    <form className="chat-input-form" onSubmit={handleSubmit}>
+    <form
+      className="chat-input-form"
+      onSubmit={(e) => {
+        e.preventDefault()
+        doSend()
+      }}
+    >
       <div className="chat-input-wrapper">
         <div className="chat-input-toolbar" role="toolbar" aria-label="Formatting">
-          {TOOLBAR.map((btn) => (
-            <button
-              key={btn.label}
-              type="button"
-              className={`toolbar-btn ${btn.className}`}
-              title={btn.title}
-              data-tooltip={btn.title}
-              onMouseDown={(e) => handleToolbarClick(e, btn)}
-            >
-              {btn.label}
-            </button>
-          ))}
+          {TOOLBAR.map((btn) => {
+            const active = activeFormats.has(btn.command ?? btn.tag)
+            return (
+              <button
+                key={btn.label}
+                type="button"
+                className={`toolbar-btn ${btn.className}${active ? ' toolbar-btn--active' : ''}`}
+                title={btn.title}
+                data-tooltip={btn.title}
+                aria-pressed={active}
+                onMouseDown={(e) => handleToolbarClick(e, btn)}
+              >
+                {btn.label}
+              </button>
+            )
+          })}
         </div>
 
         <div className="chat-input-row">
-          <textarea
-            ref={textareaRef}
-            className="chat-input-field"
-            placeholder="Type a message…  (Enter to send, Shift+Enter for new line)"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
+          <div
+            ref={editorRef}
+            className={`chat-input-field${hasContent ? '' : ' chat-input-field--empty'}`}
+            contentEditable
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Message input"
+            data-placeholder="Type a message…  (Enter to send, Shift+Enter for new line)"
+            onInput={handleInput}
             onKeyDown={handleKeyDown}
-            rows={1}
+            onKeyUp={updateActiveFormats}
+            onClick={updateActiveFormats}
+            suppressContentEditableWarning
           />
           <button
             className="chat-send-btn"
             type="submit"
-            disabled={!text.trim()}
+            disabled={!hasContent}
             title="Send message"
             aria-label="Send"
           >
