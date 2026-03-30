@@ -148,7 +148,7 @@ public/
 
 | Area | Limitation | Potential improvement |
 |------|-----------|----------------------|
-| **Browser P2P** | Hyperswarm requires the Holepunch DHT relay for browser peers (no raw UDP in browsers). Data is still E2E encrypted; relay nodes only assist with discovery. | Run under [Pear Runtime](https://pear.how) for fully decentralised UDP-based DHT. |
+| **Browser P2P** | Hyperswarm requires the Holepunch DHT relay for browser peers (no raw UDP in browsers). Data is still E2E encrypted; relay nodes only assist with discovery.
 | **Multi-writer convergence** | Messages are merged by timestamp — concurrent writes with identical timestamps may appear in non-deterministic order. | Integrate [Autobase v6](https://github.com/holepunchto/autobase) for true causal-order convergence. |
 | **Group video (large rooms)** | WebRTC mesh means N×(N-1)/2 connections. Practical limit ≈ 4–6 peers. | Integrate a Selective Forwarding Unit (SFU) such as [LiveKit](https://livekit.io). |
 | **ICE / STUN only** | Only public STUN servers are configured. Connections behind symmetric NATs may fail. | Add a TURN server (e.g. self-hosted `coturn`). |
