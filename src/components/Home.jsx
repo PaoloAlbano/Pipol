@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { generateRoomCode } from '../p2p/storage.js'
 import '../styles/home.css'
 
@@ -12,6 +12,24 @@ export default function Home({ identity, onJoin, onUsernameChange, onOpenSetting
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(identity.username)
   const [nameError, setNameError] = useState('')
+  const [installPrompt, setInstallPrompt] = useState(null)
+
+  useEffect(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches) return
+    function onBeforeInstallPrompt(e) {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+  }, [])
+
+  async function handleInstall() {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') setInstallPrompt(null)
+  }
 
   function handleNameSave() {
     const trimmed = nameInput.trim()
@@ -162,6 +180,12 @@ export default function Home({ identity, onJoin, onUsernameChange, onOpenSetting
         <p className="home-footer">
           All data stays on your device. Connections are end-to-end encrypted.
         </p>
+
+        {installPrompt && (
+          <button className="home-install-btn" onClick={handleInstall}>
+            ⬇ Install app
+          </button>
+        )}
 
         <div className="home-github">
           <a
