@@ -15,6 +15,7 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Room from '../../src/components/Room.jsx'
 import { createRoomSwarm } from '../../src/p2p/swarm.js'
+import * as media from '../../src/webrtc/media.js'
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -375,5 +376,114 @@ describe('Room — swarm events', () => {
     createRoomSwarm.mockRejectedValueOnce(new Error('relay down'))
     render(<Room {...defaultProps} />)
     await waitFor(() => expect(screen.getByText(/cannot reach relay server/i)).toBeInTheDocument())
+  })
+})
+
+// ── In-call button visibility & actions ──────────────────────────────────────
+
+describe('Room — in-call button visibility', () => {
+  it('hides the screen share button when getDisplayMedia is not supported', async () => {
+    await setupWithCall()
+    expect(screen.queryByTitle(/share screen/i)).toBeNull()
+  })
+
+  it('shows the screen share button when getDisplayMedia is supported', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getDisplayMedia: vi.fn(), enumerateDevices: vi.fn().mockResolvedValue([]) },
+      configurable: true,
+    })
+    await setupWithCall()
+    expect(screen.getByTitle(/share screen/i)).toBeInTheDocument()
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
+  })
+
+  it('hides the flip button when only one camera is available', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        enumerateDevices: vi.fn().mockResolvedValue([{ kind: 'videoinput' }]),
+      },
+      configurable: true,
+    })
+    await setupWithCall()
+    await waitFor(() => expect(screen.queryByTitle(/switch camera/i)).toBeNull())
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
+  })
+
+  it('shows the flip button when multiple cameras are available', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        enumerateDevices: vi
+          .fn()
+          .mockResolvedValue([{ kind: 'videoinput' }, { kind: 'videoinput' }]),
+      },
+      configurable: true,
+    })
+    await setupWithCall()
+    await waitFor(() => expect(screen.getByTitle(/switch camera/i)).toBeInTheDocument())
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
+  })
+})
+
+describe('Room — in-call button actions', () => {
+  it('calls setAudioMuted(true) when muting the microphone', async () => {
+    await setupWithCall()
+    await userEvent.click(screen.getByTitle(/mute microphone/i))
+    expect(media.setAudioMuted).toHaveBeenCalledWith(true)
+  })
+
+  it('calls setAudioMuted(false) when unmuting the microphone', async () => {
+    await setupWithCall()
+    await userEvent.click(screen.getByTitle(/mute microphone/i))
+    await userEvent.click(screen.getByTitle(/unmute microphone/i))
+    expect(media.setAudioMuted).toHaveBeenCalledWith(false)
+  })
+
+  it('calls setVideoMuted(true) when turning off the camera', async () => {
+    await setupWithCall()
+    await userEvent.click(screen.getByTitle(/turn off camera/i))
+    expect(media.setVideoMuted).toHaveBeenCalledWith(true)
+  })
+
+  it('calls setVideoMuted(false) when turning the camera back on', async () => {
+    await setupWithCall()
+    await userEvent.click(screen.getByTitle(/turn off camera/i))
+    await userEvent.click(screen.getByTitle(/turn on camera/i))
+    expect(media.setVideoMuted).toHaveBeenCalledWith(false)
+  })
+
+  it('calls switchCamera when the flip button is clicked', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        enumerateDevices: vi
+          .fn()
+          .mockResolvedValue([{ kind: 'videoinput' }, { kind: 'videoinput' }]),
+      },
+      configurable: true,
+    })
+    media.switchCamera.mockResolvedValue(null)
+    await setupWithCall()
+    await waitFor(() => expect(screen.getByTitle(/switch camera/i)).toBeInTheDocument())
+    await userEvent.click(screen.getByTitle(/switch camera/i))
+    expect(media.switchCamera).toHaveBeenCalled()
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
+  })
+
+  it('broadcasts SCREEN_SHARE_START and shows "Stop share" when screen sharing starts', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getDisplayMedia: vi.fn(), enumerateDevices: vi.fn().mockResolvedValue([]) },
+      configurable: true,
+    })
+    const fakeTrack = Object.assign(new EventTarget(), { kind: 'video', stop: vi.fn() })
+    const fakeStream = Object.assign(new MediaStream(), {})
+    media.startScreenShare.mockResolvedValueOnce({ stream: fakeStream, screenTrack: fakeTrack })
+    await setupWithCall()
+    await userEvent.click(screen.getByTitle(/share screen/i))
+    await waitFor(() =>
+      expect(swarmMock.sendToAll).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'SCREEN_SHARE_START' })
+      )
+    )
+    expect(screen.getByTitle(/stop screen share/i)).toBeInTheDocument()
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
   })
 })
