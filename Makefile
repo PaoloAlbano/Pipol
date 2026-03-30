@@ -33,6 +33,11 @@ test-watch:
 
 coverage:
 	pnpm run test:coverage
+	@node -e " \
+	  const s = require('./coverage/coverage-summary.json').total; \
+	  const f = n => String(n).padStart(5); \
+	  console.log('\n📊  Overall coverage:  Stmts ' + f(s.statements.pct) + '%   Branch ' + f(s.branches.pct) + '%   Funcs ' + f(s.functions.pct) + '%   Lines ' + f(s.lines.pct) + '%\n'); \
+	"
 
 lint:
 	pnpm run lint
