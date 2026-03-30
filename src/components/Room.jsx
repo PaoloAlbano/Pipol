@@ -69,6 +69,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const pipHandlersRef = useRef(null) // always-fresh toggle handlers
   const openDocPiPRef = useRef(null) // always-fresh openDocumentPiP fn
   const [pipActive, setPipActive] = useState(false)
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false)
 
   useEffect(() => {
     callActiveRef.current = callActive
@@ -588,6 +589,11 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       setLocalStream(stream)
       setCallActive(true)
 
+      navigator.mediaDevices.enumerateDevices().then((devices) => {
+        const videoInputs = devices.filter((d) => d.kind === 'videoinput')
+        setHasMultipleCameras(videoInputs.length > 1)
+      })
+
       // Notify all peers that we're starting a call
       swarmRef.current?.sendToAll({ type: 'CALL_INIT' })
 
@@ -873,8 +879,10 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
               pipActive={pipActive}
               onToggleAudio={handleToggleAudio}
               onToggleVideo={handleToggleVideo}
-              onSwitchCamera={handleSwitchCamera}
-              onToggleScreenShare={handleToggleScreenShare}
+              onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
+              onToggleScreenShare={
+                navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined
+              }
               onTogglePiP={handleTogglePiP}
               onEndCall={handleEndCall}
             />

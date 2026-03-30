@@ -194,7 +194,7 @@ describe('ChatInput — toolbar di formattazione', () => {
     expect(editor.querySelectorAll('pre')).toHaveLength(1)
   })
 
-  it('exitAfter inserisce <br> se non c\'è nulla dopo il <pre>', () => {
+  it("exitAfter inserisce <br> se non c'è nulla dopo il <pre>", () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Code block'))
