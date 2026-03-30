@@ -181,11 +181,75 @@ describe('ChatInput — toolbar di formattazione', () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Code block'))
-    // Simulate cursor inside the pre (move anchorNode into the pre)
     const pre = editor.querySelector('pre')
-    // Click again — should NOT create a nested pre
+
+    // Move the selection inside the pre so findAncestor can detect it
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(pre.querySelector('code'))
+    sel.removeAllRanges()
+    sel.addRange(range)
+
     clickToolbar(getToolbarBtn('Code block'))
     expect(editor.querySelectorAll('pre')).toHaveLength(1)
+  })
+
+  it('exitAfter inserisce <br> se non c\'è nulla dopo il <pre>', () => {
+    const { editor } = setup()
+    editor.focus()
+    clickToolbar(getToolbarBtn('Code block'))
+
+    const pre = editor.querySelector('pre')
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(pre.querySelector('code'))
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    // pre è l'ultimo figlio — exitAfter deve aggiungere un <br>
+    expect(pre.nextSibling).toBeNull()
+    clickToolbar(getToolbarBtn('Code block'))
+    expect(editor.querySelector('br')).toBeInTheDocument()
+  })
+
+  it('Code block con selezione usa il testo selezionato come contenuto', () => {
+    const { editor } = setup()
+    editor.innerHTML = 'ciao'
+    editor.focus()
+
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(editor.firstChild)
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    clickToolbar(getToolbarBtn('Code block'))
+    expect(editor.querySelector('pre code').textContent).toBe('ciao')
+  })
+
+  it('updateActiveFormats aggiunge bold al set quando queryCommandState lo riporta', () => {
+    document.queryCommandState = vi.fn((cmd) => cmd === 'bold')
+    const { editor } = setup()
+    editor.focus()
+    fireEvent.click(editor)
+    const btn = getToolbarBtn('Bold')
+    expect(btn).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('updateActiveFormats rileva il cursore dentro un <pre>', () => {
+    const { editor } = setup()
+    editor.focus()
+    clickToolbar(getToolbarBtn('Code block'))
+    const pre = editor.querySelector('pre')
+
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(pre)
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    fireEvent.click(editor)
+    expect(getToolbarBtn('Code block')).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('la toolbar non causa un invio prematuro', () => {

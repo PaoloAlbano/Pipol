@@ -150,54 +150,26 @@ export default function ChatInput({ onSend }) {
       if (!sel || sel.rangeCount === 0) return
       const range = sel.getRangeAt(0)
 
-      if (btn.tag === 'pre') {
-        // Toggle off: if already inside a <pre>, move cursor after it
-        const existingPre = findAncestor(sel.anchorNode, 'pre', editor)
-        if (existingPre) {
-          exitAfter(existingPre, sel)
-        } else {
-          const pre = document.createElement('pre')
-          const code = document.createElement('code')
-          if (range.collapsed) {
-            code.textContent = '\u200B'
-          } else {
-            code.textContent = range.toString()
-            range.deleteContents()
-          }
-          pre.appendChild(code)
-          range.insertNode(pre)
-          const newRange = document.createRange()
-          newRange.setStart(code.firstChild, code.firstChild.length)
-          newRange.collapse(true)
-          sel.removeAllRanges()
-          sel.addRange(newRange)
-        }
+      // Toggle off: if already inside a <pre>, move cursor after it
+      const existingPre = findAncestor(sel.anchorNode, 'pre', editor)
+      if (existingPre) {
+        exitAfter(existingPre, sel)
       } else {
-        // Toggle off: if already inside a standalone <code>, move cursor after it
-        const existingCode = findAncestor(sel.anchorNode, 'code', editor)
-        if (existingCode && existingCode.parentNode?.tagName?.toLowerCase() !== 'pre') {
-          exitAfter(existingCode, sel)
-        } else if (!existingCode) {
-          const el = document.createElement('code')
-          if (range.collapsed) {
-            el.textContent = '\u200B'
-            range.insertNode(el)
-            const newRange = document.createRange()
-            newRange.setStart(el.firstChild, el.firstChild.length)
-            newRange.collapse(true)
-            sel.removeAllRanges()
-            sel.addRange(newRange)
-          } else {
-            const fragment = range.extractContents()
-            el.appendChild(fragment)
-            range.insertNode(el)
-            const newRange = document.createRange()
-            newRange.selectNodeContents(el)
-            newRange.collapse(false)
-            sel.removeAllRanges()
-            sel.addRange(newRange)
-          }
+        const pre = document.createElement('pre')
+        const code = document.createElement('code')
+        if (range.collapsed) {
+          code.textContent = '\u200B'
+        } else {
+          code.textContent = range.toString()
+          range.deleteContents()
         }
+        pre.appendChild(code)
+        range.insertNode(pre)
+        const newRange = document.createRange()
+        newRange.setStart(code.firstChild, code.firstChild.length)
+        newRange.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(newRange)
       }
     }
 
