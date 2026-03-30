@@ -184,6 +184,26 @@
   line-height: 1.6;
 }
 
+.home-install-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  border-radius: var(--radius);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.home-install-btn:hover {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
 .home-github {
   display: flex;
   justify-content: center;

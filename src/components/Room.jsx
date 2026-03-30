@@ -330,7 +330,11 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   // Keep a stable ref to the latest toggle handlers so PiP event listeners
   // never call stale closures (handlers capture audioMuted/videoMuted by value).
-  pipHandlersRef.current = { audio: handleToggleAudio, video: handleToggleVideo, end: handleEndCall }
+  pipHandlersRef.current = {
+    audio: handleToggleAudio,
+    video: handleToggleVideo,
+    end: handleEndCall,
+  }
 
   function getPiPVideo() {
     const all = [...document.querySelectorAll('.video-element')]
@@ -374,15 +378,15 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
       // ── Video wrapper ────────────────────────────────────────────────────
       const wrapper = doc.createElement('div')
-      wrapper.style.cssText = 'flex:1;min-height:0;position:relative;overflow:hidden;background:#000'
+      wrapper.style.cssText =
+        'flex:1;min-height:0;position:relative;overflow:hidden;background:#000'
 
       videoEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
       wrapper.appendChild(videoEl) // move the playing element into PiP
 
       // Derive label from the sibling .video-label span in the original tile
       const labelText =
-        origParent.querySelector('.video-label')?.textContent ??
-        (videoEl.muted ? 'You' : 'Remote')
+        origParent.querySelector('.video-label')?.textContent ?? (videoEl.muted ? 'You' : 'Remote')
       const lbl = doc.createElement('span')
       lbl.style.cssText =
         'position:absolute;bottom:4px;left:6px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
