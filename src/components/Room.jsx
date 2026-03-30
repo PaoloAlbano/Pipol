@@ -589,7 +589,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       setLocalStream(stream)
       setCallActive(true)
 
-      navigator.mediaDevices.enumerateDevices().then((devices) => {
+      navigator.mediaDevices?.enumerateDevices().then((devices) => {
         const videoInputs = devices.filter((d) => d.kind === 'videoinput')
         setHasMultipleCameras(videoInputs.length > 1)
       })
