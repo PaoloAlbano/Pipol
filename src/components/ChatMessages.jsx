@@ -1,18 +1,46 @@
-import React, { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import b4a from 'b4a'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import '../styles/chat.css'
+
+// Configure marked once: GFM (~~strike~~, `code`) + single newline → <br>
+marked.use({ breaks: true, gfm: true })
+
+// Only allow safe inline/block elements — no iframes, scripts, or styles
+const PURIFY_CONFIG = {
+  ALLOWED_TAGS: [
+    'p',
+    'br',
+    'strong',
+    'b',
+    'em',
+    'i',
+    'del',
+    's',
+    'code',
+    'pre',
+    'ul',
+    'ol',
+    'li',
+    'blockquote',
+  ],
+  ALLOWED_ATTR: [],
+}
+
+function renderMarkdown(content) {
+  const raw = marked.parse(content)
+  return DOMPurify.sanitize(raw, PURIFY_CONFIG)
+}
 
 /**
  * Renders the scrollable list of chat messages.
+ * Message content is parsed as Markdown (GFM subset, sanitized).
  * Auto-scrolls to the bottom when new messages arrive.
- *
- * @param {object[]} messages  Sorted array of message objects
- * @param {object}   identity  Local user identity (to distinguish own messages)
  */
 export default function ChatMessages({ messages, identity }) {
   const bottomRef = useRef(null)
 
-  // Scroll to bottom whenever messages update
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -37,7 +65,7 @@ export default function ChatMessages({ messages, identity }) {
           >
             <div className="message-bubble">
               {!isOwn && <span className="message-sender">{displayName}</span>}
-              <span className="message-content">{msg.content}</span>
+              <MessageContent content={msg.content} />
               <span className="message-time">{formatTime(msg.timestamp)}</span>
             </div>
           </div>
@@ -46,6 +74,11 @@ export default function ChatMessages({ messages, identity }) {
       <div ref={bottomRef} />
     </div>
   )
+}
+
+function MessageContent({ content }) {
+  const html = useMemo(() => renderMarkdown(content), [content])
+  return <span className="message-content" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
 function formatTime(ts) {

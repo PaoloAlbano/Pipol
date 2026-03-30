@@ -123,3 +123,105 @@ describe('ChatInput — invii multipli', () => {
     expect(onSend).toHaveBeenNthCalledWith(2, 'secondo')
   })
 })
+
+describe('ChatInput — toolbar di formattazione', () => {
+  function getToolbarBtn(title) {
+    return screen.getByTitle(title)
+  }
+
+  it('mostra i 5 pulsanti della toolbar', () => {
+    setup()
+    expect(getToolbarBtn('Bold')).toBeInTheDocument()
+    expect(getToolbarBtn('Italic')).toBeInTheDocument()
+    expect(getToolbarBtn('Strikethrough')).toBeInTheDocument()
+    expect(getToolbarBtn('Inline code')).toBeInTheDocument()
+    expect(getToolbarBtn('Code block')).toBeInTheDocument()
+  })
+
+  it('Bold avvolge il testo selezionato con **', async () => {
+    const user = userEvent.setup()
+    const { textarea } = setup()
+    await user.type(textarea, 'hello')
+
+    // Simulate selection of "hello" (positions 0-5)
+    textarea.setSelectionRange(0, 5)
+    await user.pointer({ target: getToolbarBtn('Bold'), keys: '[MouseLeft>]' })
+
+    expect(textarea.value).toBe('**hello**')
+  })
+
+  it('Italic avvolge il testo selezionato con _', async () => {
+    const user = userEvent.setup()
+    const { textarea } = setup()
+    await user.type(textarea, 'ciao')
+
+    textarea.setSelectionRange(0, 4)
+    await user.pointer({ target: getToolbarBtn('Italic'), keys: '[MouseLeft>]' })
+
+    expect(textarea.value).toBe('_ciao_')
+  })
+
+  it('Strikethrough avvolge il testo selezionato con ~~', async () => {
+    const user = userEvent.setup()
+    const { textarea } = setup()
+    await user.type(textarea, 'testo')
+
+    textarea.setSelectionRange(0, 5)
+    await user.pointer({ target: getToolbarBtn('Strikethrough'), keys: '[MouseLeft>]' })
+
+    expect(textarea.value).toBe('~~testo~~')
+  })
+
+  it('Inline code avvolge il testo selezionato con backtick', async () => {
+    const user = userEvent.setup()
+    const { textarea } = setup()
+    await user.type(textarea, 'var')
+
+    textarea.setSelectionRange(0, 3)
+    await user.pointer({ target: getToolbarBtn('Inline code'), keys: '[MouseLeft>]' })
+
+    expect(textarea.value).toBe('`var`')
+  })
+
+  it('Code block avvolge il testo selezionato con triple backtick', async () => {
+    const user = userEvent.setup()
+    const { textarea } = setup()
+    await user.type(textarea, 'fn()')
+
+    textarea.setSelectionRange(0, 4)
+    await user.pointer({ target: getToolbarBtn('Code block'), keys: '[MouseLeft>]' })
+
+    expect(textarea.value).toBe('```\nfn()\n```')
+  })
+
+  it('Bold senza selezione inserisce il placeholder **text**', async () => {
+    const user = userEvent.setup()
+    const { textarea } = setup()
+    await user.click(textarea)
+
+    await user.pointer({ target: getToolbarBtn('Bold'), keys: '[MouseLeft>]' })
+
+    expect(textarea.value).toBe('**text**')
+  })
+
+  it('Code block senza selezione inserisce il placeholder ```\\ncode\\n```', async () => {
+    const user = userEvent.setup()
+    const { textarea } = setup()
+    await user.click(textarea)
+
+    await user.pointer({ target: getToolbarBtn('Code block'), keys: '[MouseLeft>]' })
+
+    expect(textarea.value).toBe('```\ncode\n```')
+  })
+
+  it('la toolbar non causa un invio prematuro', async () => {
+    const user = userEvent.setup()
+    const { onSend, textarea } = setup()
+    await user.type(textarea, 'testo')
+    textarea.setSelectionRange(0, 5)
+
+    await user.pointer({ target: getToolbarBtn('Bold'), keys: '[MouseLeft>]' })
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+})

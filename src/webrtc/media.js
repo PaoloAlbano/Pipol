@@ -175,7 +175,10 @@ export function setVideoMuted(muted) {
 export async function startScreenShare() {
   if (!_localStream) return null
 
-  const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+  const screenStream = await navigator.mediaDevices.getDisplayMedia({
+    video: { width: 1920, height: 1080, frameRate: 30 },
+    audio: false,
+  })
   const [screenTrack] = screenStream.getVideoTracks()
   if (!screenTrack) return null
 

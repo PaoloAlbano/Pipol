@@ -64,6 +64,53 @@ describe('ChatMessages — rendering messaggi', () => {
   })
 })
 
+describe('ChatMessages — rendering markdown', () => {
+  it('rende il testo grassetto (**bold**)', () => {
+    const msg = makeMsg({ content: '**bold**' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(container.querySelector('strong')).toBeInTheDocument()
+  })
+
+  it('rende il testo corsivo (_italic_)', () => {
+    const msg = makeMsg({ content: '_italic_' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(container.querySelector('em')).toBeInTheDocument()
+  })
+
+  it('rende il testo barrato (~~strike~~)', () => {
+    const msg = makeMsg({ content: '~~strike~~' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(container.querySelector('del')).toBeInTheDocument()
+  })
+
+  it('rende inline code (`code`)', () => {
+    const msg = makeMsg({ content: '`code`' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(container.querySelector('code')).toBeInTheDocument()
+  })
+
+  it('rende un code block (```)', () => {
+    const msg = makeMsg({ content: '```\nconst x = 1\n```' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(container.querySelector('pre')).toBeInTheDocument()
+    expect(container.querySelector('pre code')).toBeInTheDocument()
+  })
+
+  it('sanifica tag pericolosi (<script>)', () => {
+    const msg = makeMsg({ content: '<script>alert("xss")</script>testo' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(container.querySelector('script')).toBeNull()
+    expect(container.textContent).toContain('testo')
+  })
+
+  it('sanifica attributi pericolosi (onclick)', () => {
+    const msg = makeMsg({ content: '<p onclick="evil()">ciao</p>' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    const p = container.querySelector('p')
+    if (p) expect(p).not.toHaveAttribute('onclick')
+  })
+})
+
 describe('ChatMessages — distingue messaggi propri e altrui', () => {
   it('applica la classe --own ai propri messaggi', () => {
     const ownMsg = makeMsg({ publicKey: MY_KEY_HEX, username: 'swift-fox' })
