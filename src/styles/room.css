@@ -390,7 +390,8 @@
   min-width: 40px;
   overflow: hidden;
 }
-.room-sidebar--collapsed .room-sidebar-header > :not(.btn-collapse),
+.room-sidebar--collapsed .room-sidebar-header-top > :not(.btn-collapse),
+.room-sidebar--collapsed .room-sidebar-header > :not(.room-sidebar-header-top),
 .room-sidebar--collapsed .room-status,
 .room-sidebar--collapsed .room-banner,
 .room-sidebar--collapsed .peer-list,
@@ -437,6 +438,9 @@
 .room-sidebar--collapsed .room-sidebar-header {
   justify-content: center;
   padding: 8px 6px;
+}
+.room-sidebar--collapsed .room-sidebar-header-top {
+  justify-content: center;
 }
 
 /* Collapsed chat: centered expand button */
