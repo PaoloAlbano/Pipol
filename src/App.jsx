@@ -1,6 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react'
 import Home from './components/Home.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
+import LoginScreen from './components/LoginScreen.jsx'
 
 // Lazy-load Room and the entire P2P stack — only downloaded when the user enters a room
 const Room = lazy(() => import('./components/Room.jsx'))
@@ -9,8 +10,9 @@ import {
   setUsername,
   getShowStats,
   setShowStats,
-  isFirstVisit,
   markOnboarded,
+  getMasterSeed,
+  lockSession,
 } from './p2p/storage.js'
 import { initEncryption } from './p2p/db.js'
 
@@ -19,8 +21,8 @@ import { initEncryption } from './p2p/db.js'
  * Manages the top-level view: "home" (lobby) or "room" (active chat).
  */
 export default function App() {
-  const [identity, setIdentity] = useState(() => getIdentity())
-  const [settingsOpen, setSettingsOpen] = useState(isFirstVisit)
+  const [identity, setIdentity] = useState(() => getIdentity()) // null until login
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [showStats, setShowStatsState] = useState(getShowStats)
   const [roomCode, setRoomCode] = useState(() => {
     if (window.location.pathname !== '/') {
@@ -36,18 +38,20 @@ export default function App() {
     return params.get('room') ? 'room' : 'home'
   })
 
+  // Hide the static HTML splash as soon as React mounts
   useEffect(() => {
-    initEncryption(identity.secretKey).catch((err) =>
-      console.warn('[db] encryption init failed', err)
-    )
-
-    // Hide the static HTML splash once React has mounted
     const splash = document.getElementById('splash')
     if (splash) {
       splash.classList.add('hidden')
       splash.addEventListener('transitionend', () => splash.remove(), { once: true })
     }
-  }, [identity.secretKey])
+  }, [])
+
+  // Init IndexedDB encryption once identity is available
+  useEffect(() => {
+    if (!identity) return
+    initEncryption(getMasterSeed()).catch((err) => console.warn('[db] encryption init failed', err))
+  }, [identity])
 
   function handleJoinRoom(code) {
     const normalised = code.trim().toLowerCase()
@@ -63,43 +67,22 @@ export default function App() {
     window.history.pushState({}, '', '/')
   }
 
+  function handleLogin() {
+    setIdentity(getIdentity())
+  }
+
+  function handleLock() {
+    lockSession()
+    setIdentity(null)
+    setSettingsOpen(false)
+  }
+
   function handleUsernameChange(name) {
     setUsername(name)
     setIdentity((prev) => ({ ...prev, username: name }))
   }
 
-  if (!identity)
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          background: '#0f0f0f',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 24,
-        }}
-      >
-        <img
-          src="/icons/icon.svg"
-          alt="Pipol.dev"
-          style={{ width: 72, height: 72, borderRadius: 18 }}
-        />
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            border: '3px solid #333',
-            borderTopColor: '#7c6bf0',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-          }}
-        />
-        <span style={{ fontFamily: 'system-ui', fontSize: 13, color: '#888' }}>Loading…</span>
-      </div>
-    )
+  if (!identity) return <LoginScreen onLogin={handleLogin} />
 
   return (
     <>
@@ -136,6 +119,7 @@ export default function App() {
             markOnboarded()
             setSettingsOpen(false)
           }}
+          onLock={handleLock}
         />
       )}
     </>

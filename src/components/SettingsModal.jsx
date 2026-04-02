@@ -15,6 +15,7 @@ export default function SettingsModal({
   showStats,
   onShowStatsChange,
   onClose,
+  onLock,
 }) {
   const [name, setName] = useState(identity.username)
   const [nameError, setNameError] = useState('')
@@ -144,6 +145,17 @@ export default function SettingsModal({
               <span className="settings-toggle-thumb" />
             </button>
           </label>
+        </div>
+
+        <div className="settings-section">
+          <label className="settings-label">Session</label>
+          <button className="btn btn-lock" onClick={onLock}>
+            Lock session
+          </button>
+          <p className="settings-hint">
+            Removes the decryption key from memory. You&apos;ll need your passphrase to unlock
+            again.
+          </p>
         </div>
 
         <div className="settings-footer">

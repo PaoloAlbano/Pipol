@@ -195,6 +195,23 @@
 }
 
 /* ── Footer ──────────────────────────────────────────────────── */
+.btn-lock {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-lock:hover {
+  background: rgba(224, 82, 82, 0.08);
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
 .settings-footer {
   display: flex;
   gap: 10px;

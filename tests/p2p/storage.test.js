@@ -13,6 +13,8 @@ describe('storage — identità', () => {
     localStorage.clear()
     vi.resetModules()
     storage = await import('../../src/p2p/storage.js')
+    // Deriva l'identità con handle+passphrase (come fa la UI)
+    await storage.deriveIdentityA('test-user', 'password-sicura-123')
   })
 
   it('crea una nuova identità alla prima chiamata', () => {
@@ -31,30 +33,30 @@ describe('storage — identità', () => {
   })
 
   it("persiste l'identità in localStorage", () => {
-    storage.getIdentity()
     const raw = localStorage.getItem('p2p-chat:identity')
     expect(raw).not.toBeNull()
     const parsed = JSON.parse(raw)
     expect(parsed).toHaveProperty('publicKey')
-    expect(parsed).toHaveProperty('secretKey')
     expect(parsed).toHaveProperty('username')
+    // secretKey non viene più salvata in chiaro — è derivata dalla passphrase
+    expect(parsed).not.toHaveProperty('secretKey')
   })
 
   it("ricarica l'identità da localStorage se già presente", async () => {
-    // Create identity in the first module instance
     const original = storage.getIdentity()
     const originalUsername = original.username
 
     // Reset the singleton but keep localStorage → simulates a page reload
     vi.resetModules()
     const fresh = await import('../../src/p2p/storage.js')
+    // Re-deriva con stessa handle+passphrase → deve ritrovare l'username salvato
+    await fresh.deriveIdentityA('test-user', 'password-sicura-123')
     const reloaded = fresh.getIdentity()
 
     expect(reloaded.username).toBe(originalUsername)
   })
 
   it('aggiorna username in memoria e localStorage', () => {
-    storage.getIdentity()
     storage.setUsername('nuovo-nome')
 
     const updated = storage.getIdentity()

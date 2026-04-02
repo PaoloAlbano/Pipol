@@ -18,15 +18,23 @@ let _encKey = null // CryptoKey (AES-GCM 256-bit), set via initEncryption()
 /**
  * Derive and store the AES-GCM key for this session.
  * Must be called once at startup before any read/write.
- * @param {Uint8Array} secretKey  The user's 64-byte ed25519 secret key
+ * @param {Uint8Array} masterSeed  The 32-byte masterSeed from deriveIdentityA()
  */
-export async function initEncryption(secretKey) {
-  // SHA-256 of the secretKey → 32 bytes → AES-256-GCM key
-  const hash = await crypto.subtle.digest('SHA-256', secretKey)
-  _encKey = await crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, [
-    'encrypt',
-    'decrypt',
-  ])
+export async function initEncryption(masterSeed) {
+  // HKDF(masterSeed, info="storage-enc-v1") → AES-256-GCM key
+  const hkdfKey = await crypto.subtle.importKey('raw', masterSeed, 'HKDF', false, ['deriveKey'])
+  _encKey = await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(0),
+      info: new TextEncoder().encode('storage-enc-v1'),
+    },
+    hkdfKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  )
 }
 
 async function _encrypt(plaintext) {
