@@ -136,6 +136,41 @@ describe('storage — getIdentity', () => {
   })
 })
 
+describe('storage — getStoredIdentityMeta', () => {
+  let storage
+
+  beforeEach(async () => {
+    localStorage.clear()
+    vi.resetModules()
+    storage = await import('../../src/p2p/storage.js')
+  })
+
+  it('returns null when localStorage is empty', () => {
+    expect(storage.getStoredIdentityMeta()).toBeNull()
+  })
+
+  it('returns null for legacy format (missing method field)', () => {
+    // Simulate old format that stored secretKey in clear without a method field
+    localStorage.setItem('p2p-chat:identity', JSON.stringify({
+      publicKey: 'deadbeef',
+      secretKey: 'cafebabe',
+      username: 'old-user',
+    }))
+    expect(storage.getStoredIdentityMeta()).toBeNull()
+  })
+
+  it('returns the metadata object for valid format', async () => {
+    await storage.deriveIdentityA('test-user', 'password-sicura-123')
+    const meta = storage.getStoredIdentityMeta()
+    expect(meta).not.toBeNull()
+    expect(meta).toHaveProperty('handle', 'test-user')
+    expect(meta).toHaveProperty('publicKey')
+    expect(meta).toHaveProperty('username')
+    expect(meta).toHaveProperty('method', 'A')
+    expect(meta).not.toHaveProperty('secretKey')
+  })
+})
+
 describe('storage — setUsername', () => {
   let storage
 
