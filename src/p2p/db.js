@@ -58,8 +58,8 @@ async function _decrypt(record) {
     const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _encKey, ciphertext)
     return new TextDecoder().decode(plaintext)
   } catch {
-    // Fallback: return raw content (e.g. legacy plaintext messages)
-    return record.content
+    // Chiave sbagliata (account diverso) → scarta il messaggio
+    return null
   }
 }
 
@@ -118,8 +118,9 @@ export async function loadMessages(roomCode) {
           content: await _decrypt({ content: msg.content, _enc }),
         }))
       )
+      // Filtra i messaggi che non si riescono a decifrare (appartenenti a un altro account)
       msgs.sort((a, b) => a.timestamp - b.timestamp)
-      resolve(msgs)
+      resolve(msgs.filter((m) => m.content !== null))
     }
     req.onerror = () => reject(req.error)
   })
