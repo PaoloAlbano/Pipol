@@ -301,31 +301,6 @@ describe('storage — stats overlay', () => {
   })
 })
 
-describe('storage — onboarding', () => {
-  let storage
-
-  beforeEach(async () => {
-    localStorage.clear()
-    vi.resetModules()
-    storage = await import('../../src/p2p/storage.js')
-  })
-
-  it('indicates first visit when flag is absent', () => {
-    expect(storage.isFirstVisit()).toBe(true)
-  })
-
-  it('is no longer first visit after markOnboarded()', () => {
-    storage.markOnboarded()
-    expect(storage.isFirstVisit()).toBe(false)
-  })
-
-  it('markOnboarded() is idempotent', () => {
-    storage.markOnboarded()
-    storage.markOnboarded()
-    expect(storage.isFirstVisit()).toBe(false)
-  })
-})
-
 describe('storage — restoreFromMasterSeed', () => {
   let storage
 

@@ -88,6 +88,7 @@ export default function LoginScreen({ onLogin }) {
 
   function handleReset() {
     localStorage.removeItem('p2p-chat:identity')
+    localStorage.removeItem('p2p-chat:biometric')
     window.location.reload()
   }
 

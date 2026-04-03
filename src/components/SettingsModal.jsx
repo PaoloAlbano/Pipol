@@ -4,7 +4,6 @@ import {
   setVideoQuality,
   getRelayUrl,
   setRelayUrl,
-  getMasterSeed,
   getPassphrase,
   getStoredIdentityMeta,
 } from '../p2p/storage.js'

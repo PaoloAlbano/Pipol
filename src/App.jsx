@@ -10,7 +10,6 @@ import {
   setUsername,
   getShowStats,
   setShowStats,
-  markOnboarded,
   getMasterSeed,
   lockSession,
 } from './p2p/storage.js'
@@ -115,10 +114,7 @@ export default function App() {
             setShowStats(v)
             setShowStatsState(v)
           }}
-          onClose={() => {
-            markOnboarded()
-            setSettingsOpen(false)
-          }}
+          onClose={() => setSettingsOpen(false)}
           onLock={handleLock}
         />
       )}

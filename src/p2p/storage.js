@@ -47,14 +47,6 @@ export function setRelayUrl(url) {
   }
 }
 
-const ONBOARDED_KEY = 'p2p-chat:onboarded'
-export function isFirstVisit() {
-  return !localStorage.getItem(ONBOARDED_KEY)
-}
-export function markOnboarded() {
-  localStorage.setItem(ONBOARDED_KEY, '1')
-}
-
 const ADJECTIVES = [
   'swift',
   'dark',
