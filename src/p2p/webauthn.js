@@ -119,8 +119,16 @@ export async function setupBiometricUnlock(masterSeed, meta) {
         },
       },
     })
-  } catch {
-    throw new Error('cancelled')
+  } catch (err) {
+    // NotAllowedError = user cancelled or timed out.
+    // Some authenticators (e.g. Windows Hello) may also throw on unsupported
+    // extension combos — log the real error to help debugging.
+    console.warn('[webauthn] create() failed:', err?.name, err?.message)
+    const isUserCancel =
+      err?.name === 'NotAllowedError' ||
+      err?.name === 'AbortError' ||
+      err instanceof DOMException
+    throw new Error(isUserCancel ? 'cancelled' : 'create-failed')
   }
 
   const ext = credential.getClientExtensionResults()
@@ -165,7 +173,8 @@ export async function setupBiometricUnlock(masterSeed, meta) {
           },
         },
       })
-    } catch {
+    } catch (err) {
+      console.warn('[webauthn] largeBlob write get() failed:', err?.name, err?.message)
       throw new Error('cancelled')
     }
 

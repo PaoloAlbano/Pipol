@@ -205,13 +205,16 @@ export default function SettingsModal({
                         await setupBiometricUnlock(getMasterSeed(), meta)
                         setBiometricEnabled(true)
                       } catch (err) {
-                        if (err.message !== 'cancelled') {
-                          setBiometricError(
-                            err.message === 'authenticator-no-prf-no-largeblob'
-                              ? 'Your authenticator supports neither PRF nor largeBlob. Try a FIDO2 security key (e.g. YubiKey 5) or use your passphrase to unlock.'
-                              : 'Setup failed. Try again.'
-                          )
-                        }
+                        console.warn('[biometric setup]', err?.message)
+                        const msg =
+                          err.message === 'authenticator-no-prf-no-largeblob'
+                            ? 'Your authenticator does not support the required extensions (PRF or largeBlob). Try a FIDO2 security key (e.g. YubiKey 5).'
+                            : err.message === 'create-failed'
+                              ? 'Passkey creation failed. Your device or browser may not fully support this feature.'
+                              : err.message === 'cancelled'
+                                ? null // real user cancel — no message
+                                : 'Setup failed. Try again.'
+                        if (msg) setBiometricError(msg)
                       } finally {
                         setBiometricLoading(false)
                       }
