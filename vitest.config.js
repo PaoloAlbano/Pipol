@@ -15,4 +15,7 @@ export default defineConfig({
       reporter: ['text', 'html', 'lcov', 'json-summary'],
     },
   },
+  define: {
+    __ALLOW_IDENTITY_RESET__: false,
+  },
 })

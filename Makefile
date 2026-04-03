@@ -7,10 +7,10 @@ install:
 	pnpm install
 
 dev:
-	pnpm run dev
+	ALLOW_IDENTITY_RESET=true pnpm run dev
 
 dev-tunnel:
-	VITE_NO_SSL=1 pnpm run dev
+	ALLOW_IDENTITY_RESET=true VITE_NO_SSL=1 pnpm run dev
 
 build:
 	pnpm run build

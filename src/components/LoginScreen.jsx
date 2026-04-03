@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+
+const ALLOW_IDENTITY_RESET = __ALLOW_IDENTITY_RESET__
 import {
   getStoredIdentityMeta,
   deriveIdentityA,
@@ -327,6 +329,12 @@ export default function LoginScreen({ onLogin }) {
             <button className="login-guest-btn" onClick={() => setMode('guest')}>
               Continue as guest
             </button>
+
+            {ALLOW_IDENTITY_RESET && isUnlock && (
+              <button className="login-reset-btn" onClick={handleReset}>
+                Create new identity
+              </button>
+            )}
           </>
         )}
       </div>

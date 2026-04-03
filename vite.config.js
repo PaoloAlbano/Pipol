@@ -69,6 +69,7 @@ export default defineConfig({
     global: 'globalThis',
     __filename: JSON.stringify(''),
     __dirname: JSON.stringify(''),
+    __ALLOW_IDENTITY_RESET__: process.env.ALLOW_IDENTITY_RESET === 'true',
   },
 
   resolve: {

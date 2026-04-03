@@ -316,6 +316,29 @@
   color: #bbb;
 }
 
+/* Reset / create new identity button (only rendered when VITE_ALLOW_IDENTITY_RESET=true) */
+.login-reset-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #5a1a1a;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #c0392b;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+  margin-top: 6px;
+}
+
+.login-reset-btn:hover {
+  border-color: #c0392b;
+  color: #e74c3c;
+  background: rgba(192, 57, 43, 0.08);
+}
+
 /* Notes and links */
 .login-note {
   font-size: 11px;
