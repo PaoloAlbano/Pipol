@@ -75,15 +75,32 @@ describe('webauthn — isBiometricUnlockAvailable', () => {
     expect(await isBiometricUnlockAvailable()).toBe(false)
   })
 
-  it('returns true when platform authenticator is available', async () => {
+  it('returns true when getClientCapabilities reports prf=true', async () => {
     vi.stubGlobal('PublicKeyCredential', {
-      isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(true),
+      getClientCapabilities: vi.fn().mockResolvedValue({ prf: true }),
     })
     const { isBiometricUnlockAvailable } = await getModule()
     expect(await isBiometricUnlockAvailable()).toBe(true)
   })
 
-  it('returns false when platform authenticator is not available', async () => {
+  it('returns false when getClientCapabilities reports prf=false (e.g. Android + Google PM)', async () => {
+    vi.stubGlobal('PublicKeyCredential', {
+      getClientCapabilities: vi.fn().mockResolvedValue({ prf: false }),
+    })
+    const { isBiometricUnlockAvailable } = await getModule()
+    expect(await isBiometricUnlockAvailable()).toBe(false)
+  })
+
+  it('falls back to isUserVerifyingPlatformAuthenticatorAvailable when getClientCapabilities is absent', async () => {
+    vi.stubGlobal('PublicKeyCredential', {
+      isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(true),
+      // no getClientCapabilities
+    })
+    const { isBiometricUnlockAvailable } = await getModule()
+    expect(await isBiometricUnlockAvailable()).toBe(true)
+  })
+
+  it('returns false via fallback when platform authenticator is not available', async () => {
     vi.stubGlobal('PublicKeyCredential', {
       isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(false),
     })
@@ -135,7 +152,7 @@ describe('webauthn — setupBiometricUnlock', () => {
     expect(localStorage.getItem('p2p-chat:biometric')).toBeNull()
   })
 
-  it('throws "prf-not-supported" when the authenticator does not return a PRF result', async () => {
+  it('throws "authenticator-no-prf" when the authenticator does not return a PRF result', async () => {
     vi.stubGlobal('navigator', {
       credentials: {
         create: vi.fn().mockResolvedValue({
@@ -145,7 +162,7 @@ describe('webauthn — setupBiometricUnlock', () => {
       },
     })
     const { setupBiometricUnlock } = await getModule()
-    await expect(setupBiometricUnlock(masterSeed, meta)).rejects.toThrow('prf-not-supported')
+    await expect(setupBiometricUnlock(masterSeed, meta)).rejects.toThrow('authenticator-no-prf')
   })
 })
 

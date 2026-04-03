@@ -206,8 +206,8 @@ export default function SettingsModal({
                     } catch (err) {
                       if (err.message !== 'cancelled') {
                         setBiometricError(
-                          err.message === 'prf-not-supported'
-                            ? 'Your browser supports passkeys but not the PRF extension. Try Chrome 132+.'
+                          err.message === 'authenticator-no-prf'
+                            ? 'Your authenticator does not support the PRF extension required for biometric unlock. On Android, Google Password Manager does not support PRF — try saving the passkey as a device-bound key, or use a FIDO2 security key (e.g. YubiKey 5). On Windows, use a security key instead of Windows Hello.'
                             : 'Setup failed. Try again.'
                         )
                       }

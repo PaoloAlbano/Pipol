@@ -11,6 +11,13 @@
  * the ciphertext is useless.
  *
  * Browser support (2026): Chrome 132+, Edge 132+, Safari 18.2+ partial, Firefox ✗
+ * PRF support via platform authenticator:
+ *   - macOS Touch ID ✓  (Chrome/Edge/Safari)
+ *   - iOS/iPadOS Face ID / Touch ID ✓  (Safari 18.2+, Chrome 128+)
+ *   - Android fingerprint ✗  (Google Password Manager does not support PRF;
+ *       device-bound passkeys via Chrome 128+ may work on some devices)
+ *   - Windows Hello ✗  (platform authenticator lacks PRF)
+ *   - FIDO2 security keys (YubiKey 5+, Titan) ✓
  */
 
 const STORAGE_KEY = 'p2p-chat:biometric'
@@ -42,13 +49,23 @@ function b64Decode(str) {
 }
 
 /**
- * Returns true if the browser has a platform authenticator available.
- * Does NOT guarantee PRF support — that is only detectable by attempting
- * a registration and checking the extension result.
+ * Returns true if the browser + platform authenticator likely support the PRF
+ * extension needed for biometric unlock.
+ *
+ * Uses PublicKeyCredential.getClientCapabilities() (Chrome 128+) when available.
+ * Falls back to isUserVerifyingPlatformAuthenticatorAvailable() — which only
+ * confirms a platform authenticator exists, not PRF support.
  */
 export async function isBiometricUnlockAvailable() {
   if (!window.PublicKeyCredential) return false
   try {
+    // Chrome 128+ / Edge 128+ expose getClientCapabilities()
+    if (typeof PublicKeyCredential.getClientCapabilities === 'function') {
+      const caps = await PublicKeyCredential.getClientCapabilities()
+      // 'prf' capability means the browser+platform combo supports the extension
+      return caps['prf'] === true
+    }
+    // Fallback: at least confirm a platform authenticator is present
     return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
   } catch {
     return false
@@ -110,7 +127,7 @@ export async function setupBiometricUnlock(masterSeed, meta) {
   }
 
   const prfResult = credential.getClientExtensionResults()?.prf?.results?.first
-  if (!prfResult) throw new Error('prf-not-supported')
+  if (!prfResult) throw new Error('authenticator-no-prf')
 
   // Encrypt masterSeed with PRF output (32 bytes → AES-256-GCM key)
   const encKey = await crypto.subtle.importKey('raw', prfResult, { name: 'AES-GCM' }, false, [

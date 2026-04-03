@@ -83,7 +83,7 @@ export default function LoginScreen({ onLogin }) {
       if (err.message !== 'cancelled') {
         setError(
           err.message === 'prf-not-supported'
-            ? 'Your browser does not support the PRF extension. Use your passphrase instead.'
+            ? 'Biometric unlock failed — the stored passkey no longer has PRF access. Re-enable biometric unlock in Settings.'
             : 'Biometric unlock failed. Use your passphrase instead.'
         )
       }
