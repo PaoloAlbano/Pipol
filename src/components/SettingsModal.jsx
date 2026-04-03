@@ -1,6 +1,19 @@
-import React, { useState } from 'react'
-import { getVideoQuality, setVideoQuality, getRelayUrl, setRelayUrl } from '../p2p/storage.js'
+import React, { useState, useEffect } from 'react'
+import {
+  getVideoQuality,
+  setVideoQuality,
+  getRelayUrl,
+  setRelayUrl,
+  getMasterSeed,
+  getStoredIdentityMeta,
+} from '../p2p/storage.js'
 import { applyVideoQuality } from '../webrtc/media.js'
+import {
+  isBiometricUnlockAvailable,
+  hasBiometricUnlock,
+  setupBiometricUnlock,
+  removeBiometricUnlock,
+} from '../p2p/webauthn.js'
 import '../styles/settings.css'
 
 const QUALITIES = [
@@ -23,6 +36,15 @@ export default function SettingsModal({
   const [relayUrl, setRelayUrlState] = useState(getRelayUrl)
   const [relayError, setRelayError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [biometricAvailable, setBiometricAvailable] = useState(false)
+  const [biometricEnabled, setBiometricEnabled] = useState(hasBiometricUnlock)
+  const [biometricError, setBiometricError] = useState('')
+  const [biometricLoading, setBiometricLoading] = useState(false)
+
+  useEffect(() => {
+    if (identity.isGuest) return
+    isBiometricUnlockAvailable().then(setBiometricAvailable)
+  }, [identity.isGuest])
 
   function handleSave() {
     const trimmed = name.trim()
@@ -146,6 +168,61 @@ export default function SettingsModal({
             </button>
           </label>
         </div>
+
+        {biometricAvailable && !identity.isGuest && (
+          <div className="settings-section">
+            <label className="settings-label">Biometric unlock</label>
+            {biometricEnabled ? (
+              <>
+                <p className="settings-hint">
+                  Biometric unlock is active on this device. You can sign in with Touch ID / Face ID
+                  without typing your passphrase.
+                </p>
+                <button
+                  className="btn btn-lock"
+                  onClick={() => {
+                    removeBiometricUnlock()
+                    setBiometricEnabled(false)
+                  }}
+                >
+                  Disable
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="settings-hint">
+                  Use Touch ID, Face ID or Windows Hello to unlock without your passphrase.
+                </p>
+                <button
+                  className="btn btn-secondary"
+                  disabled={biometricLoading}
+                  onClick={async () => {
+                    setBiometricLoading(true)
+                    setBiometricError('')
+                    try {
+                      const meta = getStoredIdentityMeta()
+                      await setupBiometricUnlock(getMasterSeed(), meta)
+                      setBiometricEnabled(true)
+                    } catch (err) {
+                      if (err.message !== 'cancelled') {
+                        setBiometricError(
+                          err.message === 'prf-not-supported'
+                            ? 'Your browser supports passkeys but not the PRF extension. Try Chrome 132+.'
+                            : 'Setup failed. Try again.'
+                        )
+                      }
+                    } finally {
+                      setBiometricLoading(false)
+                    }
+                  }}
+                >
+                  {biometricLoading ? 'Setting up…' : 'Enable biometric unlock'}
+                </button>
+                {biometricError && <p className="settings-error">{biometricError}</p>}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="settings-section">
           <label className="settings-label">Session</label>

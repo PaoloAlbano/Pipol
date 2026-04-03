@@ -127,6 +127,32 @@ export function getMasterSeed() {
 }
 
 /**
+ * Restores the in-memory identity from a masterSeed obtained externally
+ * (e.g. decrypted by WebAuthn PRF). Verifies the derived public key against
+ * the stored metadata before accepting the seed.
+ *
+ * @param {Uint8Array} masterSeed
+ * @throws {Error} 'no-stored-identity' | 'seed-mismatch'
+ */
+export function restoreFromMasterSeed(masterSeed) {
+  const storedMeta = getStoredIdentityMeta()
+  if (!storedMeta) throw new Error('no-stored-identity')
+
+  const keyPair = crypto.keyPair(masterSeed.slice(0, 32))
+  const pubKeyHex = b4a.toString(keyPair.publicKey, 'hex')
+
+  if (storedMeta.publicKey !== pubKeyHex) throw new Error('seed-mismatch')
+
+  _masterSeed = masterSeed
+  _store = null
+  _identity = {
+    publicKey: keyPair.publicKey,
+    secretKey: keyPair.secretKey,
+    username: storedMeta.username,
+  }
+}
+
+/**
  * Creates a temporary guest identity — random keypair, nothing saved to localStorage.
  * The identity is lost when the page is closed or the session is locked.
  * @param {string} displayName

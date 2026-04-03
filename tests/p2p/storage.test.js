@@ -326,6 +326,120 @@ describe('storage — onboarding', () => {
   })
 })
 
+describe('storage — restoreFromMasterSeed', () => {
+  let storage
+
+  beforeEach(async () => {
+    localStorage.clear()
+    vi.resetModules()
+    storage = await import('../../src/p2p/storage.js')
+  })
+
+  it('restores identity from the correct masterSeed', async () => {
+    await storage.deriveIdentityA('restore-test', 'pass-restore-123')
+    const seed = storage.getMasterSeed()
+    const original = storage.getIdentity()
+
+    storage.lockSession()
+    expect(storage.getIdentity()).toBeNull()
+
+    storage.restoreFromMasterSeed(seed)
+    const restored = storage.getIdentity()
+
+    expect(restored).not.toBeNull()
+    expect(restored.publicKey.toString()).toBe(original.publicKey.toString())
+    expect(restored.username).toBe(original.username)
+  })
+
+  it('throws "no-stored-identity" when localStorage is empty', async () => {
+    const seed = crypto.getRandomValues(new Uint8Array(32))
+    expect(() => storage.restoreFromMasterSeed(seed)).toThrow('no-stored-identity')
+  })
+
+  it('throws "seed-mismatch" when the seed does not match the stored publicKey', async () => {
+    await storage.deriveIdentityA('mismatch-test', 'pass-mismatch-123')
+    const wrongSeed = crypto.getRandomValues(new Uint8Array(32))
+    expect(() => storage.restoreFromMasterSeed(wrongSeed)).toThrow('seed-mismatch')
+  })
+})
+
+describe('storage — createGuestIdentity', () => {
+  let storage
+
+  beforeEach(async () => {
+    localStorage.clear()
+    vi.resetModules()
+    storage = await import('../../src/p2p/storage.js')
+  })
+
+  it('sets a valid in-memory identity', () => {
+    storage.createGuestIdentity('Guest User')
+    const id = storage.getIdentity()
+    expect(id).not.toBeNull()
+    expect(id.username).toBe('Guest User')
+    expect(id.isGuest).toBe(true)
+    expect(ArrayBuffer.isView(id.publicKey)).toBe(true)
+    expect(ArrayBuffer.isView(id.secretKey)).toBe(true)
+  })
+
+  it('sets a 32-byte masterSeed in memory', () => {
+    storage.createGuestIdentity('Guest')
+    const seed = storage.getMasterSeed()
+    expect(seed).toBeInstanceOf(Uint8Array)
+    expect(seed.byteLength).toBe(32)
+  })
+
+  it('does not write anything to localStorage', () => {
+    storage.createGuestIdentity('Ghost')
+    expect(localStorage.getItem('p2p-chat:identity')).toBeNull()
+  })
+
+  it('produces a different keypair on each call', () => {
+    storage.createGuestIdentity('A')
+    const pk1 = storage.getIdentity().publicKey.toString()
+
+    vi.resetModules()
+    import('../../src/p2p/storage.js').then((fresh) => {
+      fresh.createGuestIdentity('B')
+      const pk2 = fresh.getIdentity().publicKey.toString()
+      expect(pk1).not.toBe(pk2)
+    })
+  })
+
+  it('identity is cleared by lockSession', () => {
+    storage.createGuestIdentity('Temp')
+    expect(storage.getIdentity()).not.toBeNull()
+    storage.lockSession()
+    expect(storage.getIdentity()).toBeNull()
+  })
+})
+
+describe('storage — generateUsername', () => {
+  let storage
+
+  beforeEach(async () => {
+    vi.resetModules()
+    storage = await import('../../src/p2p/storage.js')
+  })
+
+  it('returns a non-empty string', () => {
+    expect(typeof storage.generateUsername()).toBe('string')
+    expect(storage.generateUsername().length).toBeGreaterThan(0)
+  })
+
+  it('follows the adjective-noun pattern (two words separated by a hyphen)', () => {
+    const name = storage.generateUsername()
+    const parts = name.split('-')
+    expect(parts).toHaveLength(2)
+    parts.forEach((p) => expect(p.length).toBeGreaterThan(0))
+  })
+
+  it('produces varied results across multiple calls', () => {
+    const names = new Set(Array.from({ length: 20 }, () => storage.generateUsername()))
+    expect(names.size).toBeGreaterThan(1)
+  })
+})
+
 describe('storage — generateRoomCode', () => {
   let storage
 

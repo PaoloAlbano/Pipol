@@ -243,6 +243,37 @@
   flex-shrink: 0;
 }
 
+/* Biometric unlock button */
+.login-biometric-btn {
+  width: 100%;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0f0f0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+  margin-top: 8px;
+}
+
+.login-biometric-btn:hover:not(:disabled) {
+  background: #222;
+  border-color: #7c6bf0;
+}
+
+.login-biometric-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Divider */
 .login-divider {
   display: flex;

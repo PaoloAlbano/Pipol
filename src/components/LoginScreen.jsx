@@ -1,18 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   getStoredIdentityMeta,
   deriveIdentityA,
   createGuestIdentity,
+  restoreFromMasterSeed,
   setUsername,
   generateUsername,
 } from '../p2p/storage.js'
+import {
+  hasBiometricUnlock,
+  isBiometricUnlockAvailable,
+  unlockWithBiometrics,
+} from '../p2p/webauthn.js'
 import '../styles/login.css'
 
 export default function LoginScreen({ onLogin }) {
   const [storedMeta] = useState(() => getStoredIdentityMeta())
   const initialHandle = storedMeta?.handle || ''
 
-  const [mode, setMode] = useState('identity') // 'identity' | 'guest'
+  const hasBiometric = storedMeta && hasBiometricUnlock()
+  const [mode, setMode] = useState(() => (hasBiometric ? 'biometric' : 'identity')) // 'biometric' | 'identity' | 'guest'
+  const [biometricAvailable, setBiometricAvailable] = useState(false)
+
+  useEffect(() => {
+    if (hasBiometric) {
+      isBiometricUnlockAvailable().then(setBiometricAvailable)
+    }
+  }, [hasBiometric])
   const [handle, setHandle] = useState(initialHandle)
   const [passphrase, setPassphrase] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -56,6 +70,25 @@ export default function LoginScreen({ onLogin }) {
     onLogin()
   }
 
+  async function handleBiometricUnlock() {
+    setLoading(true)
+    setError('')
+    try {
+      const masterSeed = await unlockWithBiometrics()
+      restoreFromMasterSeed(masterSeed)
+      onLogin()
+    } catch (err) {
+      if (err.message !== 'cancelled') {
+        setError(
+          err.message === 'prf-not-supported'
+            ? 'Your browser does not support the PRF extension. Use your passphrase instead.'
+            : 'Biometric unlock failed. Use your passphrase instead.'
+        )
+      }
+      setLoading(false)
+    }
+  }
+
   function handleReset() {
     localStorage.removeItem('p2p-chat:identity')
     window.location.reload()
@@ -67,7 +100,37 @@ export default function LoginScreen({ onLogin }) {
         <img src="/icons/icon.svg" alt="Pipol" className="login-logo" />
         <h1 className="login-title">Pipol</h1>
 
-        {mode === 'guest' ? (
+        {mode === 'biometric' ? (
+          <>
+            <p className="login-subtitle">Welcome back, {storedMeta.username}</p>
+
+            {error && <p className="login-error">{error}</p>}
+
+            <button
+              className="login-biometric-btn"
+              onClick={handleBiometricUnlock}
+              disabled={loading || !biometricAvailable}
+            >
+              {loading ? (
+                <>
+                  <span className="login-spinner" />
+                  Unlocking…
+                </>
+              ) : (
+                <>
+                  <FingerprintIcon />
+                  Unlock with biometrics
+                </>
+              )}
+            </button>
+
+            <p className="login-note">
+              <button className="login-link" onClick={() => setMode('identity')}>
+                Use passphrase instead
+              </button>
+            </p>
+          </>
+        ) : mode === 'guest' ? (
           <>
             <p className="login-subtitle">Choose a name and jump in</p>
 
@@ -295,6 +358,32 @@ function passphraseStrength(passphrase) {
     { label: 'Very strong', key: 'strong' },
   ]
   return { score, ...map[score], criteria }
+}
+
+function FingerprintIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4" />
+      <path d="M14 13.12c0 2.38 0 6.38-1 8.88" />
+      <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02" />
+      <path d="M2 12a10 10 0 0 1 18-6" />
+      <path d="M2 17c1 .5 2.5 1 4.5 1a7.98 7.98 0 0 0 5-1.76" />
+      <path d="M2 12a10 10 0 0 0 3.33 7.41" />
+      <path d="M20 12c0 3.17-.23 5.17-.5 6" />
+      <path d="M7 16.46c.26.2.76.5 1.5.5 2 0 3.5-1.5 3.5-4" />
+      <path d="M7 13a5 5 0 0 1 5-5" />
+      <path d="M22 12c0 2-.5 4-1.5 5.5" />
+    </svg>
+  )
 }
 
 function EyeIcon() {
