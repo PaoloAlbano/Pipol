@@ -103,47 +103,6 @@ make coverage      # test coverage report
 make lint          # ESLint
 make format        # Prettier
 ```
-
-## File structure
-
-```
-src/
-  p2p/
-    storage.js    # Identity (keypair + username), settings, room-code generator
-    swarm.js      # Hyperswarm discovery, Protomux control channel, replication
-    autobase.js   # Multi-writer message store (one Hypercore per peer, merged by timestamp)
-    beam.js       # Hyperbeam encrypted channels for WebRTC signaling
-    db.js         # IndexedDB persistence with AES-256-GCM encryption
-  webrtc/
-    peer.js       # RTCPeerConnection wrapper (offer/answer/ICE, mesh topology)
-    media.js      # getUserMedia, stream lifecycle, mute, screen share
-  components/
-    Home.jsx      # Lobby: create / join a room
-    Room.jsx      # Active room: orchestrates P2P stack, chat, and video call
-    ChatMessages.jsx
-    ChatInput.jsx
-    VideoGrid.jsx      # Grid and spotlight layouts
-    VideoControls.jsx
-    SettingsModal.jsx
-  styles/
-    global.css
-    home.css
-    room.css
-    chat.css
-    video.css
-    settings.css
-  App.jsx
-  main.jsx
-tests/
-  components/    # React component tests (Vitest + Testing Library)
-  p2p/           # Storage and DB unit tests
-  webrtc/        # Media utility tests
-public/
-  manifest.json  # PWA manifest
-  sw.js          # Service worker (app-shell caching)
-  icons/
-```
-
 ## Known limitations
 
 | Area | Limitation | Potential improvement |
