@@ -136,6 +136,39 @@ describe('storage — getIdentity', () => {
   })
 })
 
+describe('storage — getMasterSeed', () => {
+  let storage
+
+  beforeEach(async () => {
+    localStorage.clear()
+    vi.resetModules()
+    storage = await import('../../src/p2p/storage.js')
+  })
+
+  it('returns null before deriveIdentityA is called', () => {
+    expect(storage.getMasterSeed()).toBeNull()
+  })
+
+  it('returns a 32-byte Uint8Array after deriveIdentityA', async () => {
+    await storage.deriveIdentityA('user', 'passphrase-test-456')
+    const seed = storage.getMasterSeed()
+    expect(seed).toBeInstanceOf(Uint8Array)
+    expect(seed.byteLength).toBe(32)
+  })
+
+  it('returns the same seed reference on successive calls', async () => {
+    await storage.deriveIdentityA('user', 'passphrase-test-456')
+    expect(storage.getMasterSeed()).toBe(storage.getMasterSeed())
+  })
+
+  it('returns null again after lockSession', async () => {
+    await storage.deriveIdentityA('user', 'passphrase-test-456')
+    expect(storage.getMasterSeed()).not.toBeNull()
+    storage.lockSession()
+    expect(storage.getMasterSeed()).toBeNull()
+  })
+})
+
 describe('storage — getStoredIdentityMeta', () => {
   let storage
 
@@ -151,11 +184,14 @@ describe('storage — getStoredIdentityMeta', () => {
 
   it('returns null for legacy format (missing method field)', () => {
     // Simulate old format that stored secretKey in clear without a method field
-    localStorage.setItem('p2p-chat:identity', JSON.stringify({
-      publicKey: 'deadbeef',
-      secretKey: 'cafebabe',
-      username: 'old-user',
-    }))
+    localStorage.setItem(
+      'p2p-chat:identity',
+      JSON.stringify({
+        publicKey: 'deadbeef',
+        secretKey: 'cafebabe',
+        username: 'old-user',
+      })
+    )
     expect(storage.getStoredIdentityMeta()).toBeNull()
   })
 

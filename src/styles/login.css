@@ -243,6 +243,48 @@
   flex-shrink: 0;
 }
 
+/* Divider */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+  width: 100%;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #2a2a2a;
+}
+
+.login-divider span {
+  font-size: 11px;
+  color: #444;
+}
+
+/* Guest button */
+.login-guest-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #888;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.login-guest-btn:hover {
+  border-color: #444;
+  color: #bbb;
+}
+
 /* Notes and links */
 .login-note {
   font-size: 11px;

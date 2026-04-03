@@ -127,6 +127,24 @@ export function getMasterSeed() {
 }
 
 /**
+ * Creates a temporary guest identity — random keypair, nothing saved to localStorage.
+ * The identity is lost when the page is closed or the session is locked.
+ * @param {string} displayName
+ */
+export function createGuestIdentity(displayName) {
+  const masterSeed = webcrypto.getRandomValues(new Uint8Array(32))
+  const keyPair = crypto.keyPair(masterSeed.slice(0, 32))
+  _masterSeed = masterSeed
+  _store = null
+  _identity = {
+    publicKey: keyPair.publicKey,
+    secretKey: keyPair.secretKey,
+    username: displayName,
+    isGuest: true,
+  }
+}
+
+/**
  * Clears all session secrets from memory without touching localStorage.
  * After this call getIdentity() returns null and the user must re-derive
  * their identity by entering their passphrase again.
@@ -177,8 +195,14 @@ export function getIdentity() {
 export async function deriveIdentityA(handle, passphrase) {
   const normHandle = handle.toLowerCase().trim()
 
-  // salt = SHA-256("pipol:" + handle)
-  const saltBytes = new TextEncoder().encode('pipol:' + normHandle)
+  // Normalise origin: strip leading "www." so pipol.app and www.pipol.app share the same salt.
+  // Each distinct deployment (different domain) produces a different identity space by design.
+  const { protocol, hostname, port } = window.location
+  const normHostname = hostname.replace(/^www\./, '')
+  const normOrigin = `${protocol}//${normHostname}${port ? ':' + port : ''}`
+
+  // salt = SHA-256("pipol:" + origin + ":" + handle)
+  const saltBytes = new TextEncoder().encode(`pipol:${normOrigin}:${normHandle}`)
   const saltHash = await webcrypto.subtle.digest('SHA-256', saltBytes)
 
   // masterSeed = PBKDF2(passphrase, salt, 600_000 iter, SHA-256, 256 bits)

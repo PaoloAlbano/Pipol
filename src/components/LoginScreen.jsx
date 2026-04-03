@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   getStoredIdentityMeta,
   deriveIdentityA,
+  createGuestIdentity,
   setUsername,
   generateUsername,
 } from '../p2p/storage.js'
@@ -11,6 +12,7 @@ export default function LoginScreen({ onLogin }) {
   const [storedMeta] = useState(() => getStoredIdentityMeta())
   const initialHandle = storedMeta?.handle || ''
 
+  const [mode, setMode] = useState('identity') // 'identity' | 'guest'
   const [handle, setHandle] = useState(initialHandle)
   const [passphrase, setPassphrase] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -48,6 +50,12 @@ export default function LoginScreen({ onLogin }) {
     }
   }
 
+  function handleGuestSubmit(e) {
+    e.preventDefault()
+    createGuestIdentity(displayName.trim() || generateUsername())
+    onLogin()
+  }
+
   function handleReset() {
     localStorage.removeItem('p2p-chat:identity')
     window.location.reload()
@@ -58,158 +66,205 @@ export default function LoginScreen({ onLogin }) {
       <div className="login-card">
         <img src="/icons/icon.svg" alt="Pipol" className="login-logo" />
         <h1 className="login-title">Pipol</h1>
-        <p className="login-subtitle">
-          {isUnlock ? `Welcome back, ${storedMeta.username}` : 'Create or restore your identity'}
-        </p>
 
-        <form onSubmit={handleSubmit} className="login-form" noValidate>
-          <div className="login-field">
-            <label htmlFor="handle">Handle</label>
-            <input
-              id="handle"
-              type="text"
-              value={handle}
-              onChange={(e) => {
-                setHandle(e.target.value)
-                setError('')
-              }}
-              placeholder="email, username, or any stable ID"
-              autoComplete="username"
-              autoFocus={!initialHandle}
-              disabled={loading}
-              spellCheck={false}
-            />
-          </div>
+        {mode === 'guest' ? (
+          <>
+            <p className="login-subtitle">Choose a name and jump in</p>
 
-          <div className="login-field">
-            <label htmlFor="passphrase">Passphrase</label>
-            <div className="input-wrap">
-              <input
-                id="passphrase"
-                type={showPassphrase ? 'text' : 'password'}
-                value={passphrase}
-                onChange={(e) => {
-                  setPassphrase(e.target.value)
-                  setError('')
-                }}
-                placeholder="••••••••••••••••"
-                autoComplete={isCreate ? 'new-password' : 'current-password'}
-                autoFocus={!!initialHandle}
-                disabled={loading}
-              />
-              <button
-                type="button"
-                className="reveal-btn"
-                onClick={() => setShowPassphrase((v) => !v)}
-                tabIndex={-1}
-                aria-label={showPassphrase ? 'Hide passphrase' : 'Show passphrase'}
-              >
-                {showPassphrase ? <EyeOffIcon /> : <EyeIcon />}
+            <form onSubmit={handleGuestSubmit} className="login-form" noValidate>
+              <div className="login-field">
+                <label htmlFor="guestName">Display name</label>
+                <input
+                  id="guestName"
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="How others will see you"
+                  autoComplete="nickname"
+                  maxLength={32}
+                  autoFocus
+                  spellCheck={false}
+                />
+              </div>
+
+              <button type="submit" className="login-btn">
+                Continue as guest
               </button>
-            </div>
-            {isCreate && passphrase && (
-              <>
-                <div className="strength-bar" aria-label={`Strength: ${strength.label}`}>
-                  <div
-                    className={`strength-fill strength-${strength.key}`}
-                    style={{ width: `${(strength.score / 4) * 100}%` }}
+            </form>
+
+            <p className="login-note">
+              Your identity exists only for this session — it will be gone when you close the tab.{' '}
+              <button className="login-link" onClick={() => setMode('identity')}>
+                Create a permanent identity instead
+              </button>
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="login-subtitle">
+              {isUnlock
+                ? `Welcome back, ${storedMeta.username}`
+                : 'Create or restore your identity'}
+            </p>
+
+            <form onSubmit={handleSubmit} className="login-form" noValidate>
+              <div className="login-field">
+                <label htmlFor="handle">Handle</label>
+                <input
+                  id="handle"
+                  type="text"
+                  value={handle}
+                  onChange={(e) => {
+                    setHandle(e.target.value)
+                    setError('')
+                  }}
+                  placeholder="email, username, or any stable ID"
+                  autoComplete="username"
+                  autoFocus={!initialHandle}
+                  disabled={loading}
+                  spellCheck={false}
+                />
+              </div>
+
+              <div className="login-field">
+                <label htmlFor="passphrase">Passphrase</label>
+                <div className="input-wrap">
+                  <input
+                    id="passphrase"
+                    type={showPassphrase ? 'text' : 'password'}
+                    value={passphrase}
+                    onChange={(e) => {
+                      setPassphrase(e.target.value)
+                      setError('')
+                    }}
+                    placeholder="••••••••••••••••"
+                    autoComplete={isCreate ? 'new-password' : 'current-password'}
+                    autoFocus={!!initialHandle}
+                    disabled={loading}
                   />
-                  <span className="strength-text">{strength.label}</span>
-                  {strength.score < 3 && (
-                    <span className="strength-count">{strength.score} / 3 to unlock</span>
+                  <button
+                    type="button"
+                    className="reveal-btn"
+                    onClick={() => setShowPassphrase((v) => !v)}
+                    tabIndex={-1}
+                    aria-label={showPassphrase ? 'Hide passphrase' : 'Show passphrase'}
+                  >
+                    {showPassphrase ? <EyeOffIcon /> : <EyeIcon />}
+                  </button>
+                </div>
+                {isCreate && passphrase && (
+                  <>
+                    <div className="strength-bar" aria-label={`Strength: ${strength.label}`}>
+                      <div
+                        className={`strength-fill strength-${strength.key}`}
+                        style={{ width: `${(strength.score / 4) * 100}%` }}
+                      />
+                      <span className="strength-text">{strength.label}</span>
+                      {strength.score < 3 && (
+                        <span className="strength-count">{strength.score} / 3 to unlock</span>
+                      )}
+                    </div>
+                    {strength.score < 3 && (
+                      <ul className="strength-hints">
+                        <li className="hints-header">Complete any 3 to continue:</li>
+                        {strength.criteria.map((c) => (
+                          <li key={c.label} className={c.met ? 'hint-met' : 'hint-unmet'}>
+                            {c.met ? '✓' : '○'} {c.label}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {isCreate && (
+                <div className="login-field">
+                  <label htmlFor="confirm">Confirm passphrase</label>
+                  <div className="input-wrap">
+                    <input
+                      id="confirm"
+                      type={showConfirm ? 'text' : 'password'}
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      placeholder="••••••••••••••••"
+                      autoComplete="new-password"
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      className="reveal-btn"
+                      onClick={() => setShowConfirm((v) => !v)}
+                      tabIndex={-1}
+                      aria-label={showConfirm ? 'Hide passphrase' : 'Show passphrase'}
+                    >
+                      {showConfirm ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
+                  {confirmMismatch && (
+                    <span className="field-hint field-hint--error">Passphrases do not match</span>
                   )}
                 </div>
-                {strength.score < 3 && (
-                  <ul className="strength-hints">
-                    <li className="hints-header">Complete any 3 to continue:</li>
-                    {strength.criteria.map((c) => (
-                      <li key={c.label} className={c.met ? 'hint-met' : 'hint-unmet'}>
-                        {c.met ? '✓' : '○'} {c.label}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </div>
-
-          {isCreate && (
-            <div className="login-field">
-              <label htmlFor="confirm">Confirm passphrase</label>
-              <div className="input-wrap">
-                <input
-                  id="confirm"
-                  type={showConfirm ? 'text' : 'password'}
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  placeholder="••••••••••••••••"
-                  autoComplete="new-password"
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  className="reveal-btn"
-                  onClick={() => setShowConfirm((v) => !v)}
-                  tabIndex={-1}
-                  aria-label={showConfirm ? 'Hide passphrase' : 'Show passphrase'}
-                >
-                  {showConfirm ? <EyeOffIcon /> : <EyeIcon />}
-                </button>
-              </div>
-              {confirmMismatch && (
-                <span className="field-hint field-hint--error">Passphrases do not match</span>
               )}
-            </div>
-          )}
 
-          {isCreate && (
-            <div className="login-field">
-              <label htmlFor="displayName">
-                Display name <span className="field-hint">(optional)</span>
-              </label>
-              <input
-                id="displayName"
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="How others will see you"
-                autoComplete="nickname"
-                maxLength={32}
-                disabled={loading}
-                spellCheck={false}
-              />
-            </div>
-          )}
+              {isCreate && (
+                <div className="login-field">
+                  <label htmlFor="displayName">
+                    Display name <span className="field-hint">(optional)</span>
+                  </label>
+                  <input
+                    id="displayName"
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="How others will see you"
+                    autoComplete="nickname"
+                    maxLength={32}
+                    disabled={loading}
+                    spellCheck={false}
+                  />
+                </div>
+              )}
 
-          {error && <p className="login-error">{error}</p>}
+              {error && <p className="login-error">{error}</p>}
 
-          <button type="submit" className="login-btn" disabled={!canSubmit || loading}>
-            {loading ? (
-              <>
-                <span className="login-spinner" />
-                Deriving key…
-              </>
-            ) : isUnlock ? (
-              'Unlock'
-            ) : (
-              'Create / restore identity'
+              <button type="submit" className="login-btn" disabled={!canSubmit || loading}>
+                {loading ? (
+                  <>
+                    <span className="login-spinner" />
+                    Deriving key…
+                  </>
+                ) : isUnlock ? (
+                  'Unlock'
+                ) : (
+                  'Create / restore identity'
+                )}
+              </button>
+            </form>
+
+            {isCreate && (
+              <p className="login-note">
+                Your passphrase cannot be recovered. Choose a strong one and keep it safe.
+              </p>
             )}
-          </button>
-        </form>
 
-        {isCreate && (
-          <p className="login-note">
-            Your passphrase cannot be recovered. Choose a strong one and keep it safe.
-          </p>
-        )}
+            {storedMeta && isCreate && (
+              <p className="login-note">
+                Different handle — a new identity will be created.{' '}
+                <button className="login-link" onClick={handleReset}>
+                  Go back
+                </button>
+              </p>
+            )}
 
-        {storedMeta && isCreate && (
-          <p className="login-note">
-            Different handle — a new identity will be created.{' '}
-            <button className="login-link" onClick={handleReset}>
-              Go back
+            <div className="login-divider">
+              <span>or</span>
+            </div>
+
+            <button className="login-guest-btn" onClick={() => setMode('guest')}>
+              Continue as guest
             </button>
-          </p>
+          </>
         )}
       </div>
     </div>
