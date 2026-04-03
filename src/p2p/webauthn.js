@@ -94,55 +94,49 @@ export function removeBiometricUnlock() {
 export async function setupBiometricUnlock(masterSeed, meta) {
   const salt = await getPRFSalt()
 
-  let credential
-  try {
-    credential = await navigator.credentials.create({
-      publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: { name: 'Pipol', id: getRpId() },
-        user: {
-          id: new TextEncoder().encode(meta.handle),
-          name: meta.handle,
-          displayName: meta.username,
-        },
-        pubKeyCredParams: [
-          { alg: -7, type: 'public-key' }, // ES256
-          { alg: -257, type: 'public-key' }, // RS256
-        ],
-        authenticatorSelection: {
-          userVerification: 'required',
-          residentKey: 'preferred',
-        },
-        extensions: {
-          prf: { eval: { first: salt } },
-          largeBlob: { support: 'preferred' },
-        },
-      },
-    })
-  } catch (err) {
-    // NotAllowedError = user cancelled or timed out.
-    // Some authenticators (e.g. Windows Hello) may also throw on unsupported
-    // extension combos — log the real error to help debugging.
-    console.warn('[webauthn] create() failed:', err?.name, err?.message)
-    const isUserCancel =
-      err?.name === 'NotAllowedError' ||
-      err?.name === 'AbortError' ||
-      err instanceof DOMException
-    throw new Error(isUserCancel ? 'cancelled' : 'create-failed')
+  const baseOptions = {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: 'Pipol', id: getRpId() },
+    user: {
+      id: new TextEncoder().encode(meta.handle),
+      name: meta.handle,
+      displayName: meta.username,
+    },
+    pubKeyCredParams: [
+      { alg: -7, type: 'public-key' }, // ES256
+      { alg: -257, type: 'public-key' }, // RS256
+    ],
+    authenticatorSelection: {
+      userVerification: 'required',
+      residentKey: 'preferred',
+    },
   }
 
-  const ext = credential.getClientExtensionResults()
-  const prfResult = ext?.prf?.results?.first
-  const largeBlobSupported = ext?.largeBlob?.supported === true
+  // ── Attempt 1: PRF only ──────────────────────────────────────────────────
+  // Requested alone because some authenticators (Windows Hello) throw
+  // NotAllowedError when both prf and largeBlob are present simultaneously.
+  // NOTE: NotAllowedError is ambiguous — it can mean "user cancelled" OR
+  // "authenticator doesn't support this". We always fall through to largeBlob
+  // and only surface "cancelled" if that also fails with NotAllowedError.
+  let credential = null
+  let prfResult = null
+  try {
+    credential = await navigator.credentials.create({
+      publicKey: { ...baseOptions, extensions: { prf: { eval: { first: salt } } } },
+    })
+    prfResult = credential.getClientExtensionResults()?.prf?.results?.first
+  } catch (err) {
+    console.warn('[webauthn] PRF create() failed:', err?.name, err?.message)
+    // Fall through to largeBlob attempt below.
+  }
 
   if (prfResult) {
-    // PRF path: encrypt masterSeed with PRF output, store ciphertext in localStorage
+    // ✅ PRF path: encrypt masterSeed, store ciphertext in localStorage.
     const encKey = await crypto.subtle.importKey('raw', prfResult, { name: 'AES-GCM' }, false, [
       'encrypt',
     ])
     const iv = crypto.getRandomValues(new Uint8Array(12))
     const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, encKey, masterSeed)
-
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -155,43 +149,63 @@ export async function setupBiometricUnlock(masterSeed, meta) {
     return
   }
 
-  if (largeBlobSupported) {
-    // largeBlob path: write masterSeed directly into the authenticator blob.
-    // We need a get() with largeBlob.write immediately after create() while
-    // the session is fresh — some authenticators require this in the same gesture.
-    // We store a marker in localStorage; the actual seed lives in the passkey blob.
-    let writeAssertion
-    try {
-      writeAssertion = await navigator.credentials.get({
-        publicKey: {
-          challenge: crypto.getRandomValues(new Uint8Array(32)),
-          rpId: getRpId(),
-          allowCredentials: [{ id: credential.rawId, type: 'public-key' }],
-          userVerification: 'required',
-          extensions: {
-            largeBlob: { write: masterSeed },
-          },
-        },
-      })
-    } catch (err) {
-      console.warn('[webauthn] largeBlob write get() failed:', err?.name, err?.message)
-      throw new Error('cancelled')
-    }
-
-    const written = writeAssertion.getClientExtensionResults()?.largeBlob?.written
-    if (!written) throw new Error('authenticator-no-prf-no-largeblob')
-
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        method: 'largeBlob',
-        credentialId: b64Encode(credential.rawId),
-      })
-    )
-    return
+  // PRF failed or not returned — try largeBlob in a separate create().
+  if (credential) {
+    console.warn('[webauthn] PRF not returned by authenticator, trying largeBlob fallback')
   }
 
-  throw new Error('authenticator-no-prf-no-largeblob')
+  // ── Attempt 2: largeBlob only ────────────────────────────────────────────
+  // Fresh create() with only largeBlob — this succeeds on Windows Hello and
+  // some Android device-bound passkey implementations.
+  let credentialLB
+  try {
+    credentialLB = await navigator.credentials.create({
+      publicKey: {
+        ...baseOptions,
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        extensions: { largeBlob: { support: 'required' } },
+      },
+    })
+  } catch (err) {
+    console.warn('[webauthn] largeBlob create() failed:', err?.name, err?.message)
+    // NotAllowedError here is a real user cancel (the UI was shown and dismissed).
+    if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
+      throw new Error('cancelled')
+    }
+    throw new Error('authenticator-no-prf-no-largeblob')
+  }
+
+  const largeBlobSupported = credentialLB.getClientExtensionResults()?.largeBlob?.supported === true
+  if (!largeBlobSupported) throw new Error('authenticator-no-prf-no-largeblob')
+
+  // Write masterSeed into the authenticator blob (requires a separate get()).
+  let writeAssertion
+  try {
+    writeAssertion = await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rpId: getRpId(),
+        allowCredentials: [{ id: credentialLB.rawId, type: 'public-key' }],
+        userVerification: 'required',
+        extensions: { largeBlob: { write: masterSeed } },
+      },
+    })
+  } catch (err) {
+    console.warn('[webauthn] largeBlob write get() failed:', err?.name, err?.message)
+    throw new Error('cancelled')
+  }
+
+  const written = writeAssertion.getClientExtensionResults()?.largeBlob?.written
+  if (!written) throw new Error('authenticator-no-prf-no-largeblob')
+
+  // ✅ largeBlob path: seed lives in the passkey blob, only credentialId needed.
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      method: 'largeBlob',
+      credentialId: b64Encode(credentialLB.rawId),
+    })
+  )
 }
 
 /**

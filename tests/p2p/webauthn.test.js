@@ -140,8 +140,15 @@ describe('webauthn — setupBiometricUnlock (PRF path)', () => {
   })
 
   it('throws "cancelled" when the user dismisses the prompt', async () => {
+    // PRF create fails silently (as Windows Hello does), then largeBlob is tried
+    // and the user dismisses that with NotAllowedError → 'cancelled'.
     vi.stubGlobal('navigator', {
-      credentials: { create: vi.fn().mockRejectedValue(new DOMException('cancelled')) },
+      credentials: {
+        create: vi
+          .fn()
+          .mockRejectedValueOnce(new DOMException('User cancelled', 'NotAllowedError')) // PRF attempt
+          .mockRejectedValueOnce(new DOMException('User cancelled', 'NotAllowedError')), // largeBlob attempt
+      },
     })
     const { setupBiometricUnlock } = await getModule()
     await expect(setupBiometricUnlock(masterSeed, meta)).rejects.toThrow('cancelled')
