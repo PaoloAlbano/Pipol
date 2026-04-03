@@ -5,6 +5,7 @@ import {
   getRelayUrl,
   setRelayUrl,
   getMasterSeed,
+  getPassphrase,
   getStoredIdentityMeta,
 } from '../p2p/storage.js'
 import { applyVideoQuality } from '../webrtc/media.js'
@@ -202,13 +203,13 @@ export default function SettingsModal({
                       setBiometricError('')
                       try {
                         const meta = getStoredIdentityMeta()
-                        await setupBiometricUnlock(getMasterSeed(), meta)
+                        await setupBiometricUnlock(getPassphrase(), meta)
                         setBiometricEnabled(true)
                       } catch (err) {
                         console.warn('[biometric setup]', err?.message)
                         const msg =
-                          err.message === 'authenticator-no-prf-no-largeblob'
-                            ? 'Your authenticator does not support the required extensions (PRF or largeBlob). Try a FIDO2 security key (e.g. YubiKey 5).'
+                          err.message === 'not-supported'
+                            ? 'Your device or browser does not support biometric unlock. Make sure you have a PIN or biometric set up.'
                             : err.message === 'create-failed'
                               ? 'Passkey creation failed. Your device or browser may not fully support this feature.'
                               : err.message === 'cancelled'

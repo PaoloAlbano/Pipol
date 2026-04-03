@@ -111,6 +111,7 @@ const NOUNS = [
 
 // Singleton references
 let _masterSeed = null // Uint8Array(32), only in memory — never persisted
+let _passphrase = null // string, only in memory — needed for biometric setup
 let _identity = null
 let _store = null
 
@@ -124,6 +125,14 @@ export function generateUsername() {
 /** Returns the 32-byte masterSeed for this session, or null if not yet derived. */
 export function getMasterSeed() {
   return _masterSeed
+}
+
+/**
+ * Returns the passphrase for this session, or null if not yet derived.
+ * Used by biometric setup to encrypt credentials without re-prompting the user.
+ */
+export function getPassphrase() {
+  return _passphrase
 }
 
 /**
@@ -177,6 +186,7 @@ export function createGuestIdentity(displayName) {
  */
 export function lockSession() {
   _masterSeed = null
+  _passphrase = null
   _identity = null
   _store = null
 }
@@ -261,6 +271,7 @@ export async function deriveIdentityA(handle, passphrase) {
 
   // Commit to memory
   _masterSeed = masterSeed
+  _passphrase = passphrase
   _store = null // reset store so it re-initialises with new primaryKey
 
   const username = isNewAccount ? generateUsername() : storedMeta.username

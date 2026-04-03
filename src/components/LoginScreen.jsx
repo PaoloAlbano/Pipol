@@ -5,7 +5,6 @@ import {
   getStoredIdentityMeta,
   deriveIdentityA,
   createGuestIdentity,
-  restoreFromMasterSeed,
   setUsername,
   generateUsername,
 } from '../p2p/storage.js'
@@ -76,16 +75,12 @@ export default function LoginScreen({ onLogin }) {
     setLoading(true)
     setError('')
     try {
-      const masterSeed = await unlockWithBiometrics()
-      restoreFromMasterSeed(masterSeed)
+      const { handle, passphrase } = await unlockWithBiometrics()
+      await deriveIdentityA(handle, passphrase)
       onLogin()
     } catch (err) {
       if (err.message !== 'cancelled') {
-        setError(
-          err.message === 'prf-not-supported'
-            ? 'Biometric unlock failed — the stored passkey no longer has PRF access. Re-enable biometric unlock in Settings.'
-            : 'Biometric unlock failed. Use your passphrase instead.'
-        )
+        setError('Biometric unlock failed. Use your passphrase instead.')
       }
       setLoading(false)
     }

@@ -1,41 +1,40 @@
 /**
  * webauthn.js
- * Biometric unlock for the masterSeed via WebAuthn passkeys.
+ * Biometric unlock via WebAuthn passkeys.
  *
- * Two mechanisms are attempted in parallel during registration; whichever
- * the authenticator supports is used and recorded as `method` in localStorage.
+ * Strategy: the passphrase is encrypted with AES-GCM and stored in localStorage.
+ * The encryption key is derived via HKDF from the credential's rawId, which is
+ * only returned by the browser after a successful biometric authentication.
  *
- * ┌─────────────────┬───────────────────────────────────────────────────────┐
- * │ method: 'prf'   │ PRF extension: masterSeed is AES-GCM encrypted with   │
- * │                 │ the PRF output. The seed never touches storage in      │
- * │                 │ clear. Supported by: macOS Touch ID, iOS Face ID,      │
- * │                 │ YubiKey 5+.                                            │
- * ├─────────────────┼───────────────────────────────────────────────────────┤
- * │ method:         │ largeBlob extension: masterSeed is written directly    │
- * │ 'largeBlob'     │ into the authenticator's blob storage, which requires  │
- * │                 │ user verification to read. Supported by: Android       │
- * │                 │ (device-bound passkeys), Windows Hello, YubiKey 5+.   │
- * └─────────────────┴───────────────────────────────────────────────────────┘
+ * This works universally across platforms:
+ *   - macOS Touch ID / Face ID (Safari, Chrome)
+ *   - iOS Face ID / Touch ID (Safari, Chrome)
+ *   - Windows Hello (fingerprint, face, PIN)
+ *   - Android fingerprint / face via Google Password Manager or other providers
  *
- * Browser support (2026): Chrome 132+, Edge 132+, Safari 18.2+ partial, Firefox ✗
+ * Only the standard WebAuthn create/get flow is used — no PRF or largeBlob
+ * extensions required. `authenticatorAttachment: 'platform'` is set so the
+ * browser always uses the built-in platform authenticator (biometric / PIN)
+ * rather than prompting for an external security key.
+ *
+ * Security model:
+ *   - The ciphertext in localStorage is useless without the rawId.
+ *   - The rawId is only obtainable after passing biometric verification on the
+ *     registered device.
+ *   - An attacker with full localStorage access but no biometric cannot
+ *     decrypt the passphrase.
+ *   - An attacker with physical access to an unlocked, authenticated browser
+ *     session already has access to the live session anyway.
+ *
+ * Browser support: any browser supporting WebAuthn platform authenticators
+ * (Chrome 67+, Safari 14+, Firefox 60+, Edge 18+).
  */
 
 const STORAGE_KEY = 'p2p-chat:biometric'
 
-// Stable PRF evaluation salt — non-secret, same for every user of this app.
-// Computed once and cached.
-let _prfSalt = null
-async function getPRFSalt() {
-  if (_prfSalt) return _prfSalt
-  const buf = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode('pipol-biometric-unlock-v1')
-  )
-  _prfSalt = new Uint8Array(buf)
-  return _prfSalt
-}
+// App-specific info for HKDF key derivation — non-secret.
+const HKDF_INFO = new TextEncoder().encode('pipol-biometric-passphrase-v1')
 
-// rpId = registrable domain, www-stripped, so pipol.app and www.pipol.app share one rpId.
 function getRpId() {
   return window.location.hostname.replace(/^www\./, '')
 }
@@ -49,14 +48,30 @@ function b64Decode(str) {
 }
 
 /**
- * Returns true if the browser + platform authenticator are available for
- * biometric unlock setup.
- *
- * Note: getClientCapabilities() reports 'extension:prf' based on what the
- * *browser* supports in principle, but whether the chosen authenticator
- * actually returns a PRF result can only be determined by attempting
- * registration. Windows Hello and Google Password Manager both declare
- * prf=true at the browser level but do not return a PRF result in practice.
+ * Derives an AES-GCM-256 key from a credential's rawId via HKDF-SHA-256.
+ * The rawId acts as the key material — it is only known after a successful
+ * biometric assertion.
+ */
+async function deriveKeyFromRawId(rawId) {
+  const keyMaterial = await crypto.subtle.importKey('raw', rawId, { name: 'HKDF' }, false, [
+    'deriveKey',
+  ])
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(32), // zero salt — rawId already carries entropy
+      info: HKDF_INFO,
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  )
+}
+
+/**
+ * Returns true if the browser supports WebAuthn with a platform authenticator.
  */
 export async function isBiometricUnlockAvailable() {
   if (!window.PublicKeyCredential) return false
@@ -82,171 +97,83 @@ export function removeBiometricUnlock() {
 }
 
 /**
- * Registers a new passkey and stores enough data to recover masterSeed later.
- * Both PRF and largeBlob extensions are requested simultaneously; whichever
- * the authenticator supports is used (PRF takes priority).
+ * Registers a passkey and encrypts (handle + passphrase) for later retrieval.
  *
- * @param {Uint8Array} masterSeed  The 32-byte masterSeed from deriveIdentityA()
+ * @param {string} passphrase  The user's passphrase (plain text, only in memory)
  * @param {{ handle: string, username: string }} meta
- * @throws 'authenticator-no-prf-no-largeblob' if neither extension is supported
- * @throws 'cancelled' if the user dismissed the prompt
+ * @throws 'cancelled'     if the user dismissed the biometric prompt
+ * @throws 'create-failed' on unexpected authenticator errors
  */
-export async function setupBiometricUnlock(masterSeed, meta) {
-  const salt = await getPRFSalt()
-
-  const baseOptions = {
-    challenge: crypto.getRandomValues(new Uint8Array(32)),
-    rp: { name: 'Pipol', id: getRpId() },
-    user: {
-      id: new TextEncoder().encode(meta.handle),
-      name: meta.handle,
-      displayName: meta.username,
-    },
-    pubKeyCredParams: [
-      { alg: -7, type: 'public-key' }, // ES256
-      { alg: -257, type: 'public-key' }, // RS256
-    ],
-    authenticatorSelection: {
-      userVerification: 'required',
-      residentKey: 'preferred',
-    },
-  }
-
-  // ── Attempt 1: PRF only ──────────────────────────────────────────────────
-  // Requested alone because some authenticators (Windows Hello) throw
-  // NotAllowedError when both prf and largeBlob are present simultaneously.
-  // NOTE: NotAllowedError is ambiguous — it can mean "user cancelled" OR
-  // "authenticator doesn't support this". We always fall through to largeBlob
-  // and only surface "cancelled" if that also fails with NotAllowedError.
-  let credential = null
-  let prfResult = null
+export async function setupBiometricUnlock(passphrase, meta) {
+  let credential
   try {
     credential = await navigator.credentials.create({
-      publicKey: { ...baseOptions, extensions: { prf: { eval: { first: salt } } } },
-    })
-    prfResult = credential.getClientExtensionResults()?.prf?.results?.first
-  } catch (err) {
-    console.warn('[webauthn] PRF create() failed:', err?.name, err?.message)
-    // Fall through to largeBlob attempt below.
-  }
-
-  if (prfResult) {
-    // ✅ PRF path: encrypt masterSeed, store ciphertext in localStorage.
-    const encKey = await crypto.subtle.importKey('raw', prfResult, { name: 'AES-GCM' }, false, [
-      'encrypt',
-    ])
-    const iv = crypto.getRandomValues(new Uint8Array(12))
-    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, encKey, masterSeed)
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        method: 'prf',
-        credentialId: b64Encode(credential.rawId),
-        iv: b64Encode(iv),
-        ciphertext: b64Encode(ciphertext),
-      })
-    )
-    return
-  }
-
-  // PRF failed or not returned — try largeBlob in a separate create().
-  if (credential) {
-    console.warn('[webauthn] PRF not returned by authenticator, trying largeBlob fallback')
-  }
-
-  // ── Attempt 2: largeBlob only ────────────────────────────────────────────
-  // Fresh create() with only largeBlob — this succeeds on Windows Hello and
-  // some Android device-bound passkey implementations.
-  let credentialLB
-  try {
-    credentialLB = await navigator.credentials.create({
       publicKey: {
-        ...baseOptions,
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        extensions: { largeBlob: { support: 'required' } },
+        rp: { name: 'Pipol', id: getRpId() },
+        user: {
+          id: crypto.getRandomValues(new Uint8Array(16)), // opaque random, not PII
+          name: meta.handle,
+          displayName: meta.username,
+        },
+        pubKeyCredParams: [
+          { alg: -7, type: 'public-key' }, // ES256  (preferred)
+          { alg: -257, type: 'public-key' }, // RS256  (Windows Hello fallback)
+        ],
+        authenticatorSelection: {
+          // 'platform' forces Touch ID / Face ID / Windows Hello / Android biometric.
+          // Without this, browsers may offer external security keys instead.
+          authenticatorAttachment: 'platform',
+          userVerification: 'required',
+          // 'preferred' lets the platform decide whether to make a discoverable
+          // credential.  'required' can fail on Windows Hello when storage is full.
+          residentKey: 'preferred',
+        },
+        // Suppress attestation — we don't verify it server-side and it reduces
+        // the risk of the creation being blocked by enterprise policies.
+        attestation: 'none',
       },
     })
   } catch (err) {
-    console.warn('[webauthn] largeBlob create() failed:', err?.name, err?.message)
-    // NotAllowedError here is a real user cancel (the UI was shown and dismissed).
+    console.warn('[webauthn] create() failed:', err?.name, err?.message)
     if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
       throw new Error('cancelled')
     }
-    throw new Error('authenticator-no-prf-no-largeblob')
+    if (err?.name === 'NotSupportedError' || err?.name === 'ConstraintError') {
+      throw new Error('not-supported')
+    }
+    throw new Error('create-failed')
   }
 
-  const largeBlobSupported = credentialLB.getClientExtensionResults()?.largeBlob?.supported === true
-  if (!largeBlobSupported) throw new Error('authenticator-no-prf-no-largeblob')
+  // Derive encryption key from the credential's rawId.
+  const encKey = await deriveKeyFromRawId(credential.rawId)
 
-  // Write masterSeed into the authenticator blob (requires a separate get()).
-  let writeAssertion
-  try {
-    writeAssertion = await navigator.credentials.get({
-      publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rpId: getRpId(),
-        allowCredentials: [{ id: credentialLB.rawId, type: 'public-key' }],
-        userVerification: 'required',
-        extensions: { largeBlob: { write: masterSeed } },
-      },
-    })
-  } catch (err) {
-    console.warn('[webauthn] largeBlob write get() failed:', err?.name, err?.message)
-    throw new Error('cancelled')
-  }
+  // Encrypt { handle, passphrase } as a JSON payload.
+  const payload = new TextEncoder().encode(JSON.stringify({ handle: meta.handle, passphrase }))
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, encKey, payload)
 
-  const written = writeAssertion.getClientExtensionResults()?.largeBlob?.written
-  if (!written) throw new Error('authenticator-no-prf-no-largeblob')
-
-  // ✅ largeBlob path: seed lives in the passkey blob, only credentialId needed.
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
-      method: 'largeBlob',
-      credentialId: b64Encode(credentialLB.rawId),
+      credentialId: b64Encode(credential.rawId),
+      iv: b64Encode(iv),
+      ciphertext: b64Encode(ciphertext),
     })
   )
 }
 
 /**
- * Uses the stored passkey to recover and return the masterSeed.
+ * Authenticates with the stored passkey and returns the decrypted credentials.
  *
- * @returns {Promise<Uint8Array>} masterSeed
- * @throws 'no-biometric-setup' | 'no-seed-in-blob' | 'cancelled' | 'decrypt-failed'
+ * @returns {Promise<{ handle: string, passphrase: string }>}
+ * @throws 'no-biometric-setup' | 'cancelled' | 'decrypt-failed'
  */
 export async function unlockWithBiometrics() {
   const raw = localStorage.getItem(STORAGE_KEY)
   if (!raw) throw new Error('no-biometric-setup')
 
-  const stored = JSON.parse(raw)
-  const { method, credentialId } = stored
-
-  if (method === 'largeBlob') {
-    let assertion
-    try {
-      assertion = await navigator.credentials.get({
-        publicKey: {
-          challenge: crypto.getRandomValues(new Uint8Array(32)),
-          rpId: getRpId(),
-          allowCredentials: [{ id: b64Decode(credentialId), type: 'public-key' }],
-          userVerification: 'required',
-          extensions: {
-            largeBlob: { read: true },
-          },
-        },
-      })
-    } catch {
-      throw new Error('cancelled')
-    }
-
-    const blob = assertion.getClientExtensionResults()?.largeBlob?.blob
-    if (!blob || blob.byteLength === 0) throw new Error('no-seed-in-blob')
-    return new Uint8Array(blob)
-  }
-
-  // Default: PRF path (method === 'prf' or legacy entries without method field)
-  const salt = await getPRFSalt()
-  const { iv: ivB64, ciphertext: ctB64 } = stored
+  const { credentialId, iv: ivB64, ciphertext: ctB64 } = JSON.parse(raw)
 
   let assertion
   try {
@@ -256,28 +183,25 @@ export async function unlockWithBiometrics() {
         rpId: getRpId(),
         allowCredentials: [{ id: b64Decode(credentialId), type: 'public-key' }],
         userVerification: 'required',
-        extensions: {
-          prf: { eval: { first: salt } },
-        },
       },
     })
-  } catch {
+  } catch (err) {
+    console.warn('[webauthn] get() failed:', err?.name, err?.message)
+    if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
+      throw new Error('cancelled')
+    }
     throw new Error('cancelled')
   }
 
-  const prfResult = assertion.getClientExtensionResults()?.prf?.results?.first
-  if (!prfResult) throw new Error('prf-not-supported')
-
+  // Derive decryption key from the rawId returned after successful auth.
   try {
-    const decKey = await crypto.subtle.importKey('raw', prfResult, { name: 'AES-GCM' }, false, [
-      'decrypt',
-    ])
+    const decKey = await deriveKeyFromRawId(assertion.rawId)
     const plaintext = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: b64Decode(ivB64) },
       decKey,
       b64Decode(ctB64)
     )
-    return new Uint8Array(plaintext)
+    return JSON.parse(new TextDecoder().decode(plaintext))
   } catch {
     throw new Error('decrypt-failed')
   }

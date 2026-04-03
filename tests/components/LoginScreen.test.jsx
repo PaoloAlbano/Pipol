@@ -234,7 +234,8 @@ describe('LoginScreen — biometric mode', () => {
   })
 
   it('calls unlockWithBiometrics and onLogin on success', async () => {
-    mockUnlockWithBiometrics.mockResolvedValue(new Uint8Array(32))
+    mockUnlockWithBiometrics.mockResolvedValue({ handle: 'alice', passphrase: 'secret' })
+    mockDeriveIdentityA.mockResolvedValue({ isNewAccount: false })
     const { onLogin } = setup()
 
     await waitFor(() =>
