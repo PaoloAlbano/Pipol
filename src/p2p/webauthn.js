@@ -49,23 +49,18 @@ function b64Decode(str) {
 }
 
 /**
- * Returns true if the browser + platform authenticator likely support the PRF
- * extension needed for biometric unlock.
+ * Returns true if the browser + platform authenticator are available for
+ * biometric unlock setup.
  *
- * Uses PublicKeyCredential.getClientCapabilities() (Chrome 128+) when available.
- * Falls back to isUserVerifyingPlatformAuthenticatorAvailable() — which only
- * confirms a platform authenticator exists, not PRF support.
+ * Note: getClientCapabilities() reports 'extension:prf' based on what the
+ * *browser* supports in principle, but whether the chosen authenticator
+ * actually returns a PRF result can only be determined by attempting
+ * registration. Windows Hello and Google Password Manager both declare
+ * prf=true at the browser level but do not return a PRF result in practice.
  */
 export async function isBiometricUnlockAvailable() {
   if (!window.PublicKeyCredential) return false
   try {
-    // Chrome 128+ / Edge 128+ expose getClientCapabilities()
-    if (typeof PublicKeyCredential.getClientCapabilities === 'function') {
-      const caps = await PublicKeyCredential.getClientCapabilities()
-      // 'prf' capability means the browser+platform combo supports the extension
-      return caps['prf'] === true
-    }
-    // Fallback: at least confirm a platform authenticator is present
     return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
   } catch {
     return false

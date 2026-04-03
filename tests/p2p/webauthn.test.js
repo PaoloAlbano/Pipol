@@ -75,37 +75,32 @@ describe('webauthn — isBiometricUnlockAvailable', () => {
     expect(await isBiometricUnlockAvailable()).toBe(false)
   })
 
-  it('returns true when getClientCapabilities reports prf=true', async () => {
-    vi.stubGlobal('PublicKeyCredential', {
-      getClientCapabilities: vi.fn().mockResolvedValue({ prf: true }),
-    })
-    const { isBiometricUnlockAvailable } = await getModule()
-    expect(await isBiometricUnlockAvailable()).toBe(true)
-  })
-
-  it('returns false when getClientCapabilities reports prf=false (e.g. Android + Google PM)', async () => {
-    vi.stubGlobal('PublicKeyCredential', {
-      getClientCapabilities: vi.fn().mockResolvedValue({ prf: false }),
-    })
-    const { isBiometricUnlockAvailable } = await getModule()
-    expect(await isBiometricUnlockAvailable()).toBe(false)
-  })
-
-  it('falls back to isUserVerifyingPlatformAuthenticatorAvailable when getClientCapabilities is absent', async () => {
+  it('returns true when platform authenticator is available', async () => {
     vi.stubGlobal('PublicKeyCredential', {
       isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(true),
-      // no getClientCapabilities
     })
     const { isBiometricUnlockAvailable } = await getModule()
     expect(await isBiometricUnlockAvailable()).toBe(true)
   })
 
-  it('returns false via fallback when platform authenticator is not available', async () => {
+  it('returns false when platform authenticator is not available', async () => {
     vi.stubGlobal('PublicKeyCredential', {
       isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(false),
     })
     const { isBiometricUnlockAvailable } = await getModule()
     expect(await isBiometricUnlockAvailable()).toBe(false)
+  })
+
+  it('ignores getClientCapabilities — extension:prf is unreliable across authenticators', async () => {
+    // Even if extension:prf=true, Windows Hello and Google PM may not return PRF results.
+    // We only gate on platform authenticator presence; actual PRF support is
+    // determined at registration time.
+    vi.stubGlobal('PublicKeyCredential', {
+      getClientCapabilities: vi.fn().mockResolvedValue({ 'extension:prf': true }),
+      isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(true),
+    })
+    const { isBiometricUnlockAvailable } = await getModule()
+    expect(await isBiometricUnlockAvailable()).toBe(true)
   })
 
   it('returns false when the API throws', async () => {
