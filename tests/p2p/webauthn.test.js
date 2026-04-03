@@ -1,6 +1,6 @@
 /**
  * webauthn.test.js
- * Tests for the WebAuthn PRF biometric unlock helpers.
+ * Tests for the WebAuthn biometric unlock helpers (PRF + largeBlob fallback).
  *
  * navigator.credentials is mocked — no real authenticator needed.
  * crypto.subtle is the real Node 18+ implementation so the
@@ -13,19 +13,21 @@ const MOCK_CREDENTIAL_ID = new Uint8Array(16).fill(1)
 // the encrypt/decrypt round-trip closes correctly.
 const MOCK_PRF_OUTPUT = new Uint8Array(32).fill(0xab)
 
-function makeMockCredential(prfFirst = MOCK_PRF_OUTPUT) {
+function makeMockCredential({ prfFirst = MOCK_PRF_OUTPUT, largeBlobSupported = false } = {}) {
   return {
     rawId: MOCK_CREDENTIAL_ID,
     getClientExtensionResults: () => ({
-      prf: { results: { first: prfFirst } },
+      prf: prfFirst ? { results: { first: prfFirst } } : {},
+      largeBlob: { supported: largeBlobSupported },
     }),
   }
 }
 
-function makeMockAssertion(prfFirst = MOCK_PRF_OUTPUT) {
+function makeMockAssertion({ prfFirst = MOCK_PRF_OUTPUT, blob = null, written = false } = {}) {
   return {
     getClientExtensionResults: () => ({
-      prf: { results: { first: prfFirst } },
+      prf: prfFirst ? { results: { first: prfFirst } } : {},
+      largeBlob: blob !== null ? { blob } : written ? { written: true } : {},
     }),
   }
 }
@@ -114,7 +116,7 @@ describe('webauthn — isBiometricUnlockAvailable', () => {
 
 // ── setupBiometricUnlock ──────────────────────────────────────────────────────
 
-describe('webauthn — setupBiometricUnlock', () => {
+describe('webauthn — setupBiometricUnlock (PRF path)', () => {
   const masterSeed = crypto.getRandomValues(new Uint8Array(32))
   const meta = { handle: 'alice@example.com', username: 'Alice' }
 
@@ -123,19 +125,18 @@ describe('webauthn — setupBiometricUnlock', () => {
     localStorage.clear()
   })
 
-  it('saves an encrypted blob to localStorage', async () => {
+  it('saves method:prf + encrypted blob to localStorage', async () => {
     vi.stubGlobal('navigator', {
       credentials: { create: vi.fn().mockResolvedValue(makeMockCredential()) },
     })
     const { setupBiometricUnlock } = await getModule()
     await setupBiometricUnlock(masterSeed, meta)
 
-    const raw = localStorage.getItem('p2p-chat:biometric')
-    expect(raw).not.toBeNull()
-    const blob = JSON.parse(raw)
-    expect(blob).toHaveProperty('credentialId')
-    expect(blob).toHaveProperty('iv')
-    expect(blob).toHaveProperty('ciphertext')
+    const stored = JSON.parse(localStorage.getItem('p2p-chat:biometric'))
+    expect(stored.method).toBe('prf')
+    expect(stored).toHaveProperty('credentialId')
+    expect(stored).toHaveProperty('iv')
+    expect(stored).toHaveProperty('ciphertext')
   })
 
   it('throws "cancelled" when the user dismisses the prompt', async () => {
@@ -150,20 +151,77 @@ describe('webauthn — setupBiometricUnlock', () => {
   it('throws "authenticator-no-prf" when the authenticator does not return a PRF result', async () => {
     vi.stubGlobal('navigator', {
       credentials: {
-        create: vi.fn().mockResolvedValue({
-          rawId: MOCK_CREDENTIAL_ID,
-          getClientExtensionResults: () => ({}), // no prf key
-        }),
+        create: vi
+          .fn()
+          .mockResolvedValue(makeMockCredential({ prfFirst: null, largeBlobSupported: false })),
       },
     })
     const { setupBiometricUnlock } = await getModule()
-    await expect(setupBiometricUnlock(masterSeed, meta)).rejects.toThrow('authenticator-no-prf')
+    await expect(setupBiometricUnlock(masterSeed, meta)).rejects.toThrow(
+      'authenticator-no-prf-no-largeblob'
+    )
+  })
+})
+
+describe('webauthn — setupBiometricUnlock (largeBlob fallback)', () => {
+  const masterSeed = crypto.getRandomValues(new Uint8Array(32))
+  const meta = { handle: 'alice@example.com', username: 'Alice' }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    localStorage.clear()
+  })
+
+  it('saves method:largeBlob to localStorage when PRF is absent but largeBlob is supported', async () => {
+    vi.stubGlobal('navigator', {
+      credentials: {
+        create: vi
+          .fn()
+          .mockResolvedValue(makeMockCredential({ prfFirst: null, largeBlobSupported: true })),
+        get: vi.fn().mockResolvedValue(makeMockAssertion({ prfFirst: null, written: true })),
+      },
+    })
+    const { setupBiometricUnlock } = await getModule()
+    await setupBiometricUnlock(masterSeed, meta)
+
+    const stored = JSON.parse(localStorage.getItem('p2p-chat:biometric'))
+    expect(stored.method).toBe('largeBlob')
+    expect(stored).toHaveProperty('credentialId')
+    expect(stored).not.toHaveProperty('ciphertext')
+  })
+
+  it('throws "authenticator-no-prf-no-largeblob" when write is not confirmed', async () => {
+    vi.stubGlobal('navigator', {
+      credentials: {
+        create: vi
+          .fn()
+          .mockResolvedValue(makeMockCredential({ prfFirst: null, largeBlobSupported: true })),
+        get: vi.fn().mockResolvedValue(makeMockAssertion({ prfFirst: null, written: false })),
+      },
+    })
+    const { setupBiometricUnlock } = await getModule()
+    await expect(setupBiometricUnlock(masterSeed, meta)).rejects.toThrow(
+      'authenticator-no-prf-no-largeblob'
+    )
+  })
+
+  it('throws "cancelled" when the largeBlob write get() is dismissed', async () => {
+    vi.stubGlobal('navigator', {
+      credentials: {
+        create: vi
+          .fn()
+          .mockResolvedValue(makeMockCredential({ prfFirst: null, largeBlobSupported: true })),
+        get: vi.fn().mockRejectedValue(new DOMException('cancelled')),
+      },
+    })
+    const { setupBiometricUnlock } = await getModule()
+    await expect(setupBiometricUnlock(masterSeed, meta)).rejects.toThrow('cancelled')
   })
 })
 
 // ── unlockWithBiometrics ──────────────────────────────────────────────────────
 
-describe('webauthn — unlockWithBiometrics', () => {
+describe('webauthn — unlockWithBiometrics (PRF path)', () => {
   const masterSeed = crypto.getRandomValues(new Uint8Array(32))
   const meta = { handle: 'alice@example.com', username: 'Alice' }
 
@@ -186,7 +244,7 @@ describe('webauthn — unlockWithBiometrics', () => {
     return mod.unlockWithBiometrics()
   }
 
-  it('returns the original masterSeed after a setup+unlock round-trip', async () => {
+  it('returns the original masterSeed after a PRF setup+unlock round-trip', async () => {
     const recovered = await setupAndUnlock()
     expect(recovered).toBeInstanceOf(Uint8Array)
     expect(recovered).toEqual(masterSeed)
@@ -198,7 +256,6 @@ describe('webauthn — unlockWithBiometrics', () => {
   })
 
   it('throws "cancelled" when the user dismisses the prompt', async () => {
-    // First setup so the blob exists
     vi.stubGlobal('navigator', {
       credentials: {
         create: vi.fn().mockResolvedValue(makeMockCredential()),
@@ -213,11 +270,14 @@ describe('webauthn — unlockWithBiometrics', () => {
   })
 
   it('throws "decrypt-failed" when the PRF output is wrong', async () => {
-    // Setup with one PRF output, unlock with a different one
     vi.stubGlobal('navigator', {
       credentials: {
-        create: vi.fn().mockResolvedValue(makeMockCredential(new Uint8Array(32).fill(0xab))),
-        get: vi.fn().mockResolvedValue(makeMockAssertion(new Uint8Array(32).fill(0xcd))),
+        create: vi
+          .fn()
+          .mockResolvedValue(makeMockCredential({ prfFirst: new Uint8Array(32).fill(0xab) })),
+        get: vi
+          .fn()
+          .mockResolvedValue(makeMockAssertion({ prfFirst: new Uint8Array(32).fill(0xcd) })),
       },
     })
     vi.resetModules()
@@ -225,5 +285,55 @@ describe('webauthn — unlockWithBiometrics', () => {
     const mod = await import('../../src/p2p/webauthn.js')
     await mod.setupBiometricUnlock(masterSeed, meta)
     await expect(mod.unlockWithBiometrics()).rejects.toThrow('decrypt-failed')
+  })
+})
+
+describe('webauthn — unlockWithBiometrics (largeBlob path)', () => {
+  const masterSeed = crypto.getRandomValues(new Uint8Array(32))
+  const meta = { handle: 'alice@example.com', username: 'Alice' }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    localStorage.clear()
+  })
+
+  it('returns the original masterSeed after a largeBlob setup+unlock round-trip', async () => {
+    vi.stubGlobal('navigator', {
+      credentials: {
+        create: vi
+          .fn()
+          .mockResolvedValue(makeMockCredential({ prfFirst: null, largeBlobSupported: true })),
+        get: vi
+          .fn()
+          .mockResolvedValueOnce(makeMockAssertion({ prfFirst: null, written: true })) // write
+          .mockResolvedValueOnce(makeMockAssertion({ prfFirst: null, blob: masterSeed })), // read
+      },
+    })
+    vi.resetModules()
+    localStorage.clear()
+    const mod = await import('../../src/p2p/webauthn.js')
+    await mod.setupBiometricUnlock(masterSeed, meta)
+    const recovered = await mod.unlockWithBiometrics()
+    expect(recovered).toBeInstanceOf(Uint8Array)
+    expect(recovered).toEqual(masterSeed)
+  })
+
+  it('throws "no-seed-in-blob" when the blob is empty', async () => {
+    vi.stubGlobal('navigator', {
+      credentials: {
+        create: vi
+          .fn()
+          .mockResolvedValue(makeMockCredential({ prfFirst: null, largeBlobSupported: true })),
+        get: vi
+          .fn()
+          .mockResolvedValueOnce(makeMockAssertion({ prfFirst: null, written: true }))
+          .mockResolvedValueOnce(makeMockAssertion({ prfFirst: null, blob: new Uint8Array(0) })),
+      },
+    })
+    vi.resetModules()
+    localStorage.clear()
+    const mod = await import('../../src/p2p/webauthn.js')
+    await mod.setupBiometricUnlock(masterSeed, meta)
+    await expect(mod.unlockWithBiometrics()).rejects.toThrow('no-seed-in-blob')
   })
 })
