@@ -9,11 +9,32 @@ import React from 'react'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+const mockSetupBiometricUnlock = vi.fn()
+const mockRemoveBiometricUnlock = vi.fn()
+const mockIsBiometricUnlockAvailable = vi.fn(() => Promise.resolve(false))
+const mockHasBiometricUnlock = vi.fn(() => false)
+const mockGetPassphrase = vi.fn(() => 'my-passphrase')
+const mockGetStoredIdentityMeta = vi.fn(() => ({
+  handle: 'alice',
+  publicKey: 'aabb',
+  username: 'Alice',
+  method: 'passphrase',
+}))
+
 vi.mock('../../src/p2p/storage.js', () => ({
   getVideoQuality: vi.fn(() => '1080p'),
   setVideoQuality: vi.fn(),
   getRelayUrl: vi.fn(() => ''),
   setRelayUrl: vi.fn(),
+  getPassphrase: () => mockGetPassphrase(),
+  getStoredIdentityMeta: () => mockGetStoredIdentityMeta(),
+}))
+
+vi.mock('../../src/p2p/webauthn.js', () => ({
+  isBiometricUnlockAvailable: () => mockIsBiometricUnlockAvailable(),
+  hasBiometricUnlock: () => mockHasBiometricUnlock(),
+  setupBiometricUnlock: (...args) => mockSetupBiometricUnlock(...args),
+  removeBiometricUnlock: () => mockRemoveBiometricUnlock(),
 }))
 
 vi.mock('../../src/webrtc/media.js', () => ({
@@ -35,6 +56,7 @@ function setup(props = {}) {
     showStats: false,
     onShowStatsChange: vi.fn(),
     onClose: vi.fn(),
+    onLock: vi.fn(),
   }
   render(<SettingsModal {...defaults} {...props} />)
   return { ...defaults, ...props }
@@ -168,6 +190,160 @@ describe('SettingsModal — cancel', () => {
     const { onUsernameChange } = setup()
     await user.click(screen.getByRole('button', { name: /cancel/i }))
     expect(onUsernameChange).not.toHaveBeenCalled()
+  })
+})
+
+// ── Biometric unlock ──────────────────────────────────────────────────────────
+
+describe('SettingsModal — biometric unlock section visibility', () => {
+  beforeEach(() => {
+    mockHasBiometricUnlock.mockReturnValue(false)
+  })
+
+  it('does not show the biometric section when unavailable', async () => {
+    mockIsBiometricUnlockAvailable.mockResolvedValue(false)
+    setup()
+    await waitFor(() => {}) // let useEffect settle
+    expect(screen.queryByText(/biometric unlock/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the biometric section when available', async () => {
+    mockIsBiometricUnlockAvailable.mockResolvedValue(true)
+    setup()
+    await waitFor(() => expect(screen.getByText('Biometric unlock')).toBeInTheDocument())
+  })
+
+  it('does not show the biometric section for guest users even if available', async () => {
+    mockIsBiometricUnlockAvailable.mockResolvedValue(true)
+    setup({ identity: { ...DEFAULT_IDENTITY, isGuest: true } })
+    await waitFor(() => {})
+    expect(screen.queryByText(/biometric unlock/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('SettingsModal — biometric unlock not yet enabled', () => {
+  beforeEach(() => {
+    mockIsBiometricUnlockAvailable.mockResolvedValue(true)
+    mockHasBiometricUnlock.mockReturnValue(false)
+    mockSetupBiometricUnlock.mockResolvedValue(undefined)
+  })
+
+  it('shows the Enable button when biometric is not yet set up', async () => {
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
+  })
+
+  it('calls setupBiometricUnlock with passphrase and identity meta on Enable click', async () => {
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
+    await waitFor(() =>
+      expect(mockSetupBiometricUnlock).toHaveBeenCalledWith(
+        'my-passphrase',
+        expect.objectContaining({ handle: 'alice' })
+      )
+    )
+  })
+
+  it('shows "Setting up…" while setup is in progress', async () => {
+    mockSetupBiometricUnlock.mockReturnValue(new Promise(() => {})) // never resolves
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
+    expect(await screen.findByText(/setting up/i)).toBeInTheDocument()
+  })
+
+  it('switches to Disable button after successful setup', async () => {
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
+    )
+  })
+
+  it('shows the not-supported message when setup returns not-supported', async () => {
+    mockSetupBiometricUnlock.mockRejectedValue(new Error('not-supported'))
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
+    await waitFor(() =>
+      expect(screen.getByText(/does not support biometric unlock/i)).toBeInTheDocument()
+    )
+  })
+
+  it('shows the create-failed message when passkey creation fails', async () => {
+    mockSetupBiometricUnlock.mockRejectedValue(new Error('create-failed'))
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
+    await waitFor(() => expect(screen.getByText(/passkey creation failed/i)).toBeInTheDocument())
+  })
+
+  it('shows no error message when the user cancels the biometric prompt', async () => {
+    mockSetupBiometricUnlock.mockRejectedValue(new Error('cancelled'))
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).not.toBeDisabled()
+    )
+    expect(screen.queryByText(/failed|not support/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a generic error for unexpected failures', async () => {
+    mockSetupBiometricUnlock.mockRejectedValue(new Error('network-error'))
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
+    await waitFor(() => expect(screen.getByText(/setup failed\. try again/i)).toBeInTheDocument())
+  })
+})
+
+describe('SettingsModal — biometric unlock already enabled', () => {
+  beforeEach(() => {
+    mockIsBiometricUnlockAvailable.mockResolvedValue(true)
+    mockHasBiometricUnlock.mockReturnValue(true)
+  })
+
+  it('shows the Disable button when biometric is already enabled', async () => {
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
+    )
+  })
+
+  it('shows the active-state hint text when enabled', async () => {
+    setup()
+    await waitFor(() => expect(screen.getByText(/biometric unlock is active/i)).toBeInTheDocument())
+  })
+
+  it('calls removeBiometricUnlock and switches to Enable button on Disable click', async () => {
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^disable$/i }))
+    expect(mockRemoveBiometricUnlock).toHaveBeenCalledOnce()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
+    )
   })
 })
 
