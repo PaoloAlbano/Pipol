@@ -135,7 +135,11 @@ describe('LoginScreen — submit (create)', () => {
     await userEvent.type(screen.getByLabelText(/confirm passphrase/i), 'StrongPass123!')
     fireEvent.click(screen.getByRole('button', { name: /create \/ restore/i }))
 
-    await waitFor(() => expect(mockDeriveIdentityA).toHaveBeenCalledWith('alice', 'StrongPass123!'))
+    await waitFor(() =>
+      expect(mockDeriveIdentityA).toHaveBeenCalledWith('alice', 'StrongPass123!', {
+        method: 'passphrase',
+      })
+    )
     await waitFor(() => expect(onLogin).toHaveBeenCalled())
   })
 
@@ -155,7 +159,7 @@ describe('LoginScreen — submit (create)', () => {
       handle: 'alice',
       publicKey: 'aabbcc',
       username: 'Alice',
-      method: 'A',
+      method: 'passphrase',
     })
     setup()
     await userEvent.type(screen.getByLabelText(/^passphrase$/i), 'StrongPass123!')
@@ -221,7 +225,7 @@ describe('LoginScreen — biometric mode', () => {
       handle: 'alice',
       publicKey: 'aabbcc',
       username: 'Alice',
-      method: 'A',
+      method: 'passphrase',
     })
     mockHasBiometricUnlock.mockReturnValue(true)
     mockIsBiometricUnlockAvailable.mockResolvedValue(true)
@@ -300,7 +304,7 @@ describe('LoginScreen — handleSubmit guards', () => {
       handle: 'alice',
       publicKey: 'aabbcc',
       username: 'Alice',
-      method: 'A',
+      method: 'passphrase',
     })
     setup()
     // Type the same handle → isUnlock = true → no confirm/displayName fields
@@ -317,7 +321,7 @@ describe('LoginScreen — handleSubmit guards', () => {
       handle: 'alice',
       publicKey: 'aabbcc',
       username: 'Alice',
-      method: 'A',
+      method: 'passphrase',
     })
     setup()
     await userEvent.type(screen.getByLabelText(/^passphrase$/i), 'AnyPassphrase1!')
@@ -332,7 +336,7 @@ describe('LoginScreen — handleSubmit guards', () => {
       handle: 'alice',
       publicKey: 'aabbcc',
       username: 'Alice',
-      method: 'A',
+      method: 'passphrase',
     })
     setup()
     await userEvent.type(screen.getByLabelText(/^passphrase$/i), 'AnyPassphrase1!')
@@ -352,7 +356,7 @@ describe('LoginScreen — returning user (isUnlock)', () => {
       handle: 'alice',
       publicKey: 'aabbcc',
       username: 'Alice',
-      method: 'A',
+      method: 'passphrase',
     })
     mockHasBiometricUnlock.mockReturnValue(false)
     mockDeriveIdentityA.mockResolvedValue({ isNewAccount: false })
@@ -399,7 +403,7 @@ describe('LoginScreen — ALLOW_IDENTITY_RESET', () => {
       handle: 'alice',
       publicKey: 'aabbcc',
       username: 'Alice',
-      method: 'A',
+      method: 'passphrase',
     })
     setup()
     expect(screen.queryByRole('button', { name: /create new identity/i })).not.toBeInTheDocument()

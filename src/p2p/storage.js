@@ -220,7 +220,11 @@ export function getIdentity() {
  * @returns {Promise<{ isNewAccount: boolean }>}
  * @throws {Error} 'wrong-passphrase' if handle exists but passphrase is incorrect
  */
-export async function deriveIdentityA(handle, passphrase) {
+export async function deriveIdentityA(
+  handle,
+  passphrase,
+  { method = 'passphrase', hasPIN = false } = {}
+) {
   const normHandle = handle.toLowerCase().trim()
 
   // Normalise origin: strip leading "www." so pipol.app and www.pipol.app share the same salt.
@@ -269,10 +273,9 @@ export async function deriveIdentityA(handle, passphrase) {
   const username = isNewAccount ? generateUsername() : storedMeta.username
 
   if (isNewAccount) {
-    localStorage.setItem(
-      IDENTITY_STORAGE_KEY,
-      JSON.stringify({ handle: normHandle, publicKey: pubKeyHex, username, method: 'A' })
-    )
+    const meta = { handle: normHandle, publicKey: pubKeyHex, username, method }
+    if (method === 'emoji') meta.hasPIN = hasPIN
+    localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(meta))
   }
 
   _identity = {

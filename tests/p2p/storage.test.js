@@ -202,7 +202,7 @@ describe('storage — getStoredIdentityMeta', () => {
     expect(meta).toHaveProperty('handle', 'test-user')
     expect(meta).toHaveProperty('publicKey')
     expect(meta).toHaveProperty('username')
-    expect(meta).toHaveProperty('method', 'A')
+    expect(meta).toHaveProperty('method', 'passphrase')
     expect(meta).not.toHaveProperty('secretKey')
   })
 })

@@ -1,0 +1,250 @@
+/* ── Emoji Picker ─────────────────────────────────────────────────────────── */
+
+.ep {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+/* Selected sequence — 6 slots */
+.ep-sequence {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ep-slot {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  border: 2px dashed #2e2e2e;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.ep-slot--filled {
+  border-style: solid;
+  border-color: var(--primary);
+  background: rgba(124, 107, 240, 0.08);
+  cursor: pointer;
+}
+
+.ep-slot--filled:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: var(--danger);
+}
+
+.ep-slot img {
+  width: 30px;
+  height: 30px;
+  pointer-events: none;
+}
+
+.ep-slot-num {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Category tabs */
+.ep-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.ep-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.ep-tab {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ep-tab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.ep-tab--active {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Emoji grid */
+.ep-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+
+.ep-grid::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ep-grid::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+.ep-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+  padding: 7px;
+}
+
+.ep-cell:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.ep-cell--selected {
+  background: rgba(124, 107, 240, 0.15);
+  border-color: var(--primary);
+}
+
+.ep-cell--disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.ep-cell img {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Badge shown when the same emoji is used more than once */
+.ep-cell-count {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: var(--primary);
+  border-radius: 4px;
+  padding: 1px 3px;
+  pointer-events: none;
+}
+
+/* Hint below grid */
+.ep-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Selected names list */
+.ep-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-height: 30px;
+}
+
+.ep-name-item {
+  font-size: 11px;
+  color: #444;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ep-name-item--filled {
+  color: var(--text-muted);
+}
+
+.ep-name-num {
+  font-size: 10px;
+  font-weight: 700;
+  color: #333;
+  min-width: 10px;
+}
+
+.ep-name-item--filled .ep-name-num {
+  color: var(--primary);
+}
+
+/* Hover info bar */
+.ep-info-bar {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 16px;
+  font-style: italic;
+  transition: color 0.1s;
+}
+
+/* Progress indicator */
+.ep-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.ep-progress-count {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.ep-progress--complete .ep-progress-count {
+  color: var(--success);
+}
