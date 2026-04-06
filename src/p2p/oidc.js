@@ -62,7 +62,14 @@ export async function startOIDCFlow(provider, authUrl) {
 
   sessionStorage.setItem(
     SESSION_KEY,
-    JSON.stringify({ state, verifier, provider, authUrl, tokenEndpoint })
+    JSON.stringify({
+      state,
+      verifier,
+      provider,
+      authUrl,
+      tokenEndpoint,
+      returnTo: window.location.search,
+    })
   )
 
   const scope = provider.scope ?? 'openid email profile'
@@ -120,7 +127,7 @@ export async function handleOIDCCallback() {
       throw new Error(body.error || 'derive-failed')
     }
     const { serverSecret, keyVersion } = await deriveRes.json()
-    return { serverSecret, keyVersion, provider: pending.provider }
+    return { serverSecret, keyVersion, provider: pending.provider, returnTo: pending.returnTo }
   }
 
   // Standard OIDC: exchange code for id_token client-side (CORS supported)
@@ -158,7 +165,7 @@ export async function handleOIDCCallback() {
   }
 
   const { serverSecret, keyVersion } = await deriveRes.json()
-  return { serverSecret, keyVersion, provider: pending.provider }
+  return { serverSecret, keyVersion, provider: pending.provider, returnTo: pending.returnTo }
 }
 
 // ---------------------------------------------------------------------------

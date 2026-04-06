@@ -27,11 +27,11 @@ export default function OIDCCallback({ onLogin }) {
 
     async function run() {
       try {
-        const { serverSecret, keyVersion, provider } = await handleOIDCCallback()
+        const { serverSecret, keyVersion, provider, returnTo } = await handleOIDCCallback()
         await deriveIdentityOIDC(serverSecret, keyVersion, provider.id)
         if (cancelled) return
-        // Navigate to root before calling onLogin so App re-renders on '/'
-        window.history.replaceState({}, '', '/')
+        // Restore the pre-login URL (e.g. ?room=abc) so App can pick it up on re-render
+        window.history.replaceState({}, '', '/' + (returnTo || ''))
         onLogin()
       } catch (err) {
         if (cancelled) return

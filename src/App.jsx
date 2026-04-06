@@ -71,6 +71,14 @@ export default function App() {
   }
 
   function handleLogin() {
+    // Re-read room from URL — OIDC callback may have restored a ?room= param
+    const params = new URLSearchParams(window.location.search)
+    const room = params.get('room')
+    if (room) {
+      const normalised = room.trim().toLowerCase()
+      setRoomCode(normalised)
+      setView('room')
+    }
     setIdentity(getIdentity())
   }
 
