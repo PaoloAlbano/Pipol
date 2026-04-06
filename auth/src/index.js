@@ -14,7 +14,10 @@ export default {
     const origin = request.headers.get('Origin') ?? ''
 
     // ALLOWED_ORIGINS is optional — if not set, origin check is skipped.
-    const allowedOrigins = (env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const allowedOrigins = (env.ALLOWED_ORIGINS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
     const originAllowed = allowedOrigins.length === 0 || allowedOrigins.includes(origin)
 
     if (request.method === 'OPTIONS') {
@@ -25,7 +28,10 @@ export default {
     if (!originAllowed) return jsonResponse({ error: 'origin-not-allowed' }, 403)
 
     if (url.pathname === '/' && request.method === 'GET') {
-      return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+      return new Response(html, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      })
     }
 
     if (url.pathname === '/healthcheck' && request.method === 'GET') {
