@@ -8,6 +8,7 @@
     "lint": "eslint src/ server.js",
     "format": "prettier --write \"src/**/*.js\" server.js providers.json"
   },
+  "packageManager": "pnpm@10.5.0",
   "dependencies": {
     "jose": "^5.9.6"
   },

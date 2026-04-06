@@ -1,0 +1,3 @@
+node_modules/
+# Override root .gitignore — auth/ uses npm, its lock file must be committed
+!package-lock.json

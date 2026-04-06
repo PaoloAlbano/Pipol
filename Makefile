@@ -26,13 +26,13 @@ start-relay:
 	cd relay && npm run start
 
 start-auth:
-	cd auth && npm run start
+	cd auth && pnpm run start
 
 auth-lint:
-	cd auth && npm run lint
+	cd auth && pnpm run lint
 
 auth-format:
-	cd auth && npm run format
+	cd auth && pnpm run format
 
 auth-gen-key:
 	@echo "PIPOL_MASTER_KEY_V1=$$(openssl rand -hex 32)"
