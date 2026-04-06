@@ -8,6 +8,7 @@
     "tokenEndpoint": "https://github.com/login/oauth/access_token",
     "userinfoEndpoint": "https://api.github.com/user",
     "clientIdVar": "GITHUB_CLIENT_ID",
+    "clientSecretVar": "GITHUB_CLIENT_SECRET",
     "scope": "read:user"
   }
 ]

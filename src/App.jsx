@@ -25,16 +25,19 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showStats, setShowStatsState] = useState(getShowStats)
   const [roomCode, setRoomCode] = useState(() => {
-    if (window.location.pathname !== '/') {
+    const { pathname, search } = window.location
+    // Leave /callback alone — OIDCCallback handles it and will replaceState itself
+    if (pathname !== '/' && pathname !== '/callback') {
       window.history.replaceState({}, '', '/')
       return ''
     }
-    const params = new URLSearchParams(window.location.search)
+    const params = new URLSearchParams(search)
     return params.get('room') || ''
   })
   const [view, setView] = useState(() => {
-    if (window.location.pathname !== '/') return 'home'
-    const params = new URLSearchParams(window.location.search)
+    const { pathname, search } = window.location
+    if (pathname !== '/') return 'home'
+    const params = new URLSearchParams(search)
     return params.get('room') ? 'room' : 'home'
   })
 

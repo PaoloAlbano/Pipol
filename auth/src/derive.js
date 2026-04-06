@@ -30,6 +30,8 @@ function resolveProvider(config, env) {
   if (config.type === 'oauth2') {
     if (!config.authorizationEndpoint || !config.tokenEndpoint || !config.userinfoEndpoint)
       return null
+    const clientSecret =
+      config.clientSecret ?? (config.clientSecretVar ? env[config.clientSecretVar] : null)
     return {
       type: 'oauth2',
       authorizationEndpoint: config.authorizationEndpoint,
@@ -37,6 +39,7 @@ function resolveProvider(config, env) {
       userinfoEndpoint: config.userinfoEndpoint,
       scope: config.scope ?? 'read:user',
       clientId,
+      clientSecret,
     }
   }
 
@@ -125,7 +128,13 @@ export async function derive(
       // Server-side code exchange (e.g. GitHub: token endpoint doesn't support CORS)
       if (!code_verifier || !redirect_uri) throw new DeriveError('missing-fields', 400)
       const accessToken = await exchangeCode(
-        { code, code_verifier, redirect_uri, clientId: providerConfig.clientId },
+        {
+          code,
+          code_verifier,
+          redirect_uri,
+          clientId: providerConfig.clientId,
+          clientSecret: providerConfig.clientSecret,
+        },
         providerConfig.tokenEndpoint,
         providerName
       )
@@ -172,10 +181,20 @@ export async function derive(
  * Used for OAuth2 providers (e.g. GitHub) whose token endpoints don't support CORS.
  */
 async function exchangeCode(
-  { code, code_verifier, redirect_uri, clientId },
+  { code, code_verifier, redirect_uri, clientId, clientSecret },
   tokenEndpoint,
   providerName
 ) {
+  const params = {
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri,
+    client_id: clientId,
+    code_verifier,
+  }
+  // GitHub (and similar) require client_secret even with PKCE
+  if (clientSecret) params.client_secret = clientSecret
+
   let res
   try {
     res = await fetch(tokenEndpoint, {
@@ -184,13 +203,7 @@ async function exchangeCode(
         'Content-Type': 'application/x-www-form-urlencoded',
         Accept: 'application/json',
       },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri,
-        client_id: clientId,
-        code_verifier,
-      }),
+      body: new URLSearchParams(params),
     })
   } catch (err) {
     console.error(
