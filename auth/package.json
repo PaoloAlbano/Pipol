@@ -5,8 +5,6 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
     "lint": "eslint src/ server.js",
     "format": "prettier --write \"src/**/*.js\" server.js providers.json"
   },
@@ -16,7 +14,6 @@
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
-    "prettier": "^3.0.0",
-    "wrangler": "^3.101.0"
+    "prettier": "^3.0.0"
   }
 }
