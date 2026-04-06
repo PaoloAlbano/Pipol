@@ -1,0 +1,23 @@
+{
+  "name": "pipol-auth",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "secret:key": "wrangler secret put PIPOL_MASTER_KEY_V1",
+    "lint": "eslint src/ server.js",
+    "format": "prettier --write \"src/**/*.js\" server.js providers.json"
+  },
+  "dependencies": {
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "wrangler": "^3.101.0"
+  }
+}
