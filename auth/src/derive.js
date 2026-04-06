@@ -92,12 +92,17 @@ export class DeriveError extends Error {
 }
 
 export async function derive(
-  { id_token, token, provider: providerName, keyVersion: requestedVersion },
+  {
+    id_token,
+    token,
+    code,
+    code_verifier,
+    redirect_uri,
+    provider: providerName,
+    keyVersion: requestedVersion,
+  },
   env
 ) {
-  // Accept either `token` (new) or `id_token` (backward compat)
-  const rawToken = token ?? id_token
-  if (!rawToken || typeof rawToken !== 'string') throw new DeriveError('missing-fields', 400)
   if (!providerName || typeof providerName !== 'string')
     throw new DeriveError('missing-fields', 400)
 
@@ -116,10 +121,25 @@ export async function derive(
 
   let sub
   if (providerConfig.type === 'oauth2') {
-    // Plain OAuth2 (e.g. GitHub): rawToken is an access_token — resolve identity via userinfo
-    sub = await resolveSubFromUserinfo(rawToken, providerConfig.userinfoEndpoint, providerName)
+    if (code) {
+      // Server-side code exchange (e.g. GitHub: token endpoint doesn't support CORS)
+      if (!code_verifier || !redirect_uri) throw new DeriveError('missing-fields', 400)
+      const accessToken = await exchangeCode(
+        { code, code_verifier, redirect_uri, clientId: providerConfig.clientId },
+        providerConfig.tokenEndpoint,
+        providerName
+      )
+      sub = await resolveSubFromUserinfo(accessToken, providerConfig.userinfoEndpoint, providerName)
+    } else {
+      // Direct access_token path (kept for flexibility)
+      const rawToken = token ?? id_token
+      if (!rawToken || typeof rawToken !== 'string') throw new DeriveError('missing-fields', 400)
+      sub = await resolveSubFromUserinfo(rawToken, providerConfig.userinfoEndpoint, providerName)
+    }
   } else {
-    // Standard OIDC: rawToken is an id_token — verify JWT signature + claims
+    // Standard OIDC: verify id_token JWT signature + claims
+    const rawToken = token ?? id_token
+    if (!rawToken || typeof rawToken !== 'string') throw new DeriveError('missing-fields', 400)
     try {
       const JWKS = createRemoteJWKSet(new URL(providerConfig.jwksUri))
       const verifyOptions = { issuer: providerConfig.issuer }
@@ -145,6 +165,51 @@ export async function derive(
   )
 
   return { serverSecret: bytesToHex(serverSecret), keyVersion: version }
+}
+
+/**
+ * Exchanges an authorization code for an access_token server-side.
+ * Used for OAuth2 providers (e.g. GitHub) whose token endpoints don't support CORS.
+ */
+async function exchangeCode(
+  { code, code_verifier, redirect_uri, clientId },
+  tokenEndpoint,
+  providerName
+) {
+  let res
+  try {
+    res = await fetch(tokenEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri,
+        client_id: clientId,
+        code_verifier,
+      }),
+    })
+  } catch (err) {
+    console.error(
+      `[derive] token exchange fetch failed provider=${providerName} err=${err.message}`
+    )
+    throw new DeriveError('token-exchange-failed', 401)
+  }
+
+  if (!res.ok) {
+    console.error(`[derive] token exchange returned ${res.status} provider=${providerName}`)
+    throw new DeriveError('token-exchange-failed', 401)
+  }
+
+  const tokens = await res.json()
+  if (!tokens.access_token) {
+    console.error(`[derive] token exchange missing access_token provider=${providerName}`)
+    throw new DeriveError('token-exchange-failed', 401)
+  }
+  return tokens.access_token
 }
 
 /**

@@ -100,7 +100,30 @@ export async function handleOIDCCallback() {
 
   if (returnedState !== pending.state) throw new Error('state-mismatch')
 
-  // Exchange code for tokens at the IDP token endpoint
+  const redirectUri = `${window.location.origin}/callback`
+
+  if (pending.provider.type === 'oauth2') {
+    // GitHub and similar: token endpoint does not support CORS.
+    // Send code + verifier to our auth server — it exchanges with the IDP server-side.
+    const deriveRes = await fetch(`${pending.authUrl}/derive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code,
+        code_verifier: pending.verifier,
+        redirect_uri: redirectUri,
+        provider: pending.provider.id,
+      }),
+    })
+    if (!deriveRes.ok) {
+      const body = await deriveRes.json().catch(() => ({}))
+      throw new Error(body.error || 'derive-failed')
+    }
+    const { serverSecret, keyVersion } = await deriveRes.json()
+    return { serverSecret, keyVersion, provider: pending.provider }
+  }
+
+  // Standard OIDC: exchange code for id_token client-side (CORS supported)
   const tokenRes = await fetch(pending.tokenEndpoint, {
     method: 'POST',
     headers: {
@@ -110,7 +133,7 @@ export async function handleOIDCCallback() {
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code,
-      redirect_uri: `${window.location.origin}/callback`,
+      redirect_uri: redirectUri,
       client_id: pending.provider.clientId,
       code_verifier: pending.verifier,
     }),
@@ -119,11 +142,10 @@ export async function handleOIDCCallback() {
   if (!tokenRes.ok) throw new Error('token-exchange-failed')
   const tokens = await tokenRes.json()
 
-  // OIDC providers return id_token (JWT); OAuth2 providers return access_token (opaque)
-  const token = tokens.id_token ?? tokens.access_token
+  const token = tokens.id_token
   if (!token) throw new Error('missing-id-token')
 
-  // Send token to the Pipol auth server to get serverSecret
+  // Send id_token to the Pipol auth server to get serverSecret
   const deriveRes = await fetch(`${pending.authUrl}/derive`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
