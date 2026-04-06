@@ -6,15 +6,16 @@
  */
 
 import { derive, DeriveError } from './derive.js'
+import { html } from './landing.js'
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url)
     const origin = request.headers.get('Origin') ?? ''
-    const allowedOrigins = (env.ALLOWED_ORIGINS ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const originAllowed = allowedOrigins.includes(origin)
+
+    // ALLOWED_ORIGINS is optional — if not set, origin check is skipped.
+    const allowedOrigins = (env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const originAllowed = allowedOrigins.length === 0 || allowedOrigins.includes(origin)
 
     if (request.method === 'OPTIONS') {
       if (!originAllowed) return new Response(null, { status: 403 })
@@ -23,9 +24,11 @@ export default {
 
     if (!originAllowed) return jsonResponse({ error: 'origin-not-allowed' }, 403)
 
-    const url = new URL(request.url)
+    if (url.pathname === '/' && request.method === 'GET') {
+      return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+    }
 
-    if (url.pathname === '/health' && request.method === 'GET') {
+    if (url.pathname === '/healthcheck' && request.method === 'GET') {
       return jsonResponse({ ok: true }, 200, origin)
     }
 

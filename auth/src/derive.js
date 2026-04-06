@@ -7,7 +7,7 @@
  */
 
 import { createRemoteJWKSet, jwtVerify } from 'jose'
-import PROVIDER_CONFIGS from '../providers.json'
+import PROVIDER_CONFIGS from '../providers.json' with { type: 'json' }
 
 // ---------------------------------------------------------------------------
 // Provider resolution

@@ -8,9 +8,11 @@
 
 import http from 'http'
 import { derive, DeriveError } from './src/derive.js'
+import { html } from './src/landing.js'
 
 const PORT = process.env.PORT ?? 8080
 
+// ALLOWED_ORIGINS is optional — if not set, origin check is skipped.
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
   .split(',')
   .map((s) => s.trim())
@@ -49,7 +51,7 @@ function readBody(req) {
 
 async function handleRequest(req, res) {
   const origin = req.headers['origin'] ?? ''
-  const originAllowed = ALLOWED_ORIGINS.includes(origin)
+  const originAllowed = ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes(origin)
 
   if (req.method === 'OPTIONS') {
     if (!originAllowed) {
@@ -69,7 +71,13 @@ async function handleRequest(req, res) {
 
   const url = new URL(req.url, `http://${req.headers.host}`)
 
-  if (url.pathname === '/health' && req.method === 'GET') {
+  if (url.pathname === '/' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.end(html)
+    return
+  }
+
+  if (url.pathname === '/healthcheck' && req.method === 'GET') {
     sendJson(res, 200, { ok: true }, origin)
     return
   }
