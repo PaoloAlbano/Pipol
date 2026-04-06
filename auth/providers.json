@@ -2,7 +2,7 @@
   {
     "id": "google",
     "name": "Google",
-    "icon": "https://cdn.simpleicons.org/google",
+    "icon": "https://api.iconify.design/logos/google-icon.svg",
     "issuer": "https://accounts.google.com",
     "jwksUri": "https://www.googleapis.com/oauth2/v3/certs",
     "clientId": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
@@ -10,7 +10,7 @@
   {
     "id": "microsoft",
     "name": "Microsoft",
-    "icon": "https://cdn.simpleicons.org/microsoft",
+    "icon": "https://api.iconify.design/logos/microsoft-icon.svg",
     "issuer": "https://login.microsoftonline.com/common/v2.0",
     "jwksUri": "https://login.microsoftonline.com/common/discovery/v2.0/keys",
     "clientId": "YOUR_AZURE_APP_CLIENT_ID"
