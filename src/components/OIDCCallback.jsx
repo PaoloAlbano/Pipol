@@ -54,7 +54,10 @@ export default function OIDCCallback({ onLogin }) {
           <p className="login-error">
             {ERROR_MESSAGES[error] ?? 'An unexpected error occurred. Please try again.'}
           </p>
-          <button className="login-btn" onClick={() => window.history.replaceState({}, '', '/') || window.location.reload()}>
+          <button
+            className="login-btn"
+            onClick={() => window.history.replaceState({}, '', '/') || window.location.reload()}
+          >
             Back to sign in
           </button>
         </div>

@@ -12,16 +12,39 @@ import PROVIDER_CONFIGS from '../providers.json' with { type: 'json' }
 // ---------------------------------------------------------------------------
 // Provider resolution
 // ---------------------------------------------------------------------------
-function resolveProvider(config, env) {
-  const issuer = config.issuer ?? (config.issuerVar ? env[config.issuerVar] : null)
-  if (!issuer) return null
 
-  const jwksUri = config.jwksUri ?? issuer + (config.jwksUriSuffix ?? '')
-  // clientId is not a secret — lives in providers.json.
-  // clientIdVar is an optional override via env var.
+/**
+ * Resolves a provider config to a runtime object, or returns null if required
+ * env vars are missing.
+ *
+ * Two provider types are supported:
+ *   - "oidc" (default): standard OIDC with id_token and JWKS verification.
+ *     Requires issuer + jwksUri (derived from issuer if not set explicitly).
+ *   - "oauth2": plain OAuth2 (e.g. GitHub). No id_token — identity is resolved
+ *     by calling userinfoEndpoint with the access_token.
+ *     Requires authorizationEndpoint + tokenEndpoint + userinfoEndpoint.
+ */
+function resolveProvider(config, env) {
   const clientId = config.clientId ?? (config.clientIdVar ? env[config.clientIdVar] : null)
 
-  return { issuer, jwksUri, clientId }
+  if (config.type === 'oauth2') {
+    if (!config.authorizationEndpoint || !config.tokenEndpoint || !config.userinfoEndpoint)
+      return null
+    return {
+      type: 'oauth2',
+      authorizationEndpoint: config.authorizationEndpoint,
+      tokenEndpoint: config.tokenEndpoint,
+      userinfoEndpoint: config.userinfoEndpoint,
+      scope: config.scope ?? 'read:user',
+      clientId,
+    }
+  }
+
+  // Default: OIDC
+  const issuer = config.issuer ?? (config.issuerVar ? env[config.issuerVar] : null)
+  if (!issuer) return null
+  const jwksUri = config.jwksUri ?? issuer + (config.jwksUriSuffix ?? '')
+  return { type: 'oidc', issuer, jwksUri, clientId }
 }
 
 export function getProviders(env) {
@@ -36,20 +59,23 @@ export function getProviders(env) {
 /**
  * Returns the public list of available providers for the PWA.
  * Only providers whose required env vars are set are included.
- * Includes the data the PWA needs to initiate the PKCE flow.
+ * Includes the data the PWA needs to initiate the PKCE/OAuth2 flow.
  */
 export function getPublicProviders(env) {
   return PROVIDER_CONFIGS.filter((c) => resolveProvider(c, env) !== null).map((c) => {
     const resolved = resolveProvider(c, env)
-    return {
-      id: c.id,
-      name: c.name,
-      icon: c.icon ?? null,
-      clientId: resolved.clientId,
-      // authorizationUrl: PWA uses OIDC discovery ({issuer}/.well-known/openid-configuration)
-      // to get the actual authorization endpoint at runtime
-      issuer: resolved.issuer,
+    const base = { id: c.id, name: c.name, icon: c.icon ?? null, clientId: resolved.clientId }
+    if (resolved.type === 'oauth2') {
+      return {
+        ...base,
+        type: 'oauth2',
+        authorizationEndpoint: resolved.authorizationEndpoint,
+        tokenEndpoint: resolved.tokenEndpoint,
+        scope: resolved.scope,
+      }
     }
+    // OIDC: PWA discovers authorizationEndpoint at runtime via {issuer}/.well-known/openid-configuration
+    return { ...base, type: 'oidc', issuer: resolved.issuer }
   })
 }
 
@@ -66,10 +92,12 @@ export class DeriveError extends Error {
 }
 
 export async function derive(
-  { id_token, provider: providerName, keyVersion: requestedVersion },
+  { id_token, token, provider: providerName, keyVersion: requestedVersion },
   env
 ) {
-  if (!id_token || typeof id_token !== 'string') throw new DeriveError('missing-fields', 400)
+  // Accept either `token` (new) or `id_token` (backward compat)
+  const rawToken = token ?? id_token
+  if (!rawToken || typeof rawToken !== 'string') throw new DeriveError('missing-fields', 400)
   if (!providerName || typeof providerName !== 'string')
     throw new DeriveError('missing-fields', 400)
 
@@ -87,19 +115,27 @@ export async function derive(
   if (!providerConfig) throw new DeriveError('unknown-provider', 400)
 
   let sub
-  try {
-    const JWKS = createRemoteJWKSet(new URL(providerConfig.jwksUri))
-    const verifyOptions = { issuer: providerConfig.issuer }
-    if (providerConfig.clientId) verifyOptions.audience = providerConfig.clientId
-    const { payload } = await jwtVerify(id_token, JWKS, verifyOptions)
-    sub = payload.sub
-  } catch (err) {
-    console.error(`[derive] token verification failed provider=${providerName} err=${err.message}`)
-    throw new DeriveError('invalid-token', 401)
+  if (providerConfig.type === 'oauth2') {
+    // Plain OAuth2 (e.g. GitHub): rawToken is an access_token — resolve identity via userinfo
+    sub = await resolveSubFromUserinfo(rawToken, providerConfig.userinfoEndpoint, providerName)
+  } else {
+    // Standard OIDC: rawToken is an id_token — verify JWT signature + claims
+    try {
+      const JWKS = createRemoteJWKSet(new URL(providerConfig.jwksUri))
+      const verifyOptions = { issuer: providerConfig.issuer }
+      if (providerConfig.clientId) verifyOptions.audience = providerConfig.clientId
+      const { payload } = await jwtVerify(rawToken, JWKS, verifyOptions)
+      sub = payload.sub
+    } catch (err) {
+      console.error(
+        `[derive] token verification failed provider=${providerName} err=${err.message}`
+      )
+      throw new DeriveError('invalid-token', 401)
+    }
   }
 
   if (!sub) {
-    console.error(`[derive] missing sub in token provider=${providerName}`)
+    console.error(`[derive] missing sub provider=${providerName}`)
     throw new DeriveError('invalid-token', 401)
   }
 
@@ -109,6 +145,40 @@ export async function derive(
   )
 
   return { serverSecret: bytesToHex(serverSecret), keyVersion: version }
+}
+
+/**
+ * Calls a userinfo endpoint with an access_token and returns the subject identifier.
+ * Used for plain OAuth2 providers (e.g. GitHub) that don't issue id_tokens.
+ *
+ * For GitHub the response is { id, login, ... } — we use String(id) as sub.
+ * For standard userinfo endpoints the response is { sub, ... }.
+ */
+async function resolveSubFromUserinfo(accessToken, userinfoEndpoint, providerName) {
+  let res
+  try {
+    res = await fetch(userinfoEndpoint, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        // GitHub requires a User-Agent header
+        'User-Agent': 'pipol-auth-server/1.0',
+      },
+    })
+  } catch (err) {
+    console.error(`[derive] userinfo fetch failed provider=${providerName} err=${err.message}`)
+    throw new DeriveError('invalid-token', 401)
+  }
+
+  if (!res.ok) {
+    console.error(`[derive] userinfo returned ${res.status} provider=${providerName}`)
+    throw new DeriveError('invalid-token', 401)
+  }
+
+  const userinfo = await res.json()
+  // Standard OIDC userinfo uses `sub`; GitHub uses numeric `id`
+  const sub = userinfo.sub ?? (userinfo.id != null ? String(userinfo.id) : null)
+  return sub
 }
 
 // ---------------------------------------------------------------------------

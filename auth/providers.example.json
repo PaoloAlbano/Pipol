@@ -1,0 +1,49 @@
+[
+  {
+    "id": "github",
+    "name": "GitHub",
+    "icon": "https://api.iconify.design/logos/github-icon.svg",
+    "type": "oauth2",
+    "authorizationEndpoint": "https://github.com/login/oauth/authorize",
+    "tokenEndpoint": "https://github.com/login/oauth/access_token",
+    "userinfoEndpoint": "https://api.github.com/user",
+    "clientId": "YOUR_GITHUB_CLIENT_ID",
+    "scope": "read:user"
+  },
+  {
+    "id": "google",
+    "name": "Google",
+    "icon": "https://api.iconify.design/logos/google-icon.svg",
+    "type": "oidc",
+    "issuer": "https://accounts.google.com",
+    "jwksUri": "https://www.googleapis.com/oauth2/v3/certs",
+    "clientId": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+  },
+  {
+    "id": "google-env",
+    "name": "Google (via env var)",
+    "icon": "https://api.iconify.design/logos/google-icon.svg",
+    "type": "oidc",
+    "issuer": "https://accounts.google.com",
+    "jwksUri": "https://www.googleapis.com/oauth2/v3/certs",
+    "clientIdVar": "PIPOL_GOOGLE_CLIENT_ID"
+  },
+  {
+    "id": "microsoft",
+    "name": "Microsoft",
+    "icon": "https://api.iconify.design/logos/microsoft-icon.svg",
+    "type": "oidc",
+    "issuer": "https://login.microsoftonline.com/common/v2.0",
+    "jwksUri": "https://login.microsoftonline.com/common/discovery/v2.0/keys",
+    "clientId": "YOUR_AZURE_APP_CLIENT_ID"
+  },
+  {
+    "id": "okta",
+    "name": "Okta",
+    "icon": "https://api.iconify.design/simple-icons/okta.svg",
+    "type": "oidc",
+    "issuerVar": "PIPOL_OKTA_ISSUER",
+    "jwksUriSuffix": "/oauth2/v1/keys",
+    "clientIdVar": "PIPOL_OKTA_CLIENT_ID"
+  }
+]

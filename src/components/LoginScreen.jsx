@@ -528,9 +528,7 @@ export default function LoginScreen({ onLogin }) {
                   onClick={() => handleIdpLogin(provider)}
                   disabled={idpLoading}
                 >
-                  {provider.icon && (
-                    <img src={provider.icon} alt="" className="login-idp-icon" />
-                  )}
+                  {provider.icon && <img src={provider.icon} alt="" className="login-idp-icon" />}
                   {provider.name}
                 </button>
               ))}
