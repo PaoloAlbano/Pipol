@@ -93,6 +93,11 @@ export const html = `<!DOCTYPE html>
       </div>
       <div class="endpoint">
         <span class="method get">GET</span>
+        <span class="path"><a href="/providers" style="color:inherit">/providers</a></span>
+        <span class="desc">Available providers</span>
+      </div>
+      <div class="endpoint">
+        <span class="method get">GET</span>
         <span class="path"><a href="/healthcheck" style="color:inherit">/healthcheck</a></span>
         <span class="desc">Health check</span>
       </div>

@@ -288,6 +288,81 @@ export async function deriveIdentityA(
 }
 
 /**
+ * Derives the user identity from an OIDC serverSecret (Option D).
+ *
+ * masterSeed = PBKDF2(serverSecret, SHA-256("pipol:" + origin), 600_000)
+ *
+ * No PIN required — authentication is delegated entirely to the IDP.
+ * The serverSecret is a 32-byte value returned by the Pipol auth server
+ * after verifying the id_token; it is deterministic per user per deployment.
+ *
+ * @param {string} serverSecret  Hex-encoded 32-byte value from /derive
+ * @param {string} keyVersion    Version tag returned by the auth server (e.g. "v1")
+ * @param {string} providerId    Provider id (e.g. "google")
+ * @returns {Promise<{ isNewAccount: boolean }>}
+ */
+export async function deriveIdentityOIDC(serverSecret, keyVersion, providerId) {
+  const { protocol, hostname, port } = window.location
+  const normHostname = hostname.replace(/^www\./, '')
+  const normOrigin = `${protocol}//${normHostname}${port ? ':' + port : ''}`
+
+  const saltBytes = new TextEncoder().encode(`pipol:${normOrigin}`)
+  const saltHash = await webcrypto.subtle.digest('SHA-256', saltBytes)
+
+  const keyMaterial = await webcrypto.subtle.importKey(
+    'raw',
+    b4a.from(serverSecret, 'hex'),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  )
+  const derived = await webcrypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: saltHash, iterations: 600_000, hash: 'SHA-256' },
+    keyMaterial,
+    256
+  )
+  const masterSeed = new Uint8Array(derived)
+
+  const keyPair = crypto.keyPair(masterSeed.slice(0, 32))
+  const pubKeyHex = b4a.toString(keyPair.publicKey, 'hex')
+
+  const storedMeta = getStoredIdentityMeta()
+  const isNewAccount =
+    !storedMeta || storedMeta.method !== 'oidc' || storedMeta.provider !== providerId
+
+  if (!isNewAccount && storedMeta.publicKey !== pubKeyHex) {
+    // The serverSecret changed (key rotation on the backend). Treat as new account.
+    throw new Error('key-version-changed')
+  }
+
+  _masterSeed = masterSeed
+  _store = null
+
+  const username = isNewAccount ? generateUsername() : storedMeta.username
+
+  if (isNewAccount) {
+    localStorage.setItem(
+      IDENTITY_STORAGE_KEY,
+      JSON.stringify({
+        publicKey: pubKeyHex,
+        username,
+        method: 'oidc',
+        provider: providerId,
+        serverSecretVersion: keyVersion,
+      })
+    )
+  }
+
+  _identity = {
+    publicKey: keyPair.publicKey,
+    secretKey: keyPair.secretKey,
+    username,
+  }
+
+  return { isNewAccount }
+}
+
+/**
  * Updates the username in memory and localStorage.
  * @param {string} newUsername
  */

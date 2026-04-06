@@ -2,6 +2,7 @@ import React, { useState, useEffect, lazy, Suspense } from 'react'
 import Home from './components/Home.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import LoginScreen from './components/LoginScreen.jsx'
+import OIDCCallback from './components/OIDCCallback.jsx'
 
 // Lazy-load Room and the entire P2P stack — only downloaded when the user enters a room
 const Room = lazy(() => import('./components/Room.jsx'))
@@ -79,6 +80,10 @@ export default function App() {
   function handleUsernameChange(name) {
     setUsername(name)
     setIdentity((prev) => ({ ...prev, username: name }))
+  }
+
+  if (window.location.pathname === '/callback') {
+    return <OIDCCallback onLogin={handleLogin} />
   }
 
   if (!identity) return <LoginScreen onLogin={handleLogin} />

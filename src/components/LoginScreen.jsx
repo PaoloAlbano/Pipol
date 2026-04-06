@@ -11,8 +11,11 @@ import {
   isBiometricUnlockAvailable,
   unlockWithBiometrics,
 } from '../p2p/webauthn.js'
+import { fetchProviders, startOIDCFlow } from '../p2p/oidc.js'
 import EmojiPicker from './EmojiPicker.jsx'
 import '../styles/login.css'
+
+const AUTH_URL = import.meta.env.VITE_AUTH_URL || ''
 
 const ALLOW_IDENTITY_RESET = __ALLOW_IDENTITY_RESET__
 
@@ -41,6 +44,26 @@ export default function LoginScreen({ onLogin }) {
   useEffect(() => {
     if (hasBiometric) isBiometricUnlockAvailable().then(setBiometricAvailable)
   }, [hasBiometric])
+
+  // ── IDP providers ────────────────────────────────────────────────────────────
+  const [idpProviders, setIdpProviders] = useState([])
+  const [idpLoading, setIdpLoading] = useState(false)
+
+  useEffect(() => {
+    if (!AUTH_URL) return
+    fetchProviders(AUTH_URL).then(setIdpProviders)
+  }, [])
+
+  async function handleIdpLogin(provider) {
+    setIdpLoading(true)
+    try {
+      await startOIDCFlow(provider, AUTH_URL)
+      // startOIDCFlow redirects — execution stops here
+    } catch (err) {
+      setError('Sign in failed: ' + err.message)
+      setIdpLoading(false)
+    }
+  }
 
   // ── Shared fields ───────────────────────────────────────────────────────────
   const [handle, setHandle] = useState(storedMeta?.handle || '')
@@ -490,6 +513,29 @@ export default function LoginScreen({ onLogin }) {
               Go back
             </button>
           </p>
+        )}
+
+        {idpProviders.length > 0 && (
+          <>
+            <div className="login-divider">
+              <span>or sign in with</span>
+            </div>
+            <div className="login-idp-list">
+              {idpProviders.map((provider) => (
+                <button
+                  key={provider.id}
+                  className="login-idp-btn"
+                  onClick={() => handleIdpLogin(provider)}
+                  disabled={idpLoading}
+                >
+                  {provider.icon && (
+                    <img src={provider.icon} alt="" className="login-idp-icon" />
+                  )}
+                  {provider.name}
+                </button>
+              ))}
+            </div>
+          </>
         )}
 
         <div className="login-divider">

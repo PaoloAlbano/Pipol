@@ -7,7 +7,7 @@
  */
 
 import http from 'http'
-import { derive, DeriveError } from './src/derive.js'
+import { derive, DeriveError, getPublicProviders } from './src/derive.js'
 import { html } from './src/landing.js'
 
 const PORT = process.env.PORT ?? 8080
@@ -79,6 +79,11 @@ async function handleRequest(req, res) {
 
   if (url.pathname === '/healthcheck' && req.method === 'GET') {
     sendJson(res, 200, { ok: true }, origin)
+    return
+  }
+
+  if (url.pathname === '/providers' && req.method === 'GET') {
+    sendJson(res, 200, getPublicProviders(process.env), origin)
     return
   }
 

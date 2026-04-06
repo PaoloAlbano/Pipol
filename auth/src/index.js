@@ -5,7 +5,7 @@
  * Deploy with: wrangler deploy
  */
 
-import { derive, DeriveError } from './derive.js'
+import { derive, DeriveError, getPublicProviders } from './derive.js'
 import { html } from './landing.js'
 
 export default {
@@ -36,6 +36,10 @@ export default {
 
     if (url.pathname === '/healthcheck' && request.method === 'GET') {
       return jsonResponse({ ok: true }, 200, origin)
+    }
+
+    if (url.pathname === '/providers' && request.method === 'GET') {
+      return jsonResponse(getPublicProviders(env), 200, origin)
     }
 
     if (url.pathname === '/derive' && request.method === 'POST') {

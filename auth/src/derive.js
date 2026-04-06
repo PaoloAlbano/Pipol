@@ -33,6 +33,26 @@ export function getProviders(env) {
   return map
 }
 
+/**
+ * Returns the public list of available providers for the PWA.
+ * Only providers whose required env vars are set are included.
+ * Includes the data the PWA needs to initiate the PKCE flow.
+ */
+export function getPublicProviders(env) {
+  return PROVIDER_CONFIGS.filter((c) => resolveProvider(c, env) !== null).map((c) => {
+    const resolved = resolveProvider(c, env)
+    return {
+      id: c.id,
+      name: c.name,
+      icon: c.icon ?? null,
+      clientId: resolved.clientId,
+      // authorizationUrl: PWA uses OIDC discovery ({issuer}/.well-known/openid-configuration)
+      // to get the actual authorization endpoint at runtime
+      issuer: resolved.issuer,
+    }
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Main derive function
 // Returns { serverSecret, keyVersion } or throws a DeriveError.

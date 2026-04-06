@@ -2,6 +2,7 @@
   {
     "id": "google",
     "name": "Google",
+    "icon": "https://cdn.simpleicons.org/google",
     "issuer": "https://accounts.google.com",
     "jwksUri": "https://www.googleapis.com/oauth2/v3/certs",
     "clientId": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
@@ -9,6 +10,7 @@
   {
     "id": "microsoft",
     "name": "Microsoft",
+    "icon": "https://cdn.simpleicons.org/microsoft",
     "issuer": "https://login.microsoftonline.com/common/v2.0",
     "jwksUri": "https://login.microsoftonline.com/common/discovery/v2.0/keys",
     "clientId": "YOUR_AZURE_APP_CLIENT_ID"
@@ -16,6 +18,7 @@
   {
     "id": "okta",
     "name": "Okta",
+    "icon": "https://cdn.simpleicons.org/okta",
     "issuerVar": "PIPOL_OKTA_ISSUER",
     "jwksUriSuffix": "/oauth2/v1/keys",
     "clientId": "YOUR_OKTA_CLIENT_ID"
