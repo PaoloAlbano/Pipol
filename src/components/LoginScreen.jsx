@@ -75,8 +75,8 @@ export default function LoginScreen({ onLogin }) {
   const isUnlock = storedMeta && storedMeta.handle === normHandle
   const isCreate = !isUnlock
 
-  // ── Method B state (emoji picker) ───────────────────────────────────────────
-  const [selectedEmojis, setSelectedEmojis] = useState([])
+  // ── Method B state (symbol picker) ──────────────────────────────────────────
+  const [selectedSymbols, setSelectedSymbols] = useState([])
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [showPin, setShowPin] = useState(false)
@@ -98,7 +98,7 @@ export default function LoginScreen({ onLogin }) {
       )
     }
     // Method B
-    if (selectedEmojis.length < 6) return false
+    if (selectedSymbols.length < 6) return false
     if (isCreate && pin && (pin.length < 4 || pin !== confirmPin)) return false
     if (isUnlock && storedMeta?.hasPIN && !pin) return false
     return true
@@ -111,8 +111,8 @@ export default function LoginScreen({ onLogin }) {
     setLoading(true)
     setError('')
     try {
-      const pw = isMethodA ? passphrase : buildPassphrase(selectedEmojis, pin)
-      const opts = isMethodA ? { method: 'passphrase' } : { method: 'emoji', hasPIN: !!pin }
+      const pw = isMethodA ? passphrase : buildPassphrase(selectedSymbols, pin)
+      const opts = isMethodA ? { method: 'passphrase' } : { method: 'symbols', hasPIN: !!pin }
       const { isNewAccount } = await deriveIdentityA(handle, pw, opts)
       if (isNewAccount) setUsername(displayName.trim() || generateUsername())
       onLogin()
@@ -121,7 +121,7 @@ export default function LoginScreen({ onLogin }) {
         err.message === 'wrong-passphrase'
           ? isMethodA
             ? 'Wrong passphrase.'
-            : 'Wrong emoji sequence or PIN.'
+            : 'Wrong symbol sequence or PIN.'
           : 'Unexpected error.'
       setError(msg)
       console.error('[login]', err)
@@ -257,7 +257,7 @@ export default function LoginScreen({ onLogin }) {
                 setHandle(e.target.value)
                 setError('')
                 // Reset sequence when handle changes (different user = different identity)
-                setSelectedEmojis([])
+                setSelectedSymbols([])
                 setPin('')
                 setConfirmPin('')
                 setPassphrase('')
@@ -279,7 +279,7 @@ export default function LoginScreen({ onLogin }) {
                 className={`login-method-btn${isMethodA ? ' login-method-btn--active' : ''}`}
                 onClick={() => {
                   setCreateMethod('passphrase')
-                  setSelectedEmojis([])
+                  setSelectedSymbols([])
                   setPin('')
                   setConfirmPin('')
                   setError('')
@@ -291,23 +291,23 @@ export default function LoginScreen({ onLogin }) {
                 type="button"
                 className={`login-method-btn${!isMethodA ? ' login-method-btn--active' : ''}`}
                 onClick={() => {
-                  setCreateMethod('emoji')
+                  setCreateMethod('symbols')
                   setPassphrase('')
                   setConfirm('')
                   setError('')
                 }}
               >
-                Emoji sequence
+                Symbol sequence
               </button>
             </div>
           )}
 
-          {/* ── Method B: emoji picker ── */}
+          {/* ── Method B: symbol picker ── */}
           {!isMethodA && (
             <>
               <div className="login-field">
-                <label>{isUnlock ? 'Your emoji sequence' : 'Choose 6 emoji as your key'}</label>
-                <EmojiPicker value={selectedEmojis} onChange={setSelectedEmojis} maxCount={6} />
+                <label>{isUnlock ? 'Your symbol sequence' : 'Choose 6 symbols as your key'}</label>
+                <EmojiPicker value={selectedSymbols} onChange={setSelectedSymbols} maxCount={6} />
               </div>
 
               <div className="login-field">

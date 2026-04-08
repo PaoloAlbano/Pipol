@@ -402,7 +402,7 @@ describe('LoginScreen — method selector', () => {
   it('shows the method selector in create mode', () => {
     setup()
     expect(screen.getByRole('button', { name: /text passphrase/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /emoji sequence/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /symbol sequence/i })).toBeInTheDocument()
   })
 
   it('defaults to text passphrase method (passphrase field visible)', () => {
@@ -411,16 +411,16 @@ describe('LoginScreen — method selector', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
-  it('switches to emoji picker when Emoji sequence is clicked', () => {
+  it('switches to symbol picker when Symbol sequence is clicked', () => {
     setup()
-    fireEvent.click(screen.getByRole('button', { name: /emoji sequence/i }))
+    fireEvent.click(screen.getByRole('button', { name: /symbol sequence/i }))
     expect(screen.getByRole('listbox')).toBeInTheDocument()
     expect(screen.queryByLabelText(/^passphrase$/i)).not.toBeInTheDocument()
   })
 
   it('switches back to passphrase when Text passphrase is clicked', () => {
     setup()
-    fireEvent.click(screen.getByRole('button', { name: /emoji sequence/i }))
+    fireEvent.click(screen.getByRole('button', { name: /symbol sequence/i }))
     fireEvent.click(screen.getByRole('button', { name: /text passphrase/i }))
     expect(screen.getByLabelText(/^passphrase$/i)).toBeInTheDocument()
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
@@ -434,21 +434,21 @@ describe('LoginScreen — method selector', () => {
       method: 'passphrase',
     })
     setup()
-    expect(screen.queryByRole('button', { name: /emoji sequence/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /symbol sequence/i })).not.toBeInTheDocument()
   })
 })
 
 // ── Emoji method — create ─────────────────────────────────────────────────────
 
-describe('LoginScreen — emoji method (create)', () => {
+describe('LoginScreen — symbol method (create)', () => {
   beforeEach(() => {
     mockGetStoredIdentityMeta.mockReturnValue(null)
     mockHasBiometricUnlock.mockReturnValue(false)
     mockDeriveIdentityA.mockResolvedValue({ isNewAccount: true })
   })
 
-  function switchToEmoji() {
-    fireEvent.click(screen.getByRole('button', { name: /emoji sequence/i }))
+  function switchToSymbols() {
+    fireEvent.click(screen.getByRole('button', { name: /symbol sequence/i }))
   }
 
   function selectEmojis(count = 6) {
@@ -458,14 +458,14 @@ describe('LoginScreen — emoji method (create)', () => {
 
   it('shows the emoji picker and PIN field after switching method', () => {
     setup()
-    switchToEmoji()
+    switchToSymbols()
     expect(screen.getByRole('listbox')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('optional')).toBeInTheDocument()
   })
 
   it('submit is disabled until 6 emoji are selected', async () => {
     setup()
-    switchToEmoji()
+    switchToSymbols()
     await userEvent.type(screen.getByLabelText(/^handle$/i), 'alice')
     selectEmojis(5)
     expect(screen.getByRole('button', { name: /create \/ restore/i })).toBeDisabled()
@@ -476,7 +476,7 @@ describe('LoginScreen — emoji method (create)', () => {
   it('calls deriveIdentityA with emoji names joined as passphrase', async () => {
     const { onLogin } = setup()
     await userEvent.type(screen.getByLabelText(/^handle$/i), 'alice')
-    switchToEmoji()
+    switchToSymbols()
     selectEmojis(6)
     fireEvent.click(screen.getByRole('button', { name: /create \/ restore/i }))
 
@@ -484,7 +484,7 @@ describe('LoginScreen — emoji method (create)', () => {
       const [handle, pw, opts] = mockDeriveIdentityA.mock.calls[0]
       expect(handle).toBe('alice')
       expect(pw).toMatch(/^[\w ]+( [\w ]+){5}$/) // 6 names joined by spaces
-      expect(opts).toEqual({ method: 'emoji', hasPIN: false })
+      expect(opts).toEqual({ method: 'symbols', hasPIN: false })
     })
     await waitFor(() => expect(onLogin).toHaveBeenCalled())
   })
@@ -492,7 +492,7 @@ describe('LoginScreen — emoji method (create)', () => {
   it('appends :pin to the passphrase when a PIN is provided', async () => {
     setup()
     await userEvent.type(screen.getByLabelText(/^handle$/i), 'alice')
-    switchToEmoji()
+    switchToSymbols()
     selectEmojis(6)
     await userEvent.type(screen.getByPlaceholderText('optional'), '1234')
     await userEvent.type(screen.getByLabelText(/confirm pin/i), '1234')
@@ -501,14 +501,14 @@ describe('LoginScreen — emoji method (create)', () => {
     await waitFor(() => {
       const [, pw, opts] = mockDeriveIdentityA.mock.calls[0]
       expect(pw).toMatch(/:1234$/)
-      expect(opts).toEqual({ method: 'emoji', hasPIN: true })
+      expect(opts).toEqual({ method: 'symbols', hasPIN: true })
     })
   })
 
   it('keeps submit disabled when PIN and confirm PIN do not match', async () => {
     setup()
     await userEvent.type(screen.getByLabelText(/^handle$/i), 'alice')
-    switchToEmoji()
+    switchToSymbols()
     selectEmojis(6)
     await userEvent.type(screen.getByPlaceholderText('optional'), '1234')
     await userEvent.type(screen.getByLabelText(/confirm pin/i), '5678')
@@ -518,7 +518,7 @@ describe('LoginScreen — emoji method (create)', () => {
   it('keeps submit disabled when PIN is shorter than 4 digits', async () => {
     setup()
     await userEvent.type(screen.getByLabelText(/^handle$/i), 'alice')
-    switchToEmoji()
+    switchToSymbols()
     selectEmojis(6)
     await userEvent.type(screen.getByPlaceholderText('optional'), '12')
     await userEvent.type(screen.getByLabelText(/confirm pin/i), '12')
@@ -527,34 +527,34 @@ describe('LoginScreen — emoji method (create)', () => {
 
   it('resets the emoji selection when switching back to text passphrase', () => {
     setup()
-    switchToEmoji()
+    switchToSymbols()
     selectEmojis(3)
     fireEvent.click(screen.getByRole('button', { name: /text passphrase/i }))
     // Switch back — slots should be empty again
-    fireEvent.click(screen.getByRole('button', { name: /emoji sequence/i }))
+    fireEvent.click(screen.getByRole('button', { name: /symbol sequence/i }))
     expect(screen.getAllByRole('button', { name: /^Empty slot/i })).toHaveLength(6)
   })
 })
 
 // ── Emoji method — unlock ─────────────────────────────────────────────────────
 
-describe('LoginScreen — emoji method (unlock)', () => {
+describe('LoginScreen — symbol method (unlock)', () => {
   beforeEach(() => {
     mockHasBiometricUnlock.mockReturnValue(false)
     mockDeriveIdentityA.mockResolvedValue({ isNewAccount: false })
   })
 
-  it('shows emoji picker (no method selector) for existing emoji accounts', () => {
+  it('shows symbol picker (no method selector) for existing symbol accounts', () => {
     mockGetStoredIdentityMeta.mockReturnValue({
       handle: 'alice',
       publicKey: 'aabb',
       username: 'Alice',
-      method: 'emoji',
+      method: 'symbols',
       hasPIN: false,
     })
     setup()
     expect(screen.getByRole('listbox')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /emoji sequence/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /symbol sequence/i })).not.toBeInTheDocument()
   })
 
   it('submit is disabled until 6 emoji are selected', () => {
@@ -562,7 +562,7 @@ describe('LoginScreen — emoji method (unlock)', () => {
       handle: 'alice',
       publicKey: 'aabb',
       username: 'Alice',
-      method: 'emoji',
+      method: 'symbols',
       hasPIN: false,
     })
     setup()
@@ -576,7 +576,7 @@ describe('LoginScreen — emoji method (unlock)', () => {
       handle: 'alice',
       publicKey: 'aabb',
       username: 'Alice',
-      method: 'emoji',
+      method: 'symbols',
       hasPIN: true,
     })
     setup()
@@ -585,12 +585,12 @@ describe('LoginScreen — emoji method (unlock)', () => {
     expect(screen.getByRole('button', { name: /unlock/i })).toBeDisabled()
   })
 
-  it('calls deriveIdentityA with emoji passphrase and method emoji on unlock', async () => {
+  it('calls deriveIdentityA with symbol passphrase and method symbols on unlock', async () => {
     mockGetStoredIdentityMeta.mockReturnValue({
       handle: 'alice',
       publicKey: 'aabb',
       username: 'Alice',
-      method: 'emoji',
+      method: 'symbols',
       hasPIN: false,
     })
     const { onLogin } = setup()
@@ -603,18 +603,18 @@ describe('LoginScreen — emoji method (unlock)', () => {
       expect(handle).toBe('alice')
       expect(typeof pw).toBe('string')
       expect(pw.length).toBeGreaterThan(0)
-      expect(opts).toEqual({ method: 'emoji', hasPIN: false })
+      expect(opts).toEqual({ method: 'symbols', hasPIN: false })
     })
     await waitFor(() => expect(onLogin).toHaveBeenCalled())
   })
 
-  it('shows "Wrong emoji sequence or PIN." on wrong-passphrase error', async () => {
+  it('shows "Wrong symbol sequence or PIN." on wrong-passphrase error', async () => {
     mockDeriveIdentityA.mockRejectedValue(new Error('wrong-passphrase'))
     mockGetStoredIdentityMeta.mockReturnValue({
       handle: 'alice',
       publicKey: 'aabb',
       username: 'Alice',
-      method: 'emoji',
+      method: 'symbols',
       hasPIN: false,
     })
     setup()
@@ -622,7 +622,7 @@ describe('LoginScreen — emoji method (unlock)', () => {
     for (let i = 0; i < 6; i++) fireEvent.click(cells[i])
     fireEvent.click(screen.getByRole('button', { name: /unlock/i }))
     await waitFor(() =>
-      expect(screen.getByText(/wrong emoji sequence or pin/i)).toBeInTheDocument()
+      expect(screen.getByText(/wrong symbol sequence or pin/i)).toBeInTheDocument()
     )
   })
 })

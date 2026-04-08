@@ -1,4 +1,4 @@
-.PHONY: install dev dev-tunnel build check-key expose start-relay start-auth auth-gen-key auth-lint auth-format test test-watch coverage lint format
+.PHONY: install dev dev-tunnel build check-key expose start-relay start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format
 
 SERVEO_SUBDOMAIN ?= pipol
 SERVEO_KEY       ?= ./serveo_key
@@ -33,6 +33,12 @@ auth-lint:
 
 auth-format:
 	cd auth && pnpm run format
+
+auth-test:
+	cd auth && pnpm run test
+
+auth-test-watch:
+	cd auth && pnpm run test:watch
 
 auth-gen-key:
 	@echo "PIPOL_MASTER_KEY_V1=$$(openssl rand -hex 32)"

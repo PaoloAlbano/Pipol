@@ -274,7 +274,7 @@ export async function deriveIdentityA(
 
   if (isNewAccount) {
     const meta = { handle: normHandle, publicKey: pubKeyHex, username, method }
-    if (method === 'emoji') meta.hasPIN = hasPIN
+    if (method === 'symbols' || method === 'emoji') meta.hasPIN = hasPIN
     localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(meta))
   }
 
