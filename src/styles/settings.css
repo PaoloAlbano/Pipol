@@ -104,6 +104,16 @@
   margin: 0;
 }
 
+.settings-hint--warn {
+  color: var(--color-warn, #e8a020);
+}
+
+.settings-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* ── Video quality selector ──────────────────────────────────── */
 .settings-quality-group {
   display: flex;

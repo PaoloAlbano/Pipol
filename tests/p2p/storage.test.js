@@ -169,6 +169,41 @@ describe('storage — getMasterSeed', () => {
   })
 })
 
+describe('storage — getPassphrase / clearPassphrase', () => {
+  let storage
+
+  beforeEach(async () => {
+    localStorage.clear()
+    vi.resetModules()
+    storage = await import('../../src/p2p/storage.js')
+  })
+
+  it('returns null before deriveIdentityA is called', () => {
+    expect(storage.getPassphrase()).toBeNull()
+  })
+
+  it('returns the passphrase after deriveIdentityA', async () => {
+    await storage.deriveIdentityA('user', 'my-passphrase-789')
+    expect(storage.getPassphrase()).toBe('my-passphrase-789')
+  })
+
+  it('clearPassphrase() sets passphrase to null without ending the session', async () => {
+    await storage.deriveIdentityA('user', 'my-passphrase-789')
+    expect(storage.getPassphrase()).toBe('my-passphrase-789')
+    storage.clearPassphrase()
+    expect(storage.getPassphrase()).toBeNull()
+    // masterSeed and identity are still alive
+    expect(storage.getMasterSeed()).not.toBeNull()
+    expect(storage.getIdentity()).not.toBeNull()
+  })
+
+  it('returns null after lockSession', async () => {
+    await storage.deriveIdentityA('user', 'my-passphrase-789')
+    storage.lockSession()
+    expect(storage.getPassphrase()).toBeNull()
+  })
+})
+
 describe('storage — getStoredIdentityMeta', () => {
   let storage
 

@@ -184,6 +184,15 @@ export function lockSession() {
 }
 
 /**
+ * Clears the passphrase from memory without ending the session.
+ * Called after biometric unlock is set up — the passphrase is no longer
+ * needed in RAM since the authenticator will provide the key material.
+ */
+export function clearPassphrase() {
+  _passphrase = null
+}
+
+/**
  * Returns the non-secret identity metadata stored in localStorage, or null.
  * Format: { handle, publicKey (hex), username, method }
  */

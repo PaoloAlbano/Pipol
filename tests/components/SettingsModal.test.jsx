@@ -27,6 +27,7 @@ vi.mock('../../src/p2p/storage.js', () => ({
   getRelayUrl: vi.fn(() => ''),
   setRelayUrl: vi.fn(),
   getPassphrase: () => mockGetPassphrase(),
+  clearPassphrase: vi.fn(),
   getStoredIdentityMeta: () => mockGetStoredIdentityMeta(),
 }))
 
@@ -334,12 +335,35 @@ describe('SettingsModal — biometric unlock already enabled', () => {
     await waitFor(() => expect(screen.getByText(/biometric unlock is active/i)).toBeInTheDocument())
   })
 
-  it('calls removeBiometricUnlock and switches to Enable button on Disable click', async () => {
+  it('shows confirmation warning when Disable is clicked', async () => {
     setup()
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
     )
     fireEvent.click(screen.getByRole('button', { name: /^disable$/i }))
+    expect(screen.getByText(/log out and log back in/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /yes, disable/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /keep enabled/i })).toBeInTheDocument()
+  })
+
+  it('cancelling confirmation keeps biometric enabled', async () => {
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^disable$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /keep enabled/i }))
+    expect(mockRemoveBiometricUnlock).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
+  })
+
+  it('calls removeBiometricUnlock and switches to Enable button after confirming disable', async () => {
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^disable$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /yes, disable/i }))
     expect(mockRemoveBiometricUnlock).toHaveBeenCalledOnce()
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()

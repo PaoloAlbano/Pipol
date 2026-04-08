@@ -5,6 +5,7 @@ import {
   getRelayUrl,
   setRelayUrl,
   getPassphrase,
+  clearPassphrase,
   getStoredIdentityMeta,
 } from '../p2p/storage.js'
 import { applyVideoQuality } from '../webrtc/media.js'
@@ -40,6 +41,7 @@ export default function SettingsModal({
   const [biometricEnabled, setBiometricEnabled] = useState(hasBiometricUnlock)
   const [biometricError, setBiometricError] = useState('')
   const [biometricLoading, setBiometricLoading] = useState(false)
+  const [biometricDisableConfirm, setBiometricDisableConfirm] = useState(false)
 
   useEffect(() => {
     if (identity.isGuest) return
@@ -179,16 +181,45 @@ export default function SettingsModal({
                     Biometric unlock is active on this device. You can sign in with Touch ID / Face
                     ID without typing your passphrase.
                   </p>
-                  <button
-                    className="btn btn-lock"
-                    onClick={() => {
-                      removeBiometricUnlock()
-                      setBiometricEnabled(false)
-                    }}
-                  >
-                    Disable
-                  </button>
+                  {biometricDisableConfirm ? (
+                    <>
+                      <p className="settings-hint settings-hint--warn">
+                        To re-enable biometric unlock you will need to log out and log back in.
+                        Continue?
+                      </p>
+                      <div className="settings-row">
+                        <button
+                          className="btn btn-lock"
+                          onClick={() => {
+                            removeBiometricUnlock()
+                            setBiometricEnabled(false)
+                            setBiometricDisableConfirm(false)
+                          }}
+                        >
+                          Yes, disable
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setBiometricDisableConfirm(false)}
+                        >
+                          Keep enabled
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      className="btn btn-lock"
+                      onClick={() => setBiometricDisableConfirm(true)}
+                    >
+                      Disable
+                    </button>
+                  )}
                 </>
+              ) : getPassphrase() === null ? (
+                <p className="settings-hint">
+                  Biometric unlock is not available in this session. Log out and log back in to
+                  enable it.
+                </p>
               ) : (
                 <>
                   <p className="settings-hint">
@@ -203,6 +234,7 @@ export default function SettingsModal({
                       try {
                         const meta = getStoredIdentityMeta()
                         await setupBiometricUnlock(getPassphrase(), meta)
+                        clearPassphrase()
                         setBiometricEnabled(true)
                       } catch (err) {
                         console.warn('[biometric setup]', err?.message)
