@@ -4,7 +4,23 @@
  *
  * Strategy: vi.resetModules() + dynamic import in beforeEach to reset
  * the module-level singletons (_identity, _store) between tests.
+ *
+ * kdf.js is mocked with a deterministic function so tests don't need
+ * a Web Worker or the argon2-browser WASM bundle.
  */
+
+// Deterministic mock KDF: XOR passphrase bytes against salt bytes.
+// Same inputs → same output; different passphrases → different outputs.
+vi.mock('../../src/p2p/kdf.js', () => ({
+  deriveKey: vi.fn(async (passphrase, salt) => {
+    const passBytes = new TextEncoder().encode(passphrase)
+    const result = new Uint8Array(32)
+    for (let i = 0; i < 32; i++) {
+      result[i] = passBytes[i % passBytes.length] ^ (salt[i] ?? 0)
+    }
+    return result
+  }),
+}))
 
 describe('storage — identity', () => {
   let storage

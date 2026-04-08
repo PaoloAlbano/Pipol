@@ -2,7 +2,7 @@
  * storage.js
  * Identity management and Corestore setup.
  *
- * Identity is derived from a (handle, passphrase) pair via PBKDF2 — never stored in clear.
+ * Identity is derived from a (handle, passphrase) pair via Argon2id — never stored in clear.
  * The masterSeed lives only in memory and is re-derived on each session.
  * localStorage stores only non-secret metadata: handle, publicKey (hex), username.
  */
@@ -11,6 +11,7 @@ import Corestore from 'corestore'
 import RAM from 'random-access-memory'
 import * as crypto from 'hypercore-crypto'
 import b4a from 'b4a'
+import { deriveKey } from './kdf.js'
 
 const webcrypto = globalThis.crypto
 
@@ -222,7 +223,7 @@ export function getIdentity() {
  *   by comparing the derived public key against the stored one.
  * - If the handle is new, creates and persists the identity metadata.
  *
- * masterSeed = PBKDF2(passphrase, SHA-256("pipol:" + handle), 600_000, SHA-256)
+ * masterSeed = Argon2id(passphrase, SHA-256("pipol:" + origin + ":" + handle), m=32MB, t=3, p=1)
  *
  * @param {string} handle     Any stable identifier (email, username, …)
  * @param {string} passphrase Must score ≥ 3 on the strength meter for new accounts
@@ -246,20 +247,8 @@ export async function deriveIdentityA(
   const saltBytes = new TextEncoder().encode(`pipol:${normOrigin}:${normHandle}`)
   const saltHash = await webcrypto.subtle.digest('SHA-256', saltBytes)
 
-  // masterSeed = PBKDF2(passphrase, salt, 600_000 iter, SHA-256, 256 bits)
-  const keyMaterial = await webcrypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(passphrase),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  )
-  const derived = await webcrypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: saltHash, iterations: 600_000, hash: 'SHA-256' },
-    keyMaterial,
-    256
-  )
-  const masterSeed = new Uint8Array(derived)
+  // masterSeed = Argon2id(passphrase, salt, m=32 MB, t=3, p=1)
+  const masterSeed = await deriveKey(passphrase, new Uint8Array(saltHash))
 
   // Ed25519 keypair from first 32 bytes of masterSeed
   const keyPair = crypto.keyPair(masterSeed.slice(0, 32))
