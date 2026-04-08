@@ -35,7 +35,9 @@ vi.mock('../providers.json', () => ({
       type: 'oidc',
       issuer: 'https://accounts.google.com',
       jwksUri: 'https://www.googleapis.com/oauth2/v3/certs',
+      tokenEndpoint: 'https://oauth2.googleapis.com/token',
       clientId: 'google-client-id',
+      clientSecretVar: 'GOOGLE_CLIENT_SECRET',
     },
     {
       id: 'okta',
@@ -67,6 +69,7 @@ function makeEnv(overrides = {}) {
   return {
     PIPOL_MASTER_KEY_V1: MASTER_KEY_HEX,
     GITHUB_CLIENT_SECRET: 'gh-secret',
+    GOOGLE_CLIENT_SECRET: 'google-secret',
     PIPOL_OKTA_ISSUER: 'https://my.okta.com',
     PIPOL_OKTA_CLIENT_ID: 'okta-client-id',
     ...overrides,
@@ -96,6 +99,18 @@ describe('getPublicProviders', () => {
     expect(google.type).toBe('oidc')
     expect(google.issuer).toBe('https://accounts.google.com')
     expect(google).not.toHaveProperty('jwksUri')
+  })
+
+  it('sets serverCodeExchange: true for OIDC providers with a clientSecret', () => {
+    const providers = getPublicProviders(makeEnv())
+    const google = providers.find((p) => p.id === 'google')
+    expect(google.serverCodeExchange).toBe(true)
+  })
+
+  it('does not set serverCodeExchange for OIDC providers without a clientSecret', () => {
+    const providers = getPublicProviders(makeEnv())
+    const okta = providers.find((p) => p.id === 'okta')
+    expect(okta).not.toHaveProperty('serverCodeExchange')
   })
 
   it('resolves clientId from env var for Okta', () => {
@@ -237,6 +252,77 @@ describe('derive — oauth2 path (code exchange)', () => {
     const r1 = await call(111)
     const r2 = await call(222)
     expect(r1.serverSecret).not.toBe(r2.serverSecret)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// derive — OIDC server code exchange (Google)
+// ---------------------------------------------------------------------------
+
+describe('derive — OIDC server code exchange (Google)', () => {
+  beforeEach(() => {
+    jwtVerify.mockResolvedValue({ payload: { sub: 'google-user-abc' } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ id_token: 'header.payload.sig' }),
+    }))
+  })
+
+  it('calls Google token endpoint with code, verifier, redirect_uri and client_secret', async () => {
+    await derive(
+      { code: 'gcode', code_verifier: 'gverifier', redirect_uri: 'https://app/callback', provider: 'google' },
+      makeEnv()
+    )
+    const tokenCall = fetch.mock.calls[0]
+    expect(tokenCall[0]).toBe('https://oauth2.googleapis.com/token')
+    const body = new URLSearchParams(tokenCall[1].body)
+    expect(body.get('code')).toBe('gcode')
+    expect(body.get('code_verifier')).toBe('gverifier')
+    expect(body.get('client_secret')).toBe('google-secret')
+    expect(body.get('redirect_uri')).toBe('https://app/callback')
+  })
+
+  it('verifies the id_token from the token response', async () => {
+    await derive(
+      { code: 'gcode', code_verifier: 'gv', redirect_uri: 'https://app/callback', provider: 'google' },
+      makeEnv()
+    )
+    expect(jwtVerify).toHaveBeenCalledWith(
+      'header.payload.sig',
+      'mock-jwks',
+      expect.objectContaining({ issuer: 'https://accounts.google.com' })
+    )
+  })
+
+  it('returns a serverSecret derived from the JWT sub', async () => {
+    const result = await derive(
+      { code: 'gcode', code_verifier: 'gv', redirect_uri: 'https://app/callback', provider: 'google' },
+      makeEnv()
+    )
+    expect(/^[0-9a-f]{64}$/.test(result.serverSecret)).toBe(true)
+  })
+
+  it('throws missing-id-token when token endpoint response has no id_token', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ access_token: 'only-access' }),
+    }))
+    await expect(
+      derive(
+        { code: 'gcode', code_verifier: 'gv', redirect_uri: 'https://app/callback', provider: 'google' },
+        makeEnv()
+      )
+    ).rejects.toMatchObject({ code: 'missing-id-token', status: 401 })
+  })
+
+  it('throws token-exchange-failed when token endpoint returns non-ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false }))
+    await expect(
+      derive(
+        { code: 'gcode', code_verifier: 'gv', redirect_uri: 'https://app/callback', provider: 'google' },
+        makeEnv()
+      )
+    ).rejects.toMatchObject({ code: 'token-exchange-failed', status: 401 })
   })
 })
 

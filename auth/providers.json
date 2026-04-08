@@ -18,6 +18,7 @@
     "type": "oidc",
     "issuer": "https://accounts.google.com",
     "jwksUri": "https://www.googleapis.com/oauth2/v3/certs",
+    "tokenEndpoint": "https://oauth2.googleapis.com/token",
     "clientIdVar": "GOOGLE_CLIENT_ID",
     "clientSecretVar": "GOOGLE_CLIENT_SECRET"
   }

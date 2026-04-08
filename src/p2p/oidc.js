@@ -130,7 +130,30 @@ export async function handleOIDCCallback() {
     return { serverSecret, keyVersion, provider: pending.provider, returnTo: pending.returnTo }
   }
 
-  // Standard OIDC: exchange code for id_token client-side (CORS supported)
+  // Standard OIDC: exchange code for id_token.
+  // If the provider requires a client_secret (serverCodeExchange), the frontend
+  // cannot call the token endpoint directly — delegate to the auth server instead,
+  // the same way as the oauth2/GitHub path above.
+  if (pending.provider.serverCodeExchange) {
+    const deriveRes = await fetch(`${pending.authUrl}/derive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code,
+        code_verifier: pending.verifier,
+        redirect_uri: redirectUri,
+        provider: pending.provider.id,
+      }),
+    })
+    if (!deriveRes.ok) {
+      const body = await deriveRes.json().catch(() => ({}))
+      throw new Error(body.error || 'derive-failed')
+    }
+    const { serverSecret, keyVersion } = await deriveRes.json()
+    return { serverSecret, keyVersion, provider: pending.provider, returnTo: pending.returnTo }
+  }
+
+  // Client-side token exchange (OIDC providers that support CORS and no client_secret)
   const tokenRes = await fetch(pending.tokenEndpoint, {
     method: 'POST',
     headers: {

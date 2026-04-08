@@ -47,7 +47,10 @@ function resolveProvider(config, env) {
   const issuer = config.issuer ?? (config.issuerVar ? env[config.issuerVar] : null)
   if (!issuer) return null
   const jwksUri = config.jwksUri ?? issuer + (config.jwksUriSuffix ?? '')
-  return { type: 'oidc', issuer, jwksUri, clientId }
+  // Optional server-side code exchange when a clientSecret is present (e.g. Google).
+  const clientSecret = config.clientSecret ?? (config.clientSecretVar ? env[config.clientSecretVar] : null)
+  const tokenEndpoint = config.tokenEndpoint ?? null
+  return { type: 'oidc', issuer, jwksUri, clientId, clientSecret, tokenEndpoint }
 }
 
 export function getProviders(env) {
@@ -77,8 +80,14 @@ export function getPublicProviders(env) {
         scope: resolved.scope,
       }
     }
-    // OIDC: PWA discovers authorizationEndpoint at runtime via {issuer}/.well-known/openid-configuration
-    return { ...base, type: 'oidc', issuer: resolved.issuer }
+    // OIDC: PWA discovers authorizationEndpoint at runtime via
+    // {issuer}/.well-known/openid-configuration.
+    // serverCodeExchange: true signals to the PWA that it must send the
+    // authorization code to our server instead of calling the token endpoint
+    // directly (needed when a clientSecret is required, e.g. Google).
+    const pub = { ...base, type: 'oidc', issuer: resolved.issuer }
+    if (resolved.clientSecret) pub.serverCodeExchange = true
+    return pub
   })
 }
 
@@ -147,8 +156,33 @@ export async function derive(
     }
   } else {
     // Standard OIDC: verify id_token JWT signature + claims
-    const rawToken = token ?? id_token
-    if (!rawToken || typeof rawToken !== 'string') throw new DeriveError('missing-fields', 400)
+    let rawToken
+    if (code) {
+      // Server-side code exchange — used when the token endpoint requires a
+      // client_secret (e.g. Google).  The PWA sends the code here; we exchange
+      // it for an id_token, then verify the JWT as normal.
+      if (!code_verifier || !redirect_uri) throw new DeriveError('missing-fields', 400)
+      if (!providerConfig.tokenEndpoint) throw new DeriveError('missing-fields', 400)
+      const tokens = await callTokenEndpoint(
+        {
+          code,
+          code_verifier,
+          redirect_uri,
+          clientId: providerConfig.clientId,
+          clientSecret: providerConfig.clientSecret,
+        },
+        providerConfig.tokenEndpoint,
+        providerName
+      )
+      rawToken = tokens.id_token
+      if (!rawToken) {
+        console.error(`[derive] token exchange missing id_token provider=${providerName}`)
+        throw new DeriveError('missing-id-token', 401)
+      }
+    } else {
+      rawToken = token ?? id_token
+      if (!rawToken || typeof rawToken !== 'string') throw new DeriveError('missing-fields', 400)
+    }
     try {
       const JWKS = createRemoteJWKSet(new URL(providerConfig.jwksUri))
       const verifyOptions = { issuer: providerConfig.issuer }
@@ -177,10 +211,10 @@ export async function derive(
 }
 
 /**
- * Exchanges an authorization code for an access_token server-side.
- * Used for OAuth2 providers (e.g. GitHub) whose token endpoints don't support CORS.
+ * Generic token endpoint call — returns the full token response object.
+ * Used by both OAuth2 (needs access_token) and OIDC (needs id_token) paths.
  */
-async function exchangeCode(
+async function callTokenEndpoint(
   { code, code_verifier, redirect_uri, clientId, clientSecret },
   tokenEndpoint,
   providerName
@@ -192,7 +226,6 @@ async function exchangeCode(
     client_id: clientId,
     code_verifier,
   }
-  // GitHub (and similar) require client_secret even with PKCE
   if (clientSecret) params.client_secret = clientSecret
 
   let res
@@ -217,7 +250,15 @@ async function exchangeCode(
     throw new DeriveError('token-exchange-failed', 401)
   }
 
-  const tokens = await res.json()
+  return res.json()
+}
+
+/**
+ * Exchanges an authorization code for an access_token server-side.
+ * Used for OAuth2 providers (e.g. GitHub) whose token endpoints don't support CORS.
+ */
+async function exchangeCode(params, tokenEndpoint, providerName) {
+  const tokens = await callTokenEndpoint(params, tokenEndpoint, providerName)
   if (!tokens.access_token) {
     console.error(`[derive] token exchange missing access_token provider=${providerName}`)
     throw new DeriveError('token-exchange-failed', 401)
