@@ -86,6 +86,17 @@ export default function ChatInput({ onSend }) {
   const [activeFormats, setActiveFormats] = useState(new Set())
   const editorRef = useRef(null)
 
+  // On touch-only devices there is no physical keyboard, so the Shift+Enter
+  // hint is irrelevant. matchMedia with 'pointer: fine' is the most reliable
+  // cross-browser signal for "this device has a mouse/trackpad" (i.e. desktop).
+  const hasFinePointer =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: fine)').matches
+  const placeholder = hasFinePointer
+    ? 'Type a message…  (Enter to send, Shift+Enter for new line)'
+    : 'Type a message…'
+
   function updateActiveFormats() {
     const editor = editorRef.current
     if (!editor) return
@@ -213,7 +224,7 @@ export default function ChatInput({ onSend }) {
             role="textbox"
             aria-multiline="true"
             aria-label="Message input"
-            data-placeholder="Type a message…  (Enter to send, Shift+Enter for new line)"
+            data-placeholder={placeholder}
             onInput={handleInput}
             onKeyDown={handleKeyDown}
             onKeyUp={updateActiveFormats}

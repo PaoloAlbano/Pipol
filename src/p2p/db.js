@@ -18,15 +18,23 @@ let _encKey = null // CryptoKey (AES-GCM 256-bit), set via initEncryption()
 /**
  * Derive and store the AES-GCM key for this session.
  * Must be called once at startup before any read/write.
- * @param {Uint8Array} secretKey  The user's 64-byte ed25519 secret key
+ * @param {Uint8Array} masterSeed  The 32-byte masterSeed from deriveIdentityA()
  */
-export async function initEncryption(secretKey) {
-  // SHA-256 of the secretKey → 32 bytes → AES-256-GCM key
-  const hash = await crypto.subtle.digest('SHA-256', secretKey)
-  _encKey = await crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, [
-    'encrypt',
-    'decrypt',
-  ])
+export async function initEncryption(masterSeed) {
+  // HKDF(masterSeed, info="storage-enc-v1") → AES-256-GCM key
+  const hkdfKey = await crypto.subtle.importKey('raw', masterSeed, 'HKDF', false, ['deriveKey'])
+  _encKey = await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(0),
+      info: new TextEncoder().encode('storage-enc-v1'),
+    },
+    hkdfKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  )
 }
 
 async function _encrypt(plaintext) {
@@ -50,8 +58,8 @@ async function _decrypt(record) {
     const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _encKey, ciphertext)
     return new TextDecoder().decode(plaintext)
   } catch {
-    // Fallback: return raw content (e.g. legacy plaintext messages)
-    return record.content
+    // Chiave sbagliata (account diverso) → scarta il messaggio
+    return null
   }
 }
 
@@ -110,8 +118,9 @@ export async function loadMessages(roomCode) {
           content: await _decrypt({ content: msg.content, _enc }),
         }))
       )
+      // Filtra i messaggi che non si riescono a decifrare (appartenenti a un altro account)
       msgs.sort((a, b) => a.timestamp - b.timestamp)
-      resolve(msgs)
+      resolve(msgs.filter((m) => m.content !== null))
     }
     req.onerror = () => reject(req.error)
   })

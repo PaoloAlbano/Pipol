@@ -8,6 +8,8 @@
   z-index: 100;
   backdrop-filter: blur(4px);
   padding: 16px;
+  /* allow the overlay itself to scroll on small screens */
+  overflow-y: auto;
 }
 
 .settings-modal {
@@ -16,9 +18,11 @@
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 400px;
-  box-shadow: var(--shadow);
+  /* cap height and make the modal body scroll, not the page */
+  max-height: calc(100dvh - 32px);
   display: flex;
   flex-direction: column;
+  box-shadow: var(--shadow);
   animation: modal-in 0.2s ease;
 }
 
@@ -47,6 +51,15 @@
 }
 .settings-close:hover {
   color: var(--text);
+}
+
+/* Scrollable body — header and footer stay fixed */
+.settings-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .settings-section {
@@ -89,6 +102,16 @@
   font-size: 11px;
   color: var(--text-muted);
   margin: 0;
+}
+
+.settings-hint--warn {
+  color: var(--color-warn, #e8a020);
+}
+
+.settings-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* ── Video quality selector ──────────────────────────────────── */
@@ -192,6 +215,23 @@
 
 .settings-toggle--on .settings-toggle-thumb {
   transform: translateX(18px);
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+.btn-lock {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-lock:hover {
+  background: rgba(224, 82, 82, 0.08);
 }
 
 /* ── Footer ──────────────────────────────────────────────────── */

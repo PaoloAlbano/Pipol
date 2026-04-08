@@ -1,0 +1,25 @@
+[
+  {
+    "id": "github",
+    "name": "GitHub",
+    "icon": "https://api.iconify.design/logos/github-icon.svg",
+    "type": "oauth2",
+    "authorizationEndpoint": "https://github.com/login/oauth/authorize",
+    "tokenEndpoint": "https://github.com/login/oauth/access_token",
+    "userinfoEndpoint": "https://api.github.com/user",
+    "clientIdVar": "GITHUB_CLIENT_ID",
+    "clientSecretVar": "GITHUB_CLIENT_SECRET",
+    "scope": "read:user"
+  },
+  {
+    "id": "google",
+    "name": "Google",
+    "icon": "https://api.iconify.design/logos/google-icon.svg",
+    "type": "oidc",
+    "issuer": "https://accounts.google.com",
+    "jwksUri": "https://www.googleapis.com/oauth2/v3/certs",
+    "tokenEndpoint": "https://oauth2.googleapis.com/token",
+    "clientIdVar": "GOOGLE_CLIENT_ID",
+    "clientSecretVar": "GOOGLE_CLIENT_SECRET"
+  }
+]

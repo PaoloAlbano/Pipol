@@ -17,6 +17,7 @@ export default [
       globals: {
         ...globals.browser,
         Buffer: 'readonly',   // polyfillato da vite-plugin-node-polyfills
+        __ALLOW_IDENTITY_RESET__: 'readonly', // iniettato da vite define
       },
       parserOptions: {
         ecmaFeatures: { jsx: true },
