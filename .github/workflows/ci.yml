@@ -29,6 +29,14 @@ jobs:
       - name: Test with coverage
         run: pnpm run test:coverage
 
+      - name: Install auth dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: auth
+
+      - name: Test auth
+        run: pnpm run test
+        working-directory: auth
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:

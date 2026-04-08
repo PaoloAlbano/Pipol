@@ -9,6 +9,10 @@ export default defineConfig({
     setupFiles: ['./tests/setup.js'],
     css: false,
     clearMocks: true,
+    // Exclude the auth sub-package — it has its own vitest config and its own
+    // dependencies (e.g. jose) that are not installed at the workspace root.
+    exclude: ['auth/**', 'node_modules/**'],
+    include: ['tests/**/*.{test,spec}.{js,jsx}'],
     coverage: {
       provider: 'v8',
       exclude: ['src/styles/**', 'src/main.jsx', 'src/stubs/**'],
