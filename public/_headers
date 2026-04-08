@@ -1,0 +1,32 @@
+/*
+  # Prevent clickjacking
+  X-Frame-Options: DENY
+  # Prevent MIME-type sniffing
+  X-Content-Type-Options: nosniff
+  # Minimal referrer leakage
+  Referrer-Policy: strict-origin-when-cross-origin
+  # HTTPS forever (2 years)
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  # Only request camera/mic/screen when the user explicitly enters a room
+  Permissions-Policy: camera=(self), microphone=(self), display-capture=(self), geolocation=()
+  # Content Security Policy
+  #   script-src 'self' 'wasm-unsafe-eval'
+  #     'self'             — all JS is bundled by Vite, no inline scripts needed
+  #     'wasm-unsafe-eval' — required by sodium-javascript (used by hypercore-crypto): compiles a
+  #                          SHA-512 WebAssembly module at runtime. Safer than 'unsafe-eval':
+  #                          only allows WASM compilation, not arbitrary eval().
+  #   style-src 'self' 'unsafe-inline' — own CSS + inline <style> in index.html (splash screen)
+  #   connect-src 'self' https: wss: ws:
+  #     https: is required for OIDC: the auth worker (/providers, /derive), the IdP discovery
+  #     (.well-known/openid-configuration) and the token endpoints (Google, GitHub, …) are all
+  #     runtime-dynamic and cannot be enumerated statically in a deploy-time file.
+  #     script-src 'self' is the primary XSS firewall; connect-src openness is an acceptable trade-off.
+  #     wss:/ws: — relay WebSocket (URL is user-configurable)
+  #   media-src blob:             — getUserMedia / RTCPeerConnection produce blob: stream URLs
+  #   img-src 'self' data: https: — own icons, data URIs, and external OIDC provider avatars
+  #   worker-src 'self'           — service worker registration
+  #   child-src blob:             — Document Picture-in-Picture API (PiP window = child context)
+  #   object-src 'none'           — no Flash / plugins
+  #   base-uri 'self'             — block <base href> injection attacks
+  #   frame-ancestors 'none'      — belt-and-suspenders with X-Frame-Options
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: ws:; media-src 'self' blob:; img-src 'self' data: https:; worker-src 'self'; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
