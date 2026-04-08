@@ -2,8 +2,9 @@
  * webauthn.test.js
  * Tests for the WebAuthn biometric unlock helpers.
  *
- * Strategy: passphrase + handle are encrypted with AES-GCM using a key
- * derived from the credential's rawId via HKDF. No PRF or largeBlob needed.
+ * Strategy: credentials.create() captures the `user.id` secret the code generates.
+ * credentials.get() returns it as `response.userHandle` (from the secure enclave).
+ * The key material never touches localStorage.
  *
  * navigator.credentials is mocked — no real authenticator needed.
  * crypto.subtle is the real Node 18+ implementation so the full
@@ -12,12 +13,22 @@
 
 const MOCK_CREDENTIAL_ID = new Uint8Array(16).fill(1)
 
-function makeMockCredential(rawId = MOCK_CREDENTIAL_ID) {
-  return { rawId }
+// Captures user.id from options so get() can return it as userHandle.
+function makeCapturingCreate(rawId = MOCK_CREDENTIAL_ID) {
+  let capturedSecret = null
+  const create = vi.fn().mockImplementation(async (options) => {
+    capturedSecret = new Uint8Array(options.publicKey.user.id)
+    return { rawId }
+  })
+  const getSecret = () => capturedSecret
+  return { create, getSecret }
 }
 
-function makeMockAssertion(rawId = MOCK_CREDENTIAL_ID) {
-  return { rawId }
+function makeMatchingGet(getSecretFn, rawId = MOCK_CREDENTIAL_ID) {
+  return vi.fn().mockImplementation(async () => ({
+    rawId,
+    response: { userHandle: getSecretFn().buffer },
+  }))
 }
 
 async function getModule() {
@@ -103,17 +114,37 @@ describe('webauthn — setupBiometricUnlock', () => {
     localStorage.clear()
   })
 
-  it('stores credentialId, iv and ciphertext in localStorage', async () => {
-    vi.stubGlobal('navigator', {
-      credentials: { create: vi.fn().mockResolvedValue(makeMockCredential()) },
-    })
+  it('stores credentialId, salt, iv and ciphertext in localStorage', async () => {
+    const { create } = makeCapturingCreate()
+    vi.stubGlobal('navigator', { credentials: { create } })
     const { setupBiometricUnlock } = await getModule()
     await setupBiometricUnlock(passphrase, meta)
 
     const stored = JSON.parse(localStorage.getItem('p2p-chat:biometric'))
     expect(stored).toHaveProperty('credentialId')
+    expect(stored).toHaveProperty('salt')
     expect(stored).toHaveProperty('iv')
     expect(stored).toHaveProperty('ciphertext')
+    expect(stored).not.toHaveProperty('method')
+  })
+
+  it('sets user.id to a 32-byte random secret (not a fixed value)', async () => {
+    const capturedIds = []
+    vi.stubGlobal('navigator', {
+      credentials: {
+        create: vi.fn().mockImplementation(async (options) => {
+          capturedIds.push(new Uint8Array(options.publicKey.user.id))
+          return { rawId: MOCK_CREDENTIAL_ID }
+        }),
+      },
+    })
+    vi.resetModules()
+    localStorage.clear()
+    const mod = await import('../../src/p2p/webauthn.js')
+    await mod.setupBiometricUnlock(passphrase, meta)
+    await mod.setupBiometricUnlock(passphrase, meta)
+    expect(capturedIds[0].byteLength).toBe(32)
+    expect(capturedIds[0].toString()).not.toBe(capturedIds[1].toString())
   })
 
   it('throws "cancelled" when the user dismisses the prompt (NotAllowedError)', async () => {
@@ -169,11 +200,12 @@ describe('webauthn — unlockWithBiometrics', () => {
     localStorage.clear()
   })
 
-  it('returns { handle, passphrase } after a full setup → unlock round-trip', async () => {
+  it('returns { handle, passphrase } after a full userhandle setup → unlock round-trip', async () => {
+    const { create, getSecret } = makeCapturingCreate()
     vi.stubGlobal('navigator', {
       credentials: {
-        create: vi.fn().mockResolvedValue(makeMockCredential()),
-        get: vi.fn().mockResolvedValue(makeMockAssertion()),
+        create,
+        get: makeMatchingGet(getSecret),
       },
     })
     vi.resetModules()
@@ -191,9 +223,10 @@ describe('webauthn — unlockWithBiometrics', () => {
   })
 
   it('throws "cancelled" when the user dismisses the get() prompt', async () => {
+    const { create, getSecret } = makeCapturingCreate()
     vi.stubGlobal('navigator', {
       credentials: {
-        create: vi.fn().mockResolvedValue(makeMockCredential()),
+        create,
         get: vi.fn().mockRejectedValue(new DOMException('cancelled', 'NotAllowedError')),
       },
     })
@@ -204,12 +237,15 @@ describe('webauthn — unlockWithBiometrics', () => {
     await expect(mod.unlockWithBiometrics()).rejects.toThrow('cancelled')
   })
 
-  it('throws "decrypt-failed" when assertion returns a different rawId (wrong key)', async () => {
-    const differentRawId = new Uint8Array(16).fill(0xff)
+  it('throws "decrypt-failed" when userHandle at unlock differs from setup', async () => {
+    const { create } = makeCapturingCreate()
     vi.stubGlobal('navigator', {
       credentials: {
-        create: vi.fn().mockResolvedValue(makeMockCredential(MOCK_CREDENTIAL_ID)),
-        get: vi.fn().mockResolvedValue(makeMockAssertion(differentRawId)),
+        create,
+        get: vi.fn().mockResolvedValue({
+          rawId: MOCK_CREDENTIAL_ID,
+          response: { userHandle: new Uint8Array(32).fill(0x99).buffer },
+        }),
       },
     })
     vi.resetModules()
@@ -217,5 +253,23 @@ describe('webauthn — unlockWithBiometrics', () => {
     const mod = await import('../../src/p2p/webauthn.js')
     await mod.setupBiometricUnlock(passphrase, meta)
     await expect(mod.unlockWithBiometrics()).rejects.toThrow('decrypt-failed')
+  })
+
+  it('throws "userhandle-unavailable" when the authenticator returns no userHandle', async () => {
+    const { create } = makeCapturingCreate()
+    vi.stubGlobal('navigator', {
+      credentials: {
+        create,
+        get: vi.fn().mockResolvedValue({
+          rawId: MOCK_CREDENTIAL_ID,
+          response: { userHandle: null },
+        }),
+      },
+    })
+    vi.resetModules()
+    localStorage.clear()
+    const mod = await import('../../src/p2p/webauthn.js')
+    await mod.setupBiometricUnlock(passphrase, meta)
+    await expect(mod.unlockWithBiometrics()).rejects.toThrow('userhandle-unavailable')
   })
 })

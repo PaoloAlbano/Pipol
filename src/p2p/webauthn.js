@@ -2,37 +2,32 @@
  * webauthn.js
  * Biometric unlock via WebAuthn passkeys.
  *
- * Strategy: the passphrase is encrypted with AES-GCM and stored in localStorage.
- * The encryption key is derived via HKDF from the credential's rawId, which is
- * only returned by the browser after a successful biometric authentication.
- *
- * This works universally across platforms:
- *   - macOS Touch ID / Face ID (Safari, Chrome)
- *   - iOS Face ID / Touch ID (Safari, Chrome)
- *   - Windows Hello (fingerprint, face, PIN)
- *   - Android fingerprint / face via Google Password Manager or other providers
- *
- * Only the standard WebAuthn create/get flow is used — no PRF or largeBlob
- * extensions required. `authenticatorAttachment: 'platform'` is set so the
- * browser always uses the built-in platform authenticator (biometric / PIN)
- * rather than prompting for an external security key.
- *
  * Security model:
- *   - The ciphertext in localStorage is useless without the rawId.
- *   - The rawId is only obtainable after passing biometric verification on the
- *     registered device.
- *   - An attacker with full localStorage access but no biometric cannot
- *     decrypt the passphrase.
- *   - An attacker with physical access to an unlocked, authenticated browser
- *     session already has access to the live session anyway.
+ *   At setup, a 32-byte secret is generated and placed in `user.id`. The
+ *   authenticator stores this in its secure enclave (TPM / Secure Enclave /
+ *   TrustZone). At unlock, the browser returns it as `response.userHandle`
+ *   only after a successful biometric assertion.
  *
- * Browser support: any browser supporting WebAuthn platform authenticators
- * (Chrome 67+, Safari 14+, Firefox 60+, Edge 18+).
+ *   That secret is the HKDF key material for the AES-GCM key that encrypts
+ *   { handle, passphrase } in localStorage. It is never written to disk.
+ *
+ *   An attacker with full localStorage access has: credentialId, salt, iv,
+ *   ciphertext — but NOT the userHandle. They cannot derive the AES key
+ *   offline. The biometric is a cryptographic requirement, not just UX.
+ *
+ * Requires `residentKey: 'required'` (discoverable credential / passkey) to
+ * guarantee the authenticator returns `userHandle` in the assertion response.
+ *
+ * Platform support:
+ *   - macOS Touch ID / Face ID (Safari, Chrome) ✓
+ *   - iOS Face ID / Touch ID (Safari 17+, Chrome) ✓
+ *   - Windows Hello ✓
+ *   - Android biometric / Google Password Manager ✓
  */
 
 const STORAGE_KEY = 'p2p-chat:biometric'
 
-// App-specific info for HKDF key derivation — non-secret.
+// App-specific info for HKDF — non-secret, domain-separated.
 const HKDF_INFO = new TextEncoder().encode('pipol-biometric-passphrase-v1')
 
 function getRpId() {
@@ -40,7 +35,11 @@ function getRpId() {
 }
 
 function b64Encode(buf) {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+  // Avoid spread (...new Uint8Array) which causes stack overflow on large buffers.
+  const bytes = new Uint8Array(buf)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
 }
 
 function b64Decode(str) {
@@ -48,21 +47,15 @@ function b64Decode(str) {
 }
 
 /**
- * Derives an AES-GCM-256 key from a credential's rawId via HKDF-SHA-256.
- * The rawId acts as the key material — it is only known after a successful
- * biometric assertion.
+ * Derives an AES-GCM-256 key from `material` via HKDF-SHA-256.
+ * `salt` is a random value stored in localStorage alongside the ciphertext.
  */
-async function deriveKeyFromRawId(rawId) {
-  const keyMaterial = await crypto.subtle.importKey('raw', rawId, { name: 'HKDF' }, false, [
+async function deriveAesKey(material, salt) {
+  const keyMaterial = await crypto.subtle.importKey('raw', material, { name: 'HKDF' }, false, [
     'deriveKey',
   ])
   return crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: new Uint8Array(32), // zero salt — rawId already carries entropy
-      info: HKDF_INFO,
-    },
+    { name: 'HKDF', hash: 'SHA-256', salt, info: HKDF_INFO },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -99,12 +92,21 @@ export function removeBiometricUnlock() {
 /**
  * Registers a passkey and encrypts (handle + passphrase) for later retrieval.
  *
+ * `user.id` is a randomly generated 32-byte secret. The authenticator stores
+ * it in the secure enclave and returns it as `response.userHandle` after every
+ * successful biometric assertion — it is never written to localStorage.
+ *
  * @param {string} passphrase  The user's passphrase (plain text, only in memory)
  * @param {{ handle: string, username: string }} meta
  * @throws 'cancelled'     if the user dismissed the biometric prompt
+ * @throws 'not-supported' if the platform authenticator is unavailable
  * @throws 'create-failed' on unexpected authenticator errors
  */
 export async function setupBiometricUnlock(passphrase, meta) {
+  // This secret becomes the userHandle stored in the secure enclave.
+  // It is used as HKDF key material — never saved to localStorage.
+  const secret = crypto.getRandomValues(new Uint8Array(32))
+
   let credential
   try {
     credential = await navigator.credentials.create({
@@ -112,7 +114,7 @@ export async function setupBiometricUnlock(passphrase, meta) {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
         rp: { name: 'Pipol', id: getRpId() },
         user: {
-          id: crypto.getRandomValues(new Uint8Array(16)), // opaque random, not PII
+          id: secret, // ← key material, stored in the secure enclave
           name: meta.handle,
           displayName: meta.username,
         },
@@ -122,15 +124,12 @@ export async function setupBiometricUnlock(passphrase, meta) {
         ],
         authenticatorSelection: {
           // 'platform' forces Touch ID / Face ID / Windows Hello / Android biometric.
-          // Without this, browsers may offer external security keys instead.
           authenticatorAttachment: 'platform',
           userVerification: 'required',
-          // 'preferred' lets the platform decide whether to make a discoverable
-          // credential.  'required' can fail on Windows Hello when storage is full.
-          residentKey: 'preferred',
+          // 'required' creates a discoverable credential (passkey), which
+          // guarantees the authenticator returns userHandle in the assertion.
+          residentKey: 'required',
         },
-        // Suppress attestation — we don't verify it server-side and it reduces
-        // the risk of the creation being blocked by enterprise policies.
         attestation: 'none',
       },
     })
@@ -145,10 +144,11 @@ export async function setupBiometricUnlock(passphrase, meta) {
     throw new Error('create-failed')
   }
 
-  // Derive encryption key from the credential's rawId.
-  const encKey = await deriveKeyFromRawId(credential.rawId)
+  // Derive AES key from the secret (same bytes the authenticator will return as userHandle).
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const encKey = await deriveAesKey(secret, salt)
 
-  // Encrypt { handle, passphrase } as a JSON payload.
+  // Encrypt { handle, passphrase }.
   const payload = new TextEncoder().encode(JSON.stringify({ handle: meta.handle, passphrase }))
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, encKey, payload)
@@ -157,6 +157,7 @@ export async function setupBiometricUnlock(passphrase, meta) {
     STORAGE_KEY,
     JSON.stringify({
       credentialId: b64Encode(credential.rawId),
+      salt: b64Encode(salt),
       iv: b64Encode(iv),
       ciphertext: b64Encode(ciphertext),
     })
@@ -167,13 +168,13 @@ export async function setupBiometricUnlock(passphrase, meta) {
  * Authenticates with the stored passkey and returns the decrypted credentials.
  *
  * @returns {Promise<{ handle: string, passphrase: string }>}
- * @throws 'no-biometric-setup' | 'cancelled' | 'decrypt-failed'
+ * @throws 'no-biometric-setup' | 'cancelled' | 'userhandle-unavailable' | 'decrypt-failed'
  */
 export async function unlockWithBiometrics() {
   const raw = localStorage.getItem(STORAGE_KEY)
   if (!raw) throw new Error('no-biometric-setup')
 
-  const { credentialId, iv: ivB64, ciphertext: ctB64 } = JSON.parse(raw)
+  const { credentialId, salt: saltB64, iv: ivB64, ciphertext: ctB64 } = JSON.parse(raw)
 
   let assertion
   try {
@@ -193,16 +194,18 @@ export async function unlockWithBiometrics() {
     throw new Error('cancelled')
   }
 
-  // Derive decryption key from the rawId returned after successful auth.
   try {
-    const decKey = await deriveKeyFromRawId(assertion.rawId)
+    const userHandle = assertion.response?.userHandle
+    if (!userHandle) throw new Error('userhandle-unavailable')
+    const decKey = await deriveAesKey(new Uint8Array(userHandle), b64Decode(saltB64))
     const plaintext = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: b64Decode(ivB64) },
       decKey,
       b64Decode(ctB64)
     )
     return JSON.parse(new TextDecoder().decode(plaintext))
-  } catch {
+  } catch (err) {
+    if (err.message === 'userhandle-unavailable') throw err
     throw new Error('decrypt-failed')
   }
 }
