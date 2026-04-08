@@ -48,7 +48,8 @@ function resolveProvider(config, env) {
   if (!issuer) return null
   const jwksUri = config.jwksUri ?? issuer + (config.jwksUriSuffix ?? '')
   // Optional server-side code exchange when a clientSecret is present (e.g. Google).
-  const clientSecret = config.clientSecret ?? (config.clientSecretVar ? env[config.clientSecretVar] : null)
+  const clientSecret =
+    config.clientSecret ?? (config.clientSecretVar ? env[config.clientSecretVar] : null)
   const tokenEndpoint = config.tokenEndpoint ?? null
   return { type: 'oidc', issuer, jwksUri, clientId, clientSecret, tokenEndpoint }
 }
