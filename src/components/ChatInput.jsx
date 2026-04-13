@@ -144,7 +144,9 @@ export default function ChatInput({ onSend }) {
     const content = editorToMarkdown(el)
     if (!content.trim()) return
     if (content.length > MAX_MESSAGE_LENGTH) {
-      alert(`Message too long (${content.length}/${MAX_MESSAGE_LENGTH} characters). Please shorten it.`)
+      alert(
+        `Message too long (${content.length}/${MAX_MESSAGE_LENGTH} characters). Please shorten it.`
+      )
       return
     }
     onSend(content)

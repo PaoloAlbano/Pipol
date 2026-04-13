@@ -26,26 +26,26 @@ function makeMsg(overrides = {}) {
   }
 }
 
-describe('ChatMessages — stato vuoto', () => {
-  it('mostra un placeholder se non ci sono messaggi', () => {
+describe('ChatMessages — empty state', () => {
+  it('shows placeholder when no messages', () => {
     render(<ChatMessages messages={[]} identity={identity} />)
     expect(screen.getByText(/no messages/i)).toBeInTheDocument()
   })
 
-  it('non mostra la lista messaggi quando è vuota', () => {
+  it('does not show message list when empty', () => {
     const { container } = render(<ChatMessages messages={[]} identity={identity} />)
     expect(container.querySelector('.messages-list')).toBeNull()
   })
 })
 
-describe('ChatMessages — rendering messaggi', () => {
-  it('mostra il contenuto del messaggio', () => {
+describe('ChatMessages — message rendering', () => {
+  it('displays message content', () => {
     const msg = makeMsg({ content: 'Buongiorno a tutti' })
     render(<ChatMessages messages={[msg]} identity={identity} />)
     expect(screen.getByText('Buongiorno a tutti')).toBeInTheDocument()
   })
 
-  it('mostra tutti i messaggi', () => {
+  it('displays all messages', () => {
     const msgs = [
       makeMsg({ id: '1', content: 'Primo' }),
       makeMsg({ id: '2', content: 'Secondo' }),
@@ -57,53 +57,53 @@ describe('ChatMessages — rendering messaggi', () => {
     expect(screen.getByText('Terzo')).toBeInTheDocument()
   })
 
-  it('mostra il nome del mittente per messaggi remoti', () => {
+  it('displays sender name for remote messages', () => {
     const msg = makeMsg({ username: 'alice-bear', publicKey: '99887766' })
     render(<ChatMessages messages={[msg]} identity={identity} />)
     expect(screen.getByText('alice-bear')).toBeInTheDocument()
   })
 })
 
-describe('ChatMessages — rendering markdown', () => {
-  it('rende il testo grassetto (**bold**)', () => {
+describe('ChatMessages — markdown rendering', () => {
+  it('renders bold text (**bold**)', () => {
     const msg = makeMsg({ content: '**bold**' })
     const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
     expect(container.querySelector('strong')).toBeInTheDocument()
   })
 
-  it('rende il testo corsivo (_italic_)', () => {
+  it('renders italic text (_italic_)', () => {
     const msg = makeMsg({ content: '_italic_' })
     const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
     expect(container.querySelector('em')).toBeInTheDocument()
   })
 
-  it('rende il testo barrato (~~strike~~)', () => {
+  it('renders strikethrough text (~~strike~~)', () => {
     const msg = makeMsg({ content: '~~strike~~' })
     const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
     expect(container.querySelector('del')).toBeInTheDocument()
   })
 
-  it('rende inline code (`code`)', () => {
+  it('renders inline code (`code`)', () => {
     const msg = makeMsg({ content: '`code`' })
     const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
     expect(container.querySelector('code')).toBeInTheDocument()
   })
 
-  it('rende un code block (```)', () => {
+  it('renders code block (```)', () => {
     const msg = makeMsg({ content: '```\nconst x = 1\n```' })
     const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
     expect(container.querySelector('pre')).toBeInTheDocument()
     expect(container.querySelector('pre code')).toBeInTheDocument()
   })
 
-  it('sanifica tag pericolosi (<script>)', () => {
+  it('sanitizes dangerous tags (<script>)', () => {
     const msg = makeMsg({ content: '<script>alert("xss")</script>testo' })
     const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
     expect(container.querySelector('script')).toBeNull()
     expect(container.textContent).toContain('testo')
   })
 
-  it('sanifica attributi pericolosi (onclick)', () => {
+  it('sanitizes dangerous attributes (onclick)', () => {
     const msg = makeMsg({ content: '<p onclick="evil()">ciao</p>' })
     const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
     const p = container.querySelector('p')
@@ -111,30 +111,29 @@ describe('ChatMessages — rendering markdown', () => {
   })
 })
 
-describe('ChatMessages — distingue messaggi propri e altrui', () => {
-  it('applica la classe --own ai propri messaggi', () => {
+describe('ChatMessages — distinguishes own and remote messages', () => {
+  it('applies --own class to own messages', () => {
     const ownMsg = makeMsg({ publicKey: MY_KEY_HEX, username: 'swift-fox' })
     const { container } = render(<ChatMessages messages={[ownMsg]} identity={identity} />)
     const row = container.querySelector('.message-row--own')
     expect(row).toBeInTheDocument()
   })
 
-  it('applica la classe --remote ai messaggi altrui', () => {
+  it('applies --remote class to remote messages', () => {
     const remoteMsg = makeMsg({ publicKey: '99887766', username: 'alice' })
     const { container } = render(<ChatMessages messages={[remoteMsg]} identity={identity} />)
     const row = container.querySelector('.message-row--remote')
     expect(row).toBeInTheDocument()
   })
 
-  it('non mostra il nome del mittente per i propri messaggi', () => {
+  it('does not show sender name for own messages', () => {
     const ownMsg = makeMsg({ publicKey: MY_KEY_HEX, username: 'swift-fox' })
-    render(<ChatMessages messages={[ownMsg]} identity={identity} />)
     // .message-sender is rendered only for remote messages
     const { container } = render(<ChatMessages messages={[ownMsg]} identity={identity} />)
     expect(container.querySelector('.message-sender')).toBeNull()
   })
 
-  it('gestisce mix di messaggi propri e altrui', () => {
+  it('handles mix of own and remote messages', () => {
     const msgs = [
       makeMsg({ id: '1', publicKey: MY_KEY_HEX, username: 'swift-fox' }),
       makeMsg({ id: '2', publicKey: '99887766', username: 'alice' }),
