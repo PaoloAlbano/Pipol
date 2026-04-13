@@ -33,8 +33,10 @@ export default function ChannelSidebar({
   activeChannelName,
   identity,
   audioMuted = false,
+  isAdmin = false,
   onSelectChannel,
   onCreateChannel,
+  onInvite,
   onSelectDM,
   onToggleMute,
   onOpenSettings,
@@ -60,6 +62,19 @@ export default function ChannelSidebar({
       >
         <span className="sidebar__workspace-name">{workspace?.name ?? 'Workspace'}</span>
         {onlineCount > 0 && <span className="sidebar__online-count">{onlineCount} online</span>}
+        {isAdmin && onInvite && (
+          <button
+            className="sidebar__invite-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              onInvite()
+            }}
+            title="Copia link di invito"
+            aria-label="Copia link di invito"
+          >
+            🔗
+          </button>
+        )}
         {onWorkspaceHeaderClick && <span className="sidebar__workspace-chevron">▾</span>}
       </div>
 

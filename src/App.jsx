@@ -222,7 +222,12 @@ export default function App() {
   // ── Create workspace (basic inline, Step 11 will add proper modal) ─────────
 
   function handleCreateWorkspace(name, channels = ['general', 'random']) {
-    const { workspace } = createWorkspace(name, channels)
+    const pubkeyHex = identity?.publicKey
+      ? Array.from(identity.publicKey)
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('')
+      : null
+    const { workspace } = createWorkspace(name, channels, null, pubkeyHex)
     saveWorkspace(workspace)
     const ws = getWorkspaces()
     setWorkspaces(ws)
@@ -230,6 +235,21 @@ export default function App() {
     setActiveWorkspaceId(workspace.id)
     setActiveChannelName(null)
     setView('workspace')
+  }
+
+  // ── Share invite URL ─────────────────────────────────────────────────────
+
+  function handleShareInvite() {
+    if (!activeWorkspace) return
+    const url = buildInviteUrl(activeWorkspace)
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        alert('Link di invito copiato negli appunti!')
+      })
+      .catch(() => {
+        window.prompt('Copia il link di invito:', url)
+      })
   }
 
   // ── Invite join ───────────────────────────────────────────────────────────
@@ -275,6 +295,14 @@ export default function App() {
 
   // Active channel topic
   const activeChannelTopic = activeWorkspace?.channels.find((c) => c.name === activeChannelName)?.topic || ''
+
+  // Check if current user is admin of the active workspace
+  const myPubkeyHex = identity?.publicKey
+    ? Array.from(identity.publicKey)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+    : null
+  const isWorkspaceAdmin = activeWorkspace?.createdBy && myPubkeyHex ? activeWorkspace.createdBy === myPubkeyHex : false
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -328,8 +356,10 @@ export default function App() {
               dmPeers={[]}
               activeChannelName={activeChannelName}
               identity={identity}
+              isAdmin={isWorkspaceAdmin}
               onSelectChannel={handleSelectChannel}
               onCreateChannel={() => handleCreateChannel(activeWorkspace?.id)}
+              onInvite={handleShareInvite}
               onOpenSettings={() => setSettingsOpen(true)}
             />
           }

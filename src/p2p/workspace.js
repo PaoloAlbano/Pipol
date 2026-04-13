@@ -72,7 +72,7 @@ export function deriveChannelRoomCode(secret, channelName) {
  * @param {object}   [config]  Optional { relayUrl, authUrl } overrides
  * @returns {{ workspace: object, inviteUrl: string }}
  */
-export function createWorkspace(name, channels = ['general', 'random'], config = null) {
+export function createWorkspace(name, channels = ['general', 'random'], config = null, createdBy = null) {
   const secretBytes = globalThis.crypto.getRandomValues(new Uint8Array(32))
   const secret = b4a.toString(b4a.from(secretBytes), 'hex')
   const id = globalThis.crypto.randomUUID()
@@ -82,11 +82,12 @@ export function createWorkspace(name, channels = ['general', 'random'], config =
     id,
     name: name.trim(),
     secret,
+    createdBy, // hex pubkey of creator — determines who can share invite URLs
     channels: channels.map((n) => ({
       name: n.toLowerCase().trim(),
       topic: '',
       createdAt: now,
-      createdBy: null, // set to own pubkey when called from UI
+      createdBy,
     })),
     config: config ?? null,
     joinedAt: now,

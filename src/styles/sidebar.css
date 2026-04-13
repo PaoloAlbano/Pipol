@@ -47,6 +47,25 @@
   flex-shrink: 0;
 }
 
+.sidebar__invite-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition:
+    opacity 0.1s,
+    background 0.1s;
+}
+
+.sidebar__invite-btn:hover {
+  opacity: 1;
+  background: var(--surface-3);
+}
+
 .sidebar__online-count {
   font-size: 11px;
   color: var(--text-muted);
