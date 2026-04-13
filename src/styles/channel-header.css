@@ -1,0 +1,118 @@
+/* ── ChannelHeader ───────────────────────────────────────────── */
+
+.channel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  height: 48px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.channel-header__prefix {
+  font-size: 17px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.channel-header__name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.channel-header__divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-strong);
+  flex-shrink: 0;
+}
+
+/* Topic — truncated, click to edit */
+.channel-header__topic {
+  font-size: 13px;
+  color: var(--text-muted);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition:
+    background 0.1s,
+    color 0.1s;
+  min-width: 0;
+}
+
+.channel-header__topic:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.channel-header__topic--placeholder {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* Inline topic edit input */
+.channel-header__topic-input {
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  flex: 1;
+  min-width: 0;
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+/* Actions */
+.channel-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.channel-header__btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    color 0.1s;
+  position: relative;
+}
+
+.channel-header__btn:hover {
+  background: var(--surface-4);
+  color: var(--text);
+}
+
+.channel-header__btn--active {
+  color: var(--primary);
+  background: var(--primary-glow);
+}
+
+.channel-header__btn--call-active {
+  color: var(--success);
+  background: rgba(35, 209, 96, 0.12);
+}

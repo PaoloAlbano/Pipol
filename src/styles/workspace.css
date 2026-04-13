@@ -1,0 +1,183 @@
+/* ── WorkspaceLayout — 4-zone shell ─────────────────────────── */
+
+.workspace-layout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Workspace Rail (48px) ───────────────────────────────────── */
+
+.workspace-rail {
+  width: 48px;
+  flex-shrink: 0;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  z-index: 10;
+}
+
+/* ── Channel Sidebar (220px) ─────────────────────────────────── */
+
+.workspace-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition:
+    width 0.2s ease,
+    transform 0.2s ease;
+  z-index: 9;
+}
+
+.workspace-sidebar--collapsed {
+  width: 48px;
+}
+
+/* ── Main Content (flex: 1) ──────────────────────────────────── */
+
+.workspace-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* Embedded Room fills the main column */
+.workspace-main .room-layout {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Right Panel (300px, optional) ──────────────────────────── */
+
+.workspace-right-panel {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slide-in-right 0.2s ease;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ── Tablet (768px – 1024px) ─────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  .workspace-rail {
+    display: none;
+  }
+
+  .workspace-right-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* ── Mobile (< 768px) ────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .workspace-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 56px; /* above bottom nav */
+    z-index: 30;
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .workspace-sidebar--open {
+    transform: translateX(0);
+  }
+
+  .workspace-sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 29;
+  }
+
+  .workspace-sidebar--open ~ .workspace-sidebar-backdrop {
+    display: block;
+  }
+
+  .workspace-main {
+    padding-bottom: 56px; /* room for bottom nav */
+  }
+
+  /* Mobile bottom navigation */
+  .workspace-mobile-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    justify-content: space-around;
+    align-items: center;
+    z-index: 40;
+  }
+
+  .workspace-mobile-nav__btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 20px;
+    padding: 6px 16px;
+    border-radius: var(--radius-sm);
+    transition: color 0.1s;
+  }
+
+  .workspace-mobile-nav__btn--active {
+    color: var(--primary);
+  }
+
+  .workspace-mobile-nav__label {
+    font-size: 10px;
+    font-family: var(--font-sans);
+  }
+}
+
+@media (min-width: 769px) {
+  .workspace-mobile-nav {
+    display: none;
+  }
+
+  .workspace-sidebar-backdrop {
+    display: none !important;
+  }
+}

@@ -26,7 +26,7 @@ import '../styles/room.css'
  * @param {object}   identity   { publicKey, secretKey, username }
  * @param {function} onLeave    Callback to return to the Home screen
  */
-export default function Room({ roomCode, identity, showStats, onLeave, onOpenSettings }) {
+export default function Room({ roomCode, identity, showStats, onLeave, onOpenSettings, embedded = false }) {
   const [peers, setPeers] = useState([])
   const [messages, setMessages] = useState([])
   const [status, setStatus] = useState('connecting…')
@@ -762,8 +762,8 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
           </div>
         </div>
       )}
-      {/* ── Mobile top bar (mounted only on small screens) ── */}
-      {mobileView && (
+      {/* ── Mobile top bar (mounted only on small screens, not in embedded mode) ── */}
+      {mobileView && !embedded && (
         <div className="room-mobile-header">
           <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
             <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
@@ -800,101 +800,103 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         </div>
       )}
 
-      {/* ── Left sidebar: participants + controls ── */}
-      <aside className={`room-sidebar ${sidebarOpen ? '' : 'room-sidebar--collapsed'}`}>
-        <div className="room-sidebar-header">
-          <div className="room-sidebar-header-top">
-            <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
-              <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
-            </button>
-            {sidebarOpen && <span className="room-beta-badge">beta</span>}
-            <div className="room-sidebar-header-spacer" />
-            {sidebarOpen && (
-              <button className="btn-collapse" onClick={onOpenSettings} title="Settings">
-                ⚙️
+      {/* ── Left sidebar: participants + controls (hidden when embedded in WorkspaceLayout) ── */}
+      {!embedded && (
+        <aside className={`room-sidebar ${sidebarOpen ? '' : 'room-sidebar--collapsed'}`}>
+          <div className="room-sidebar-header">
+            <div className="room-sidebar-header-top">
+              <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
+                <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
               </button>
+              {sidebarOpen && <span className="room-beta-badge">beta</span>}
+              <div className="room-sidebar-header-spacer" />
+              {sidebarOpen && (
+                <button className="btn-collapse" onClick={onOpenSettings} title="Settings">
+                  ⚙️
+                </button>
+              )}
+              <button
+                className="btn-collapse"
+                onClick={() => setSidebarOpen((v) => !v)}
+                title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              >
+                {sidebarOpen ? '◀' : '▶'}
+              </button>
+            </div>
+            {sidebarOpen && (
+              <div className="room-code-display">
+                <span className="room-code-label">Room</span>
+                <span className="room-code-value">{roomCode}</span>
+              </div>
             )}
-            <button
-              className="btn-collapse"
-              onClick={() => setSidebarOpen((v) => !v)}
-              title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            >
-              {sidebarOpen ? '◀' : '▶'}
-            </button>
           </div>
-          {sidebarOpen && (
-            <div className="room-code-display">
-              <span className="room-code-label">Room</span>
-              <span className="room-code-value">{roomCode}</span>
-            </div>
-          )}
-        </div>
 
-        <div className="room-status">{status}</div>
+          <div className="room-status">{status}</div>
 
-        {/* Peer list */}
-        <div className="peer-list">
-          <div className="peer-list-title">Participants</div>
-          <div className="peer-item self">
-            <span className="peer-dot online" />
-            <span className="peer-name">{identity.username} (you)</span>
-          </div>
-          {peers.map((p) => (
-            <div key={p.id} className="peer-item">
+          {/* Peer list */}
+          <div className="peer-list">
+            <div className="peer-list-title">Participants</div>
+            <div className="peer-item self">
               <span className="peer-dot online" />
-              <span className="peer-name">{p.username}</span>
+              <span className="peer-name">{identity.username} (you)</span>
             </div>
-          ))}
-        </div>
-
-        {/* Call in progress indicator */}
-        {callInProgress && (
-          <div className="call-in-progress">
-            <span className="call-in-progress-dot" />
-            <span className="call-in-progress-text">Call in progress · {callPeerIds.size}</span>
-            <button className="call-in-progress-join" onClick={handleJoinCall}>
-              Join
-            </button>
+            {peers.map((p) => (
+              <div key={p.id} className="peer-item">
+                <span className="peer-dot online" />
+                <span className="peer-name">{p.username}</span>
+              </div>
+            ))}
           </div>
-        )}
 
-        {/* GitHub link */}
-        {sidebarOpen && (
-          <a
-            href="https://github.com/PaoloAlbano/Pipol"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="room-github-link"
-          >
-            <svg className="room-github-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.342-3.369-1.342-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
-            </svg>
-            View on GitHub
-          </a>
-        )}
-
-        {/* Call controls */}
-        <div className="room-sidebar-footer">
-          {!callActive ? (
-            <button className="btn btn-call-start" onClick={handleStartCall}>
-              📹 Start Video Call
-            </button>
-          ) : (
-            <VideoControls
-              audioMuted={audioMuted}
-              videoMuted={videoMuted}
-              screenSharing={screenSharing}
-              pipActive={pipActive}
-              onToggleAudio={handleToggleAudio}
-              onToggleVideo={handleToggleVideo}
-              onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
-              onToggleScreenShare={navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined}
-              onTogglePiP={handleTogglePiP}
-              onEndCall={handleEndCall}
-            />
+          {/* Call in progress indicator */}
+          {callInProgress && (
+            <div className="call-in-progress">
+              <span className="call-in-progress-dot" />
+              <span className="call-in-progress-text">Call in progress · {callPeerIds.size}</span>
+              <button className="call-in-progress-join" onClick={handleJoinCall}>
+                Join
+              </button>
+            </div>
           )}
-        </div>
-      </aside>
+
+          {/* GitHub link */}
+          {sidebarOpen && (
+            <a
+              href="https://github.com/PaoloAlbano/Pipol"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="room-github-link"
+            >
+              <svg className="room-github-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.342-3.369-1.342-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+              </svg>
+              View on GitHub
+            </a>
+          )}
+
+          {/* Call controls */}
+          <div className="room-sidebar-footer">
+            {!callActive ? (
+              <button className="btn btn-call-start" onClick={handleStartCall}>
+                📹 Start Video Call
+              </button>
+            ) : (
+              <VideoControls
+                audioMuted={audioMuted}
+                videoMuted={videoMuted}
+                screenSharing={screenSharing}
+                pipActive={pipActive}
+                onToggleAudio={handleToggleAudio}
+                onToggleVideo={handleToggleVideo}
+                onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
+                onToggleScreenShare={navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined}
+                onTogglePiP={handleTogglePiP}
+                onEndCall={handleEndCall}
+              />
+            )}
+          </div>
+        </aside>
+      )}
 
       {/* ── Center: video grid (only during call) ── */}
       {callActive && (

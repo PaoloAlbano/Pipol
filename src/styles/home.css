@@ -230,3 +230,73 @@
   fill: currentColor;
   flex-shrink: 0;
 }
+
+/* ── Workspace onboarding additions ─────────────────────────── */
+
+.home-tabs {
+  display: flex;
+  width: 100%;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 3px;
+  gap: 3px;
+}
+
+.home-tab {
+  flex: 1;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+  font-family: var(--font-sans);
+}
+
+.home-tab:hover {
+  color: var(--text);
+}
+
+.home-tab--active {
+  background: var(--surface-4);
+  color: var(--text);
+}
+
+.home-label {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.home-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: left;
+  width: 100%;
+  line-height: 1.5;
+}
+
+.home-invite-preview {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.home-invite-channels {
+  font-size: 12px;
+  color: var(--text-muted);
+}
