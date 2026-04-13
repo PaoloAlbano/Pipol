@@ -47,8 +47,13 @@ export class MessageStore {
 
     // Load persisted messages from IndexedDB into the in-memory channel cache
     const persisted = await loadMessages(this.roomCode)
+    const MAX_MESSAGE_LENGTH = 10000
     for (const msg of persisted) {
       if (!this._channelMessages.some((m) => m.id === msg.id)) {
+        // Validate and truncate if needed (defensive: old messages or corruption)
+        if (msg.content?.length > MAX_MESSAGE_LENGTH) {
+          msg.content = msg.content.slice(0, MAX_MESSAGE_LENGTH)
+        }
         this._channelMessages.push(msg)
       }
     }
@@ -69,6 +74,12 @@ export class MessageStore {
   receiveMessage(msg) {
     if (!msg?.id) return
     if (this._channelMessages.some((m) => m.id === msg.id)) return
+    // Validate message length — truncate if too long (malicious or buggy peer)
+    const MAX_MESSAGE_LENGTH = 10000
+    if (msg.content?.length > MAX_MESSAGE_LENGTH) {
+      console.warn('[autobase] Message too long, truncating:', msg.content.length, '→', MAX_MESSAGE_LENGTH)
+      msg.content = msg.content.slice(0, MAX_MESSAGE_LENGTH)
+    }
     this._channelMessages.push(msg)
     persistMessage(this.roomCode, msg).catch(() => {})
     this._emit('messages')
@@ -85,8 +96,13 @@ export class MessageStore {
    * Append a new text message to our local Hypercore.
    * @param {string} content
    * @returns {Promise<object>} The message object
+   * @throws {Error} If content exceeds maximum length
    */
   async addMessage(content) {
+    const MAX_MESSAGE_LENGTH = 10000
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      throw new Error(`Message too long (${content.length}/${MAX_MESSAGE_LENGTH} characters)`)
+    }
     const msg = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       content,
