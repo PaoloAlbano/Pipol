@@ -57,9 +57,7 @@ export class MessageStore {
         this._channelMessages.push(msg)
       }
     }
-    console.info(
-      `[autobase] Loaded ${persisted.length} messages from IndexedDB for room "${this.roomCode}"`
-    )
+    console.info(`[autobase] Loaded ${persisted.length} messages from IndexedDB for room "${this.roomCode}"`)
     console.info(
       `[autobase] Local core ready. key=${b4a.toString(this._localCore.key, 'hex').slice(0, 16)}… length=${this._localCore.length}`
     )
@@ -77,12 +75,7 @@ export class MessageStore {
     // Validate message length — truncate if too long (malicious or buggy peer)
     const MAX_MESSAGE_LENGTH = 10000
     if (msg.content?.length > MAX_MESSAGE_LENGTH) {
-      console.warn(
-        '[autobase] Message too long, truncating:',
-        msg.content.length,
-        '→',
-        MAX_MESSAGE_LENGTH
-      )
+      console.warn('[autobase] Message too long, truncating:', msg.content.length, '→', MAX_MESSAGE_LENGTH)
       msg.content = msg.content.slice(0, MAX_MESSAGE_LENGTH)
     }
     this._channelMessages.push(msg)
@@ -161,9 +154,7 @@ export class MessageStore {
     // Emit an update whenever this remote core grows (new blocks replicated)
     core.on('append', () => this._emit('messages'))
 
-    console.info(
-      `[autobase] Registered remote core ${coreKeyHex.slice(0, 16)}… length=${core.length}`
-    )
+    console.info(`[autobase] Registered remote core ${coreKeyHex.slice(0, 16)}… length=${core.length}`)
 
     return core
   }

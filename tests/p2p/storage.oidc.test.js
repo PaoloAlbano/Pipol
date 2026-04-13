@@ -140,8 +140,6 @@ describe('deriveIdentityOIDC — account creation and restoration', () => {
     vi.resetModules()
     const fresh = await import('../../src/p2p/storage.js')
     const differentSecret = 'c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4'
-    await expect(fresh.deriveIdentityOIDC(differentSecret, 'v2', 'github')).rejects.toThrow(
-      'key-version-changed'
-    )
+    await expect(fresh.deriveIdentityOIDC(differentSecret, 'v2', 'github')).rejects.toThrow('key-version-changed')
   })
 })

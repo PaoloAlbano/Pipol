@@ -186,9 +186,7 @@ describe('Room — call lifecycle', () => {
     await setup()
     await userEvent.click(screen.getByText(/start video call/i))
     await waitFor(() =>
-      expect(swarmMock.sendToAll).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'CALL_INIT' })
-      )
+      expect(swarmMock.sendToAll).toHaveBeenCalledWith(expect.objectContaining({ type: 'CALL_INIT' }))
     )
   })
 
@@ -336,9 +334,7 @@ describe('Room — swarm events', () => {
   })
 
   it('removes a peer from the list when peer-left fires', async () => {
-    swarmMock.getPeers
-      .mockReturnValueOnce([{ id: 'peer-1', username: 'carol' }])
-      .mockReturnValue([])
+    swarmMock.getPeers.mockReturnValueOnce([{ id: 'peer-1', username: 'carol' }]).mockReturnValue([])
     await setup()
 
     await act(async () => {
@@ -412,9 +408,7 @@ describe('Room — in-call button visibility', () => {
   it('shows the flip button when multiple cameras are available', async () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       value: {
-        enumerateDevices: vi
-          .fn()
-          .mockResolvedValue([{ kind: 'videoinput' }, { kind: 'videoinput' }]),
+        enumerateDevices: vi.fn().mockResolvedValue([{ kind: 'videoinput' }, { kind: 'videoinput' }]),
       },
       configurable: true,
     })
@@ -454,9 +448,7 @@ describe('Room — in-call button actions', () => {
   it('calls switchCamera when the flip button is clicked', async () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       value: {
-        enumerateDevices: vi
-          .fn()
-          .mockResolvedValue([{ kind: 'videoinput' }, { kind: 'videoinput' }]),
+        enumerateDevices: vi.fn().mockResolvedValue([{ kind: 'videoinput' }, { kind: 'videoinput' }]),
       },
       configurable: true,
     })
@@ -479,9 +471,7 @@ describe('Room — in-call button actions', () => {
     await setupWithCall()
     await userEvent.click(screen.getByTitle(/share screen/i))
     await waitFor(() =>
-      expect(swarmMock.sendToAll).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'SCREEN_SHARE_START' })
-      )
+      expect(swarmMock.sendToAll).toHaveBeenCalledWith(expect.objectContaining({ type: 'SCREEN_SHARE_START' }))
     )
     expect(screen.getByTitle(/stop screen share/i)).toBeInTheDocument()
     Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })

@@ -13,8 +13,8 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\"",
-    "format:check": "prettier --check \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\""
+    "format": "prettier --print-width 120 --write \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\"",
+    "format:check": "prettier --print-width 120 --check \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\""
   },
   "dependencies": {
     "@hyperswarm/dht-relay": "^0.4.3",

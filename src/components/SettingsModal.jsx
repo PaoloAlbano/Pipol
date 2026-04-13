@@ -23,14 +23,7 @@ const QUALITIES = [
   { value: '1080p', label: '1080p', desc: 'Best quality' },
 ]
 
-export default function SettingsModal({
-  identity,
-  onUsernameChange,
-  showStats,
-  onShowStatsChange,
-  onClose,
-  onLock,
-}) {
+export default function SettingsModal({ identity, onUsernameChange, showStats, onShowStatsChange, onClose, onLock }) {
   const [name, setName] = useState(identity.username)
   const [nameError, setNameError] = useState('')
   const [quality, setQuality] = useState(getVideoQuality)
@@ -149,18 +142,14 @@ export default function SettingsModal({
               spellCheck={false}
             />
             {relayError && <p className="settings-error">{relayError}</p>}
-            <p className="settings-hint">
-              Custom signaling relay. Changes take effect on the next room join.
-            </p>
+            <p className="settings-hint">Custom signaling relay. Changes take effect on the next room join.</p>
           </div>
 
           <div className="settings-section">
             <label className="settings-label">Debug</label>
             <label className="settings-toggle-row">
               <span className="settings-toggle-label">Show network stats overlay</span>
-              <span className="settings-toggle-desc">
-                Shows connection type, RTT and bytes for each peer
-              </span>
+              <span className="settings-toggle-desc">Shows connection type, RTT and bytes for each peer</span>
               <button
                 className={`settings-toggle ${showStats ? 'settings-toggle--on' : ''}`}
                 role="switch"
@@ -178,14 +167,13 @@ export default function SettingsModal({
               {biometricEnabled ? (
                 <>
                   <p className="settings-hint">
-                    Biometric unlock is active on this device. You can sign in with Touch ID / Face
-                    ID without typing your passphrase.
+                    Biometric unlock is active on this device. You can sign in with Touch ID / Face ID without typing
+                    your passphrase.
                   </p>
                   {biometricDisableConfirm ? (
                     <>
                       <p className="settings-hint settings-hint--warn">
-                        To re-enable biometric unlock you will need to log out and log back in.
-                        Continue?
+                        To re-enable biometric unlock you will need to log out and log back in. Continue?
                       </p>
                       <div className="settings-row">
                         <button
@@ -198,27 +186,20 @@ export default function SettingsModal({
                         >
                           Yes, disable
                         </button>
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => setBiometricDisableConfirm(false)}
-                        >
+                        <button className="btn btn-secondary" onClick={() => setBiometricDisableConfirm(false)}>
                           Keep enabled
                         </button>
                       </div>
                     </>
                   ) : (
-                    <button
-                      className="btn btn-lock"
-                      onClick={() => setBiometricDisableConfirm(true)}
-                    >
+                    <button className="btn btn-lock" onClick={() => setBiometricDisableConfirm(true)}>
                       Disable
                     </button>
                   )}
                 </>
               ) : getPassphrase() === null ? (
                 <p className="settings-hint">
-                  Biometric unlock is not available in this session. Log out and log back in to
-                  enable it.
+                  Biometric unlock is not available in this session. Log out and log back in to enable it.
                 </p>
               ) : (
                 <>
@@ -266,8 +247,7 @@ export default function SettingsModal({
               Lock session
             </button>
             <p className="settings-hint">
-              Removes the decryption key from memory. You&apos;ll need your passphrase to unlock
-              again.
+              Removes the decryption key from memory. You&apos;ll need your passphrase to unlock again.
             </p>
           </div>
         </div>

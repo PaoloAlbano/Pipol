@@ -129,9 +129,7 @@ describe('storage — getIdentity', () => {
 
     vi.resetModules()
     const fresh = await import('../../src/p2p/storage.js')
-    await expect(fresh.deriveIdentityA('user', 'wrong-passphrase-999')).rejects.toThrow(
-      'wrong-passphrase'
-    )
+    await expect(fresh.deriveIdentityA('user', 'wrong-passphrase-999')).rejects.toThrow('wrong-passphrase')
     expect(fresh.getIdentity()).toBeNull()
   })
 })

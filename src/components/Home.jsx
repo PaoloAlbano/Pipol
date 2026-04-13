@@ -91,9 +91,7 @@ export default function Home({ identity, onJoin, onUsernameChange, onOpenSetting
           Pipol.dev
           <span className="home-beta-badge">beta</span>
         </h1>
-        <p className="home-subtitle">
-          Serverless group chat &amp; video calls — no accounts, no servers.
-        </p>
+        <p className="home-subtitle">Serverless group chat &amp; video calls — no accounts, no servers.</p>
 
         {/* Settings button */}
         <button className="home-settings-btn" onClick={onOpenSettings} title="Settings">
@@ -177,9 +175,7 @@ export default function Home({ identity, onJoin, onUsernameChange, onOpenSetting
           </div>
         </form>
 
-        <p className="home-footer">
-          All data stays on your device. Connections are end-to-end encrypted.
-        </p>
+        <p className="home-footer">All data stays on your device. Connections are end-to-end encrypted.</p>
 
         {installPrompt && (
           <button className="home-install-btn" onClick={handleInstall}>

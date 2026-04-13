@@ -143,8 +143,7 @@ export default function EmojiPicker({ value = [], onChange, maxCount = 6 }) {
 
       {/* Hover info bar */}
       <div className="ep-info-bar">
-        {hoveredName ??
-          (isComplete ? 'Click a slot above to remove an emoji' : 'Hover an emoji to see its name')}
+        {hoveredName ?? (isComplete ? 'Click a slot above to remove an emoji' : 'Hover an emoji to see its name')}
       </div>
     </div>
   )

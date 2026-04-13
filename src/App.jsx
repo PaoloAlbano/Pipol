@@ -6,14 +6,7 @@ import OIDCCallback from './components/OIDCCallback.jsx'
 
 // Lazy-load Room and the entire P2P stack — only downloaded when the user enters a room
 const Room = lazy(() => import('./components/Room.jsx'))
-import {
-  getIdentity,
-  setUsername,
-  getShowStats,
-  setShowStats,
-  getMasterSeed,
-  lockSession,
-} from './p2p/storage.js'
+import { getIdentity, setUsername, getShowStats, setShowStats, getMasterSeed, lockSession } from './p2p/storage.js'
 import { initEncryption } from './p2p/db.js'
 
 /**

@@ -24,9 +24,7 @@ export default function VideoGrid({
 
   // Resolve which peer is in the spotlight
   const resolvedSpotlightId =
-    spotlightPeerId && remoteStreams[spotlightPeerId]
-      ? spotlightPeerId
-      : (remoteEntries[0]?.[0] ?? null)
+    spotlightPeerId && remoteStreams[spotlightPeerId] ? spotlightPeerId : (remoteEntries[0]?.[0] ?? null)
 
   const isSpotlight = layout === 'spotlight' && count > 0
 
@@ -51,10 +49,7 @@ export default function VideoGrid({
 
   // ── Spotlight layout ───────────────────────────────────────────────────────
   if (isSpotlight && resolvedSpotlightId) {
-    const sidebarEntries = [
-      ...remoteEntries.filter(([id]) => id !== resolvedSpotlightId),
-      ['__local__', localStream],
-    ]
+    const sidebarEntries = [...remoteEntries.filter(([id]) => id !== resolvedSpotlightId), ['__local__', localStream]]
 
     return (
       <div className="video-container video-container--spotlight">
@@ -94,12 +89,7 @@ export default function VideoGrid({
           <VideoTile stream={localStream} label={`${localUsername} (you)`} muted />
         ) : (
           remoteEntries.map(([peerId, stream]) => (
-            <VideoTile
-              key={peerId}
-              stream={stream}
-              label={getLabel(peerId)}
-              stats={getStats(peerId)}
-            />
+            <VideoTile key={peerId} stream={stream} label={getLabel(peerId)} stats={getStats(peerId)} />
           ))
         )}
       </div>
@@ -140,15 +130,7 @@ function formatBytes(n) {
   return `${(n / 1048576).toFixed(1)}MB`
 }
 
-function VideoTile({
-  stream,
-  label,
-  muted = false,
-  small = false,
-  sidebar = false,
-  stats = null,
-  onClick,
-}) {
+function VideoTile({ stream, label, muted = false, small = false, sidebar = false, stats = null, onClick }) {
   const videoRef = useRef(null)
 
   useEffect(() => {

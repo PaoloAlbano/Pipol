@@ -313,8 +313,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         next[peerId] = {
           ...s,
           bytesSentPerSec: dt && dt > 0 ? Math.round((s.bytesSent - prev.bytesSent) / dt) : null,
-          bytesReceivedPerSec:
-            dt && dt > 0 ? Math.round((s.bytesReceived - prev.bytesReceived) / dt) : null,
+          bytesReceivedPerSec: dt && dt > 0 ? Math.round((s.bytesReceived - prev.bytesReceived) / dt) : null,
         }
         prevStatsRef.current[peerId] = {
           bytesSent: s.bytesSent,
@@ -381,15 +380,13 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
       // ── Video wrapper ────────────────────────────────────────────────────
       const wrapper = doc.createElement('div')
-      wrapper.style.cssText =
-        'flex:1;min-height:0;position:relative;overflow:hidden;background:#000'
+      wrapper.style.cssText = 'flex:1;min-height:0;position:relative;overflow:hidden;background:#000'
 
       videoEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
       wrapper.appendChild(videoEl) // move the playing element into PiP
 
       // Derive label from the sibling .video-label span in the original tile
-      const labelText =
-        origParent.querySelector('.video-label')?.textContent ?? (videoEl.muted ? 'You' : 'Remote')
+      const labelText = origParent.querySelector('.video-label')?.textContent ?? (videoEl.muted ? 'You' : 'Remote')
       const lbl = doc.createElement('span')
       lbl.style.cssText =
         'position:absolute;bottom:4px;left:6px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
@@ -399,8 +396,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
       // ── Controls bar ─────────────────────────────────────────────────────
       const bar = doc.createElement('div')
-      bar.style.cssText =
-        'flex-shrink:0;display:flex;justify-content:center;gap:10px;padding:8px;background:#1a1a1a'
+      bar.style.cssText = 'flex-shrink:0;display:flex;justify-content:center;gap:10px;padding:8px;background:#1a1a1a'
 
       function makeBtn(icon, text, active) {
         const b = doc.createElement('button')
@@ -525,29 +521,50 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  /**
+   * Creates or retrieves a WebRTC peer connection for a given peer ID.
+   * This is an idempotent operation — if a connection already exists, it returns it immediately.
+   *
+   * @param {string} peerId - The remote peer's ID
+   * @param {boolean} isInitiator - Whether this peer initiates the WebRTC handshake (creates offer)
+   * @returns {Promise<WebRTCPeer>} The WebRTC peer connection instance
+   */
   async function ensureRTCPeer(peerId, isInitiator) {
+    // Return existing connection if already established (avoid duplicates)
     if (rtcPeersRef.current[peerId]) return rtcPeersRef.current[peerId]
 
+    // Get or create local media stream
     const stream = localStream || (await getLocalStream())
+
+    // Create new WebRTC peer connection
     const rtcPeer = new WebRTCPeer(peerId, isInitiator, stream)
     rtcPeersRef.current[peerId] = rtcPeer
 
+    // ── Event handlers for WebRTC signaling ────────────────────────────────
+
+    // When an SDP offer is generated, send it to the remote peer via swarm
     rtcPeer.addEventListener('offer', (e) => {
       swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_OFFER', sdp: e.detail.sdp })
     })
 
+    // When an SDP answer is generated, send it to the remote peer via swarm
     rtcPeer.addEventListener('answer', (e) => {
       swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_ANSWER', sdp: e.detail.sdp })
     })
 
+    // When new ICE candidates are discovered, send them to the remote peer via swarm
     rtcPeer.addEventListener('ice-candidate', (e) => {
       swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_ICE', candidate: e.detail.candidate })
     })
 
+    // ── Event handlers for stream lifecycle ────────────────────────────────
+
+    // When remote stream is available, update React state to trigger re-render
     rtcPeer.addEventListener('remote-stream', (e) => {
       setRemoteStreams((prev) => ({ ...prev, [peerId]: e.detail.stream }))
     })
 
+    // When connection closes, remove the remote stream from state
     rtcPeer.addEventListener('closed', () => {
       setRemoteStreams((prev) => {
         const next = { ...prev }
@@ -556,6 +573,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       })
     })
 
+    // Initialize the peer connection (triggers offer/answer exchange if initiator)
     await rtcPeer.init()
     return rtcPeer
   }
@@ -726,9 +744,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   return (
     <div className={`room-layout ${callActive ? 'room-layout--call' : ''}`}>
-      {relayUnreachable && (
-        <div className="room-relay-banner">Cannot reach relay server — retrying…</div>
-      )}
+      {relayUnreachable && <div className="room-relay-banner">Cannot reach relay server — retrying…</div>}
       {/* ── Incoming call modal ── */}
       {incomingCall && !callActive && (
         <div className="call-modal-overlay">
@@ -750,13 +766,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       {mobileView && (
         <div className="room-mobile-header">
           <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
-            <img
-              src="/icons/icon.svg"
-              alt="Pipol"
-              width="20"
-              height="20"
-              className="room-home-icon"
-            />
+            <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
           </button>
           <span className="room-beta-badge">beta</span>
           <button className="btn-icon-only" onClick={onOpenSettings} title="Settings">
@@ -795,13 +805,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         <div className="room-sidebar-header">
           <div className="room-sidebar-header-top">
             <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
-              <img
-                src="/icons/icon.svg"
-                alt="Pipol"
-                width="20"
-                height="20"
-                className="room-home-icon"
-              />
+              <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
             </button>
             {sidebarOpen && <span className="room-beta-badge">beta</span>}
             <div className="room-sidebar-header-spacer" />
@@ -884,9 +888,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
               onToggleAudio={handleToggleAudio}
               onToggleVideo={handleToggleVideo}
               onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
-              onToggleScreenShare={
-                navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined
-              }
+              onToggleScreenShare={navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined}
               onTogglePiP={handleTogglePiP}
               onEndCall={handleEndCall}
             />
