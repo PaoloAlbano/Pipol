@@ -55,20 +55,51 @@ setTimeout(() => {
   }
 }, 2000)
 
+// Cleanup rate limit map periodically (prevent memory leak)
+setInterval(() => {
+  // Remove IPs with 0 connections
+  for (const [ip, count] of connectionsPerIP.entries()) {
+    if (count <= 0) {
+      connectionsPerIP.delete(ip)
+    }
+  }
+}, 60000) // Every minute
+
 const server = http.createServer()
+
+// ── Rate limiting configuration ───────────────────────────────────────────────
+const MAX_CONNECTIONS_PER_IP = 10
+const connectionsPerIP = new Map() // IP → count
 
 // ── DHT relay WebSocket server (path: /) ──────────────────────────────────────
 const wssDHT = new WebSocketServer({ noServer: true })
 const dhtConnections = new Set()
 
 wssDHT.on('connection', (socket, req) => {
-  const ip = req.socket.remoteAddress + ':' + req.socket.remotePort
+  const ip = req.socket.remoteAddress
+  
+  // Rate limit check per IP
+  const currentCount = connectionsPerIP.get(ip) || 0
+  if (currentCount >= MAX_CONNECTIONS_PER_IP) {
+    console.warn(`[relay] Rate limit exceeded for IP: ${ip}`)
+    socket.close(1008, 'Too many connections from your IP')
+    return
+  }
+  
+  // Track connection count
+  connectionsPerIP.set(ip, currentCount + 1)
+  
+  const fullAddress = ip + ':' + req.socket.remotePort
   dhtConnections.add(socket)
-  console.log(`[relay] DHT + connected: ${ip}  (total: ${dhtConnections.size})`)
+  console.log(`[relay] DHT + connected: ${fullAddress}  (total: ${dhtConnections.size})`)
+  
   socket.on('close', () => {
     dhtConnections.delete(socket)
-    console.log(`[relay] DHT - disconnected: ${ip}  (total: ${dhtConnections.size})`)
+    const count = connectionsPerIP.get(ip) || 1
+    connectionsPerIP.set(ip, count - 1)
+    console.log(`[relay] DHT - disconnected: ${fullAddress}  (total: ${dhtConnections.size})`)
   })
+  
   relay(dht, new Stream(false, socket))
 })
 
@@ -78,7 +109,20 @@ wssDHT.on('connection', (socket, req) => {
 const wssSignal = new WebSocketServer({ noServer: true })
 const rooms = new Map() // roomCode → Map<peerId, ws>
 
-wssSignal.on('connection', (ws) => {
+wssSignal.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress
+  
+  // Rate limit check per IP
+  const currentCount = connectionsPerIP.get(ip) || 0
+  if (currentCount >= MAX_CONNECTIONS_PER_IP) {
+    console.warn(`[relay] Rate limit exceeded for IP: ${ip} (signaling)`)
+    ws.close(1008, 'Too many connections from your IP')
+    return
+  }
+  
+  // Track connection count
+  connectionsPerIP.set(ip, currentCount + 1)
+  
   let peerId = null
   let roomCode = null
 
@@ -117,6 +161,10 @@ wssSignal.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
+    // Decrement connection count for this IP
+    const count = connectionsPerIP.get(ip) || 1
+    connectionsPerIP.set(ip, count - 1)
+    
     if (!peerId || !roomCode) return
     const room = rooms.get(roomCode)
     if (!room) return
