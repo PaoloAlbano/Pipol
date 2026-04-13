@@ -28,7 +28,7 @@ const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stu
  * @param {string} sdp
  * @returns {string | null} Lowercase fingerprint without colons, or null if not found
  */
-function extractFingerprint(sdp) {
+export function extractFingerprint(sdp) {
   if (!sdp) return null
   const match = sdp.match(/a=fingerprint:sha-256 ([0-9A-Fa-f:]+)/)
   if (!match) return null
@@ -326,8 +326,6 @@ export class RoomSwarm extends EventTarget {
       case 'HELLO':
         peer.username = msg.username
         peer.messageCoreKey = msg.messageCoreKey
-
-        peer.expectedFingerprint = 'wrongfingerprint123' //temp test
 
         // Verify DTLS fingerprint if we have one from signaling
         if (msg.fingerprint && peer.expectedFingerprint) {
