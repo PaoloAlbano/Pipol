@@ -77,12 +77,7 @@ export class MessageStore {
     // Validate message length — truncate if too long (malicious or buggy peer)
     const MAX_MESSAGE_LENGTH = 10000
     if (msg.content?.length > MAX_MESSAGE_LENGTH) {
-      console.warn(
-        '[autobase] Message too long, truncating:',
-        msg.content.length,
-        '→',
-        MAX_MESSAGE_LENGTH
-      )
+      console.warn('[autobase] Message too long, truncating:', msg.content.length, '→', MAX_MESSAGE_LENGTH)
       msg.content = msg.content.slice(0, MAX_MESSAGE_LENGTH)
     }
     this._channelMessages.push(msg)
