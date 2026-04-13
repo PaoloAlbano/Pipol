@@ -20,93 +20,93 @@ function setup(props = {}) {
   return { ...defaults, ...props }
 }
 
-describe('VideoControls — rendering base', () => {
-  it('mostra il pulsante mute microfono', () => {
+describe('VideoControls — base rendering', () => {
+  it('displays microphone mute button', () => {
     setup()
     expect(screen.getByTitle(/mute microphone/i)).toBeInTheDocument()
   })
 
-  it('mostra il pulsante camera', () => {
+  it('displays camera button', () => {
     setup()
     expect(screen.getByTitle(/turn off camera/i)).toBeInTheDocument()
   })
 
-  it('mostra il pulsante end call', () => {
+  it('displays end call button', () => {
     setup()
     expect(screen.getByTitle(/leave video call/i)).toBeInTheDocument()
   })
 
-  it('non mostra il pulsante flip camera se onSwitchCamera non è fornito', () => {
+  it('does not show camera flip button if onSwitchCamera is not provided', () => {
     setup()
     expect(screen.queryByTitle(/switch camera/i)).toBeNull()
   })
 
-  it('non mostra il pulsante screen share se onToggleScreenShare non è fornito', () => {
+  it('does not show screen share button if onToggleScreenShare is not provided', () => {
     setup()
     expect(screen.queryByTitle(/share screen|stop screen/i)).toBeNull()
   })
 })
 
-describe('VideoControls — pulsanti opzionali', () => {
-  it('mostra il pulsante flip camera se onSwitchCamera è fornito', () => {
+describe('VideoControls — optional buttons', () => {
+  it('displays camera flip button if onSwitchCamera is provided', () => {
     setup({ onSwitchCamera: vi.fn() })
     expect(screen.getByTitle(/switch camera/i)).toBeInTheDocument()
   })
 
-  it('mostra il pulsante screen share se onToggleScreenShare è fornito', () => {
+  it('displays screen share button if onToggleScreenShare is provided', () => {
     setup({ onToggleScreenShare: vi.fn() })
     expect(screen.getByTitle(/share screen/i)).toBeInTheDocument()
   })
 })
 
-describe('VideoControls — stato audio', () => {
-  it('mostra "Mute" quando il microfono è attivo', () => {
+describe('VideoControls — audio state', () => {
+  it('displays "Mute" when microphone is active', () => {
     setup({ audioMuted: false })
     expect(screen.getByText('Mute')).toBeInTheDocument()
   })
 
-  it('mostra "Unmute" quando il microfono è mutato', () => {
+  it('displays "Unmute" when microphone is muted', () => {
     setup({ audioMuted: true })
     expect(screen.getByText('Unmute')).toBeInTheDocument()
   })
 
-  it('applica la classe --active quando audioMuted=true', () => {
+  it('applies --active class when audioMuted=true', () => {
     setup({ audioMuted: true })
     const btn = screen.getByTitle(/unmute microphone/i)
     expect(btn).toHaveClass('control-btn--active')
   })
 
-  it('non applica la classe --active quando audioMuted=false', () => {
+  it('does not apply --active class when audioMuted=false', () => {
     setup({ audioMuted: false })
     const btn = screen.getByTitle(/mute microphone/i)
     expect(btn).not.toHaveClass('control-btn--active')
   })
 })
 
-describe('VideoControls — stato video', () => {
-  it('mostra "Cam off" quando la camera è attiva', () => {
+describe('VideoControls — video state', () => {
+  it('displays "Cam off" when camera is active', () => {
     setup({ videoMuted: false })
     expect(screen.getByText('Cam off')).toBeInTheDocument()
   })
 
-  it('mostra "Cam on" quando la camera è mutata', () => {
+  it('displays "Cam on" when camera is muted', () => {
     setup({ videoMuted: true })
     expect(screen.getByText('Cam on')).toBeInTheDocument()
   })
 })
 
-describe('VideoControls — stato screen share', () => {
-  it('mostra "Share" quando non si sta condividendo', () => {
+describe('VideoControls — screen share state', () => {
+  it('displays "Share" when not sharing', () => {
     setup({ screenSharing: false, onToggleScreenShare: vi.fn() })
     expect(screen.getByText('Share')).toBeInTheDocument()
   })
 
-  it('mostra "Stop share" quando si sta condividendo', () => {
+  it('displays "Stop share" when sharing', () => {
     setup({ screenSharing: true, onToggleScreenShare: vi.fn() })
     expect(screen.getByText('Stop share')).toBeInTheDocument()
   })
 
-  it('applica --active quando screenSharing=true', () => {
+  it('applies --active class when screenSharing=true', () => {
     setup({ screenSharing: true, onToggleScreenShare: vi.fn() })
     const btn = screen.getByTitle(/stop screen share/i)
     expect(btn).toHaveClass('control-btn--active')
@@ -114,28 +114,28 @@ describe('VideoControls — stato screen share', () => {
 })
 
 describe('VideoControls — handlers', () => {
-  it('chiama onToggleAudio al click sul pulsante microfono', async () => {
+  it('calls onToggleAudio when microphone button is clicked', async () => {
     const user = userEvent.setup()
     const { onToggleAudio } = setup()
     await user.click(screen.getByTitle(/mute microphone/i))
     expect(onToggleAudio).toHaveBeenCalledOnce()
   })
 
-  it('chiama onToggleVideo al click sul pulsante camera', async () => {
+  it('calls onToggleVideo when camera button is clicked', async () => {
     const user = userEvent.setup()
     const { onToggleVideo } = setup()
     await user.click(screen.getByTitle(/turn off camera/i))
     expect(onToggleVideo).toHaveBeenCalledOnce()
   })
 
-  it('chiama onEndCall al click sul pulsante end call', async () => {
+  it('calls onEndCall when end call button is clicked', async () => {
     const user = userEvent.setup()
     const { onEndCall } = setup()
     await user.click(screen.getByTitle(/leave video call/i))
     expect(onEndCall).toHaveBeenCalledOnce()
   })
 
-  it('chiama onSwitchCamera al click sul pulsante flip', async () => {
+  it('calls onSwitchCamera when flip button is clicked', async () => {
     const user = userEvent.setup()
     const onSwitchCamera = vi.fn()
     setup({ onSwitchCamera })
@@ -143,7 +143,7 @@ describe('VideoControls — handlers', () => {
     expect(onSwitchCamera).toHaveBeenCalledOnce()
   })
 
-  it('chiama onToggleScreenShare al click sul pulsante share', async () => {
+  it('calls onToggleScreenShare when share button is clicked', async () => {
     const user = userEvent.setup()
     const onToggleScreenShare = vi.fn()
     setup({ onToggleScreenShare })

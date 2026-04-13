@@ -45,17 +45,17 @@ function setup(overrides = {}) {
 // ── Layout grid — solo ────────────────────────────────────────────────────────
 
 describe('VideoGrid — layout grid, solo', () => {
-  it('mostra il tile locale quando non ci sono peer remoti', () => {
+  it('displays local tile when no remote peers', () => {
     setup()
     expect(screen.getByText(/swift-fox.*you/i)).toBeInTheDocument()
   })
 
-  it('non mostra il pulsante layout toggle quando non ci sono peer remoti', () => {
+  it('does not show layout toggle button when no remote peers', () => {
     setup()
     expect(screen.queryByTitle(/layout/i)).toBeNull()
   })
 
-  it('non mostra il self-preview angolare quando è solo', () => {
+  it('does not show corner self-preview when alone', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}
@@ -76,11 +76,11 @@ describe('VideoGrid — layout grid, solo', () => {
 
 // ── Layout grid — with remote peers ───────────────────────────────────────────
 
-describe('VideoGrid — layout grid, con peer remoti', () => {
+describe('VideoGrid — layout grid, with remote peers', () => {
   const peer1 = { id: 'peer-1', username: 'alice' }
   const peer2 = { id: 'peer-2', username: 'bob' }
 
-  it('mostra i tile dei peer remoti', () => {
+  it('displays remote peer tiles', () => {
     setup({
       peers: [peer1, peer2],
       remoteStreams: {
@@ -92,7 +92,7 @@ describe('VideoGrid — layout grid, con peer remoti', () => {
     expect(screen.getByText('bob')).toBeInTheDocument()
   })
 
-  it('mostra il self-preview angolare quando ci sono peer remoti', () => {
+  it('displays corner self-preview when remote peers are present', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}
@@ -110,7 +110,7 @@ describe('VideoGrid — layout grid, con peer remoti', () => {
     expect(container.querySelector('.video-self-preview')).toBeInTheDocument()
   })
 
-  it('mostra il pulsante layout toggle quando ci sono peer remoti', () => {
+  it('displays layout toggle button when remote peers are present', () => {
     setup({
       peers: [peer1],
       remoteStreams: { 'peer-1': makeFakeStream() },
@@ -118,7 +118,7 @@ describe('VideoGrid — layout grid, con peer remoti', () => {
     expect(screen.getByTitle(/spotlight layout/i)).toBeInTheDocument()
   })
 
-  it('chiama onLayoutChange con "spotlight" al click del toggle', async () => {
+  it('calls onLayoutChange with "spotlight" on toggle click', async () => {
     const user = userEvent.setup()
     const { onLayoutChange } = setup({
       peers: [peer1],
@@ -149,7 +149,7 @@ describe('VideoGrid — layout spotlight', () => {
     })
   }
 
-  it('usa la classe video-container--spotlight', () => {
+  it('uses video-container--spotlight class', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}
@@ -167,34 +167,34 @@ describe('VideoGrid — layout spotlight', () => {
     expect(container.querySelector('.video-container--spotlight')).toBeInTheDocument()
   })
 
-  it('mostra il peer in spotlight nel pannello principale', () => {
+  it('displays spotlight peer in main panel', () => {
     spotlightSetup()
     const main = document.querySelector('.video-spotlight-main')
     expect(main).toBeInTheDocument()
     expect(main.textContent).toContain('alice')
   })
 
-  it('mostra gli altri peer nella sidebar', () => {
+  it('displays other peers in sidebar', () => {
     spotlightSetup()
     const sidebar = document.querySelector('.video-spotlight-sidebar')
     expect(sidebar).toBeInTheDocument()
     expect(sidebar.textContent).toContain('bob')
   })
 
-  it('mostra il self-preview nella sidebar', () => {
+  it('displays self-preview in sidebar', () => {
     spotlightSetup()
     const sidebar = document.querySelector('.video-spotlight-sidebar')
     expect(sidebar.textContent).toContain('swift-fox')
   })
 
-  it('il toggle in spotlight mode chiama onLayoutChange con "grid"', async () => {
+  it('toggle in spotlight mode calls onLayoutChange with "grid"', async () => {
     const user = userEvent.setup()
     const { onLayoutChange } = spotlightSetup()
     await user.click(screen.getByTitle(/grid layout/i))
     expect(onLayoutChange).toHaveBeenCalledWith('grid')
   })
 
-  it('click su tile sidebar chiama onSpotlightChange con il peerId', async () => {
+  it('click on sidebar tile calls onSpotlightChange with peerId', async () => {
     const user = userEvent.setup()
     const { onSpotlightChange } = spotlightSetup()
     const sidebar = document.querySelector('.video-spotlight-sidebar')
@@ -203,7 +203,7 @@ describe('VideoGrid — layout spotlight', () => {
     expect(onSpotlightChange).toHaveBeenCalledWith('peer-2')
   })
 
-  it('il tile locale nella sidebar non è cliccabile', () => {
+  it('local tile in sidebar is not clickable', () => {
     spotlightSetup()
     const sidebar = document.querySelector('.video-spotlight-sidebar')
     const tiles = sidebar.querySelectorAll('.video-tile')
@@ -269,7 +269,7 @@ describe('VideoGrid — autopictureinpicture attribute', () => {
 describe('VideoGrid — stats overlay', () => {
   const peer1 = { id: 'peer-1', username: 'alice' }
 
-  it('non mostra stats se showStats=false', () => {
+  it('does not show stats if showStats=false', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}
@@ -295,7 +295,7 @@ describe('VideoGrid — stats overlay', () => {
     expect(container.querySelector('.video-stats-badge')).toBeNull()
   })
 
-  it('mostra il badge stats se showStats=true e ci sono dati', () => {
+  it('displays stats badge if showStats=true and data is present', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}

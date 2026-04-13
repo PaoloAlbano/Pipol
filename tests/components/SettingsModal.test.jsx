@@ -66,35 +66,35 @@ function setup(props = {}) {
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 describe('SettingsModal — rendering', () => {
-  it('mostra il campo nome con il valore corrente', () => {
+  it('displays name field with current value', () => {
     setup()
     const input = screen.getByPlaceholderText(/your name/i)
     expect(input).toHaveValue('swift-fox')
   })
 
-  it('mostra i pulsanti Save e Cancel', () => {
+  it('displays Save and Cancel buttons', () => {
     setup()
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
   })
 
-  it('mostra la sezione qualità video', () => {
+  it('displays video quality section', () => {
     setup()
     expect(screen.getByText('1080p')).toBeInTheDocument()
     expect(screen.getByText('720p')).toBeInTheDocument()
     expect(screen.getByText('480p')).toBeInTheDocument()
   })
 
-  it('mostra il toggle network stats', () => {
+  it('displays network stats toggle', () => {
     setup()
     expect(screen.getByText(/show network stats/i)).toBeInTheDocument()
   })
 })
 
-// ── Validazione ───────────────────────────────────────────────────────────────
+// ── Validation ───────────────────────────────────────────────────────────────
 
-describe('SettingsModal — validazione', () => {
-  it('mostra errore se il nome è vuoto', async () => {
+describe('SettingsModal — validation', () => {
+  it('shows error if name is empty', async () => {
     const user = userEvent.setup()
     setup()
     const input = screen.getByPlaceholderText(/your name/i)
@@ -103,7 +103,7 @@ describe('SettingsModal — validazione', () => {
     expect(screen.getByText(/cannot be empty/i)).toBeInTheDocument()
   })
 
-  it('mostra errore se il nome supera 32 caratteri', async () => {
+  it('shows error if name exceeds 32 characters', async () => {
     const user = userEvent.setup()
     setup()
     const input = screen.getByPlaceholderText(/your name/i)
@@ -113,7 +113,7 @@ describe('SettingsModal — validazione', () => {
     expect(screen.getByText(/max 32/i)).toBeInTheDocument()
   })
 
-  it('mostra errore se il nome contiene caratteri non validi', async () => {
+  it('shows error if name contains invalid characters', async () => {
     const user = userEvent.setup()
     setup()
     const input = screen.getByPlaceholderText(/your name/i)
@@ -123,7 +123,7 @@ describe('SettingsModal — validazione', () => {
     expect(screen.getByText(/only letters/i)).toBeInTheDocument()
   })
 
-  it('non mostra errori con un nome valido', async () => {
+  it('shows no errors with a valid name', async () => {
     const user = userEvent.setup()
     setup()
     const input = screen.getByPlaceholderText(/your name/i)
@@ -136,10 +136,10 @@ describe('SettingsModal — validazione', () => {
 
 // ── Saving ────────────────────────────────────────────────────────────────────
 
-describe('SettingsModal — salvataggio', () => {
+describe('SettingsModal — saving', () => {
   afterEach(() => vi.useRealTimers())
 
-  it('chiama onUsernameChange con il nome trimmed', async () => {
+  it('calls onUsernameChange with trimmed name', async () => {
     const user = userEvent.setup()
     const { onUsernameChange } = setup()
     const input = screen.getByPlaceholderText(/your name/i)
@@ -149,14 +149,14 @@ describe('SettingsModal — salvataggio', () => {
     expect(onUsernameChange).toHaveBeenCalledWith('nuovo-nome')
   })
 
-  it('mostra "Saved" dopo il salvataggio', async () => {
+  it('shows "Saved" after saving', async () => {
     const user = userEvent.setup()
     setup()
     await user.click(screen.getByRole('button', { name: /save/i }))
     expect(screen.getByText(/saved/i)).toBeInTheDocument()
   })
 
-  it('chiama onClose dopo il salvataggio', async () => {
+  it('calls onClose after saving', async () => {
     const { onClose } = setup()
     vi.useFakeTimers()
     // Use fireEvent to avoid userEvent's dependency on timers
@@ -170,14 +170,14 @@ describe('SettingsModal — salvataggio', () => {
 // ── Cancel ────────────────────────────────────────────────────────────────────
 
 describe('SettingsModal — cancel', () => {
-  it('chiama onClose al click su Cancel', async () => {
+  it('calls onClose when Cancel is clicked', async () => {
     const user = userEvent.setup()
     const { onClose } = setup()
     await user.click(screen.getByRole('button', { name: /cancel/i }))
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it("chiama onClose al click sull'overlay esterno", async () => {
+  it('calls onClose when clicking outside overlay', async () => {
     const user = userEvent.setup()
     const { onClose } = setup()
     // The overlay is the first child of the document body
@@ -186,7 +186,7 @@ describe('SettingsModal — cancel', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('non chiama onUsernameChange se si cancella', async () => {
+  it('does not call onUsernameChange when canceling', async () => {
     const user = userEvent.setup()
     const { onUsernameChange } = setup()
     await user.click(screen.getByRole('button', { name: /cancel/i }))

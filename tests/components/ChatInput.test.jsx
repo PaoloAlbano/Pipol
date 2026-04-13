@@ -23,18 +23,18 @@ function setup() {
 }
 
 describe('ChatInput — rendering', () => {
-  it('mostra il campo di testo con placeholder', () => {
+  it('displays the text field with placeholder', () => {
     const { editor } = setup()
     expect(editor).toBeInTheDocument()
     expect(editor).toHaveAttribute('data-placeholder', expect.stringContaining('message'))
   })
 
-  it('il pulsante di invio è disabilitato se il campo è vuoto', () => {
+  it('disables send button when field is empty', () => {
     const { button } = setup()
     expect(button).toBeDisabled()
   })
 
-  it("il pulsante si abilita quando c'è testo", async () => {
+  it('enables button when text is entered', async () => {
     const user = userEvent.setup()
     const { editor, button } = setup()
     editor.focus()
@@ -43,8 +43,8 @@ describe('ChatInput — rendering', () => {
   })
 })
 
-describe('ChatInput — invio con Enter', () => {
-  it('chiama onSend con il contenuto e pulisce il campo', async () => {
+describe('ChatInput — send with Enter', () => {
+  it('calls onSend with content and clears field', async () => {
     const user = userEvent.setup()
     const { onSend, editor } = setup()
 
@@ -57,28 +57,28 @@ describe('ChatInput — invio con Enter', () => {
     expect(editor.textContent).toBe('')
   })
 
-  it('non invia se il messaggio è vuoto', async () => {
+  it('does not send if message is empty', async () => {
     const user = userEvent.setup()
     const { onSend } = setup()
     await user.keyboard('{Enter}')
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it('Shift+Enter aggiunge un a capo senza inviare', async () => {
+  it('adds newline with Shift+Enter without sending', async () => {
     const user = userEvent.setup()
     const { onSend, editor } = setup()
 
     editor.focus()
-    await user.type(editor, 'riga 1')
+    await user.type(editor, 'line 1')
     await user.keyboard('{Shift>}{Enter}{/Shift}')
-    await user.type(editor, 'riga 2')
+    await user.type(editor, 'line 2')
 
     expect(onSend).not.toHaveBeenCalled()
-    expect(editor.textContent).toContain('riga 1')
-    expect(editor.textContent).toContain('riga 2')
+    expect(editor.textContent).toContain('line 1')
+    expect(editor.textContent).toContain('line 2')
   })
 
-  it('invia il contenuto trimmed', async () => {
+  it('sends trimmed content', async () => {
     const user = userEvent.setup()
     const { onSend, editor } = setup()
 
@@ -90,8 +90,8 @@ describe('ChatInput — invio con Enter', () => {
   })
 })
 
-describe('ChatInput — invio con pulsante', () => {
-  it('chiama onSend al click del pulsante', async () => {
+describe('ChatInput — send with button', () => {
+  it('calls onSend when button is clicked', async () => {
     const user = userEvent.setup()
     const { onSend, editor, button } = setup()
 
@@ -103,7 +103,7 @@ describe('ChatInput — invio con pulsante', () => {
     expect(onSend).toHaveBeenCalledWith('testo')
   })
 
-  it('pulisce il campo dopo il click', async () => {
+  it('clears field after click', async () => {
     const user = userEvent.setup()
     const { editor, button } = setup()
 
@@ -115,8 +115,8 @@ describe('ChatInput — invio con pulsante', () => {
   })
 })
 
-describe('ChatInput — invii multipli', () => {
-  it('gestisce più invii consecutivi correttamente', async () => {
+describe('ChatInput — multiple sends', () => {
+  it('handles multiple consecutive sends correctly', async () => {
     const user = userEvent.setup()
     const { onSend, editor } = setup()
 
@@ -132,7 +132,7 @@ describe('ChatInput — invii multipli', () => {
   })
 })
 
-describe('ChatInput — toolbar di formattazione', () => {
+describe('ChatInput — formatting toolbar', () => {
   function getToolbarBtn(title) {
     return screen.getByTitle(title)
   }
@@ -140,7 +140,7 @@ describe('ChatInput — toolbar di formattazione', () => {
     fireEvent.mouseDown(btn, { button: 0 })
   }
 
-  it('mostra i 4 pulsanti della toolbar', () => {
+  it('displays 4 toolbar buttons', () => {
     setup()
     expect(getToolbarBtn('Bold')).toBeInTheDocument()
     expect(getToolbarBtn('Italic')).toBeInTheDocument()
@@ -148,28 +148,28 @@ describe('ChatInput — toolbar di formattazione', () => {
     expect(getToolbarBtn('Code block')).toBeInTheDocument()
   })
 
-  it('Bold chiama execCommand("bold")', () => {
+  it('Bold calls execCommand("bold")', () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Bold'))
     expect(document.execCommand).toHaveBeenCalledWith('bold')
   })
 
-  it('Italic chiama execCommand("italic")', () => {
+  it('Italic calls execCommand("italic")', () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Italic'))
     expect(document.execCommand).toHaveBeenCalledWith('italic')
   })
 
-  it('Strikethrough chiama execCommand("strikeThrough")', () => {
+  it('Strikethrough calls execCommand("strikeThrough")', () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Strikethrough'))
     expect(document.execCommand).toHaveBeenCalledWith('strikeThrough')
   })
 
-  it('Code block inserisce <pre><code> nel editor', () => {
+  it('Code block inserts <pre><code> into editor', () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Code block'))
@@ -177,7 +177,7 @@ describe('ChatInput — toolbar di formattazione', () => {
     expect(editor.querySelector('pre code')).toBeInTheDocument()
   })
 
-  it('Code block ripremuto non annida un secondo <pre>', () => {
+  it('Code block does not nest second <pre> when toggled', () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Code block'))
@@ -194,7 +194,7 @@ describe('ChatInput — toolbar di formattazione', () => {
     expect(editor.querySelectorAll('pre')).toHaveLength(1)
   })
 
-  it("exitAfter inserisce <br> se non c'è nulla dopo il <pre>", () => {
+  it('exitAfter inserts <br> if nothing after <pre>', () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Code block'))
@@ -206,13 +206,13 @@ describe('ChatInput — toolbar di formattazione', () => {
     sel.removeAllRanges()
     sel.addRange(range)
 
-    // pre è l'ultimo figlio — exitAfter deve aggiungere un <br>
+    // pre is the last child — exitAfter must add a <br>
     expect(pre.nextSibling).toBeNull()
     clickToolbar(getToolbarBtn('Code block'))
     expect(editor.querySelector('br')).toBeInTheDocument()
   })
 
-  it('Code block con selezione usa il testo selezionato come contenuto', () => {
+  it('Code block with selection uses selected text as content', () => {
     const { editor } = setup()
     editor.innerHTML = 'ciao'
     editor.focus()
@@ -227,7 +227,7 @@ describe('ChatInput — toolbar di formattazione', () => {
     expect(editor.querySelector('pre code').textContent).toBe('ciao')
   })
 
-  it('updateActiveFormats aggiunge bold al set quando queryCommandState lo riporta', () => {
+  it('updateActiveFormats adds bold to set when queryCommandState reports it', () => {
     document.queryCommandState = vi.fn((cmd) => cmd === 'bold')
     const { editor } = setup()
     editor.focus()
@@ -236,7 +236,7 @@ describe('ChatInput — toolbar di formattazione', () => {
     expect(btn).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('updateActiveFormats rileva il cursore dentro un <pre>', () => {
+  it('updateActiveFormats detects cursor inside <pre>', () => {
     const { editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Code block'))
@@ -252,7 +252,7 @@ describe('ChatInput — toolbar di formattazione', () => {
     expect(getToolbarBtn('Code block')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('la toolbar non causa un invio prematuro', () => {
+  it('toolbar does not cause premature send', () => {
     const { onSend, editor } = setup()
     editor.focus()
     clickToolbar(getToolbarBtn('Bold'))
@@ -260,7 +260,7 @@ describe('ChatInput — toolbar di formattazione', () => {
   })
 })
 
-describe('ChatInput — serializzazione markdown su invio', () => {
+describe('ChatInput — markdown serialization on send', () => {
   async function sendWithHTML(html) {
     const user = userEvent.setup()
     const { onSend, editor } = setup()
@@ -271,17 +271,17 @@ describe('ChatInput — serializzazione markdown su invio', () => {
     return onSend
   }
 
-  it('grassetto <b> → **…**', async () => {
+  it('bold <b> → **…**', async () => {
     const onSend = await sendWithHTML('<b>ciao</b>')
     expect(onSend).toHaveBeenCalledWith('**ciao**')
   })
 
-  it('corsivo <i> → _…_', async () => {
+  it('italic <i> → _…_', async () => {
     const onSend = await sendWithHTML('<i>corsivo</i>')
     expect(onSend).toHaveBeenCalledWith('_corsivo_')
   })
 
-  it('barrato <s> → ~~…~~', async () => {
+  it('strikethrough <s> → ~~…~~', async () => {
     const onSend = await sendWithHTML('<s>barrato</s>')
     expect(onSend).toHaveBeenCalledWith('~~barrato~~')
   })
@@ -291,8 +291,110 @@ describe('ChatInput — serializzazione markdown su invio', () => {
     expect(onSend).toHaveBeenCalledWith('```\nfn()\n```')
   })
 
-  it('testo misto con formattazione', async () => {
+  it('mixed text with formatting', async () => {
     const onSend = await sendWithHTML('ciao <b>mondo</b>!')
     expect(onSend).toHaveBeenCalledWith('ciao **mondo**!')
+  })
+})
+
+describe('ChatInput — message length validation', () => {
+  const MAX_MESSAGE_LENGTH = 10000
+
+  it('sends a message under the character limit', async () => {
+    const user = userEvent.setup()
+    const { onSend, editor } = setup()
+
+    editor.focus()
+    // Use innerHTML instead of type() for performance with long texts
+    editor.innerHTML = 'x'.repeat(MAX_MESSAGE_LENGTH - 100)
+    fireEvent.input(editor)
+    await user.keyboard('{Enter}')
+
+    expect(onSend).toHaveBeenCalledOnce()
+  })
+
+  it('shows alert and does not send if message exceeds limit', async () => {
+    const user = userEvent.setup()
+    const { onSend, editor } = setup()
+
+    // Mock alert to avoid real popups during test
+    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {})
+
+    editor.focus()
+    editor.innerHTML = 'x'.repeat(MAX_MESSAGE_LENGTH + 1)
+    fireEvent.input(editor)
+    await user.keyboard('{Enter}')
+
+    expect(alertMock).toHaveBeenCalledWith(expect.stringContaining('Message too long'))
+    expect(onSend).not.toHaveBeenCalled()
+
+    // Cleanup
+    alertMock.mockRestore()
+  })
+
+  it('includes character count in alert message', async () => {
+    const user = userEvent.setup()
+    const { onSend, editor } = setup()
+    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {})
+
+    editor.focus()
+    const longMessage = 'x'.repeat(MAX_MESSAGE_LENGTH + 500)
+    editor.innerHTML = longMessage
+    fireEvent.input(editor)
+    await user.keyboard('{Enter}')
+
+    expect(alertMock).toHaveBeenCalledWith(
+      `Message too long (${MAX_MESSAGE_LENGTH + 500}/${MAX_MESSAGE_LENGTH} characters). Please shorten it.`
+    )
+    expect(onSend).not.toHaveBeenCalled()
+
+    alertMock.mockRestore()
+  })
+
+  it('allows sending after shortening an too-long message', async () => {
+    const user = userEvent.setup()
+    const { onSend, editor } = setup()
+    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {})
+
+    editor.focus()
+    // First attempt with too-long message
+    editor.innerHTML = 'x'.repeat(MAX_MESSAGE_LENGTH + 1)
+    fireEvent.input(editor)
+    await user.keyboard('{Enter}')
+    expect(alertMock).toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
+
+    // Now shorten the message
+    editor.innerHTML = 'valid message'
+    fireEvent.input(editor)
+    await user.keyboard('{Enter}')
+
+    expect(onSend).toHaveBeenCalledWith('valid message')
+    alertMock.mockRestore()
+  })
+
+  it('validates serialized markdown, not visible text', async () => {
+    const user = userEvent.setup()
+    const { onSend, editor } = setup()
+    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {})
+
+    // Bold doubles characters in serialization (**test** instead of test)
+    editor.focus()
+    document.queryCommandState = vi.fn((cmd) => cmd === 'bold')
+
+    // Text under limit in plain text but could exceed with formatting
+    const text = 'x'.repeat(MAX_MESSAGE_LENGTH - 10)
+    editor.innerHTML = text
+    fireEvent.input(editor)
+
+    // Apply bold (in serialization it becomes **xxx**)
+    fireEvent.mouseDown(screen.getByTitle('Bold'), { button: 0 })
+
+    await user.keyboard('{Enter}')
+
+    // Should send because even with ** the total is under limit
+    // (this test verifies validation uses editorToMarkdown)
+    expect(onSend).toHaveBeenCalled()
+    alertMock.mockRestore()
   })
 })

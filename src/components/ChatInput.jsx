@@ -1,6 +1,9 @@
 import { useState, useRef } from 'react'
 import '../styles/chat.css'
 
+// Maximum message length (prevents DoS and abuse)
+const MAX_MESSAGE_LENGTH = 10000
+
 // execCommand-based commands toggle a "pending format" mode — subsequent typing
 // is wrapped automatically. For code/pre there is no native command, so we
 // insert an empty element and place the cursor inside.
@@ -140,6 +143,12 @@ export default function ChatInput({ onSend }) {
     if (!el) return
     const content = editorToMarkdown(el)
     if (!content.trim()) return
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      alert(
+        `Message too long (${content.length}/${MAX_MESSAGE_LENGTH} characters). Please shorten it.`
+      )
+      return
+    }
     onSend(content)
     el.innerHTML = ''
     setHasContent(false)
