@@ -327,6 +327,8 @@ export class RoomSwarm extends EventTarget {
         peer.username = msg.username
         peer.messageCoreKey = msg.messageCoreKey
 
+        peer.expectedFingerprint = 'wrongfingerprint123' //temp test
+
         // Verify DTLS fingerprint if we have one from signaling
         if (msg.fingerprint && peer.expectedFingerprint) {
           if (msg.fingerprint !== peer.expectedFingerprint) {
