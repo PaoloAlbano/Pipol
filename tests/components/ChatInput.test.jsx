@@ -398,3 +398,47 @@ describe('ChatInput — message length validation', () => {
     alertMock.mockRestore()
   })
 })
+
+describe('ChatInput — doSend edge cases', () => {
+  it('handles the case when editor element is null', () => {
+    const onSend = vi.fn()
+    render(<ChatInput onSend={onSend} />)
+    const editor = screen.getByRole('textbox')
+
+    // Remove the editor from DOM to simulate it being null
+    editor.remove()
+
+    // Try to send by clicking the send button (which calls doSend)
+    const button = screen.getByTitle('Send message')
+    fireEvent.click(button)
+
+    // Should not crash and should not call onSend
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('does not send if content is only whitespace', async () => {
+    const user = userEvent.setup()
+    const { onSend, editor } = setup()
+
+    editor.focus()
+    // Insert only whitespace/spaces
+    editor.innerHTML = '   \n\t   '
+    fireEvent.input(editor)
+    await user.keyboard('{Enter}')
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('does not send if content is only zero-width spaces', async () => {
+    const user = userEvent.setup()
+    const { onSend, editor } = setup()
+
+    editor.focus()
+    // Zero-width space is used as cursor anchor in empty code elements
+    editor.innerHTML = '\u200B\u200B\u200B'
+    fireEvent.input(editor)
+    await user.keyboard('{Enter}')
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+})

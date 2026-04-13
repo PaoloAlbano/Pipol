@@ -521,29 +521,50 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  /**
+   * Creates or retrieves a WebRTC peer connection for a given peer ID.
+   * This is an idempotent operation — if a connection already exists, it returns it immediately.
+   *
+   * @param {string} peerId - The remote peer's ID
+   * @param {boolean} isInitiator - Whether this peer initiates the WebRTC handshake (creates offer)
+   * @returns {Promise<WebRTCPeer>} The WebRTC peer connection instance
+   */
   async function ensureRTCPeer(peerId, isInitiator) {
+    // Return existing connection if already established (avoid duplicates)
     if (rtcPeersRef.current[peerId]) return rtcPeersRef.current[peerId]
 
+    // Get or create local media stream
     const stream = localStream || (await getLocalStream())
+
+    // Create new WebRTC peer connection
     const rtcPeer = new WebRTCPeer(peerId, isInitiator, stream)
     rtcPeersRef.current[peerId] = rtcPeer
 
+    // ── Event handlers for WebRTC signaling ────────────────────────────────
+
+    // When an SDP offer is generated, send it to the remote peer via swarm
     rtcPeer.addEventListener('offer', (e) => {
       swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_OFFER', sdp: e.detail.sdp })
     })
 
+    // When an SDP answer is generated, send it to the remote peer via swarm
     rtcPeer.addEventListener('answer', (e) => {
       swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_ANSWER', sdp: e.detail.sdp })
     })
 
+    // When new ICE candidates are discovered, send them to the remote peer via swarm
     rtcPeer.addEventListener('ice-candidate', (e) => {
       swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_ICE', candidate: e.detail.candidate })
     })
 
+    // ── Event handlers for stream lifecycle ────────────────────────────────
+
+    // When remote stream is available, update React state to trigger re-render
     rtcPeer.addEventListener('remote-stream', (e) => {
       setRemoteStreams((prev) => ({ ...prev, [peerId]: e.detail.stream }))
     })
 
+    // When connection closes, remove the remote stream from state
     rtcPeer.addEventListener('closed', () => {
       setRemoteStreams((prev) => {
         const next = { ...prev }
@@ -552,6 +573,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       })
     })
 
+    // Initialize the peer connection (triggers offer/answer exchange if initiator)
     await rtcPeer.init()
     return rtcPeer
   }
