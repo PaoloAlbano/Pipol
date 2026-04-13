@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react'
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import Home from './components/Home.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import LoginScreen from './components/LoginScreen.jsx'
@@ -26,6 +26,7 @@ import {
   getInviteParamFromUrl,
   buildInviteUrl,
 } from './p2p/workspace.js'
+import { useWorkspaceSync } from './p2p/useWorkspaceSync.js'
 
 // ── Unread count helpers (localStorage) ──────────────────────────────────────
 
@@ -57,6 +58,15 @@ export default function App() {
   )
   const [activeChannelName, setActiveChannelName] = useState(null)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
+
+  // Active workspace (derived — kept in sync for hooks that run before early returns)
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0] || null
+
+  // Workspace channel sync (P2P)
+  const { broadcastChannels } = useWorkspaceSync(
+    activeWorkspace,
+    useCallback(() => setWorkspaces(getWorkspaces()), [])
+  )
 
   // Pending invite (from ?invite= URL param)
   const [pendingInvite, setPendingInvite] = useState(null)
@@ -211,7 +221,13 @@ export default function App() {
             .join('')
         : null
     )
-    if (updated) setWorkspaces(getWorkspaces())
+    if (updated) {
+      const fresh = getWorkspaces()
+      setWorkspaces(fresh)
+      // Push new channel list to connected peers immediately
+      const ws = fresh.find((w) => w.id === workspaceId)
+      if (ws) broadcastChannels(ws.channels)
+    }
   }
 
   function handleTopicChange(channelName, topic) {
@@ -278,9 +294,6 @@ export default function App() {
   }
 
   if (!identity) return <LoginScreen onLogin={handleLogin} />
-
-  // Resolve active workspace
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0] || null
 
   // Build channel list with unread counts
   const unreadCounts = activeWorkspace ? getUnreadCounts(activeWorkspace.id) : {}

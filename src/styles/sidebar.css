@@ -72,6 +72,50 @@
   flex-shrink: 0;
 }
 
+/* ── Channel search ──────────────────────────────────────────── */
+
+.sidebar__search {
+  position: relative;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar__search-input {
+  width: 100%;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 24px 5px 8px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.1s;
+}
+
+.sidebar__search-input::placeholder {
+  color: var(--text-faint);
+}
+
+.sidebar__search-input:focus {
+  border-color: var(--primary);
+}
+
+.sidebar__search-clear {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 2px;
+  line-height: 1;
+}
+
 /* ── Scroll area ─────────────────────────────────────────────── */
 
 .sidebar__scroll {

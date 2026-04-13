@@ -44,8 +44,13 @@ export default function ChannelSidebar({
 }) {
   const [channelsCollapsed, setChannelsCollapsed] = useState(false)
   const [dmsCollapsed, setDmsCollapsed] = useState(false)
+  const [channelSearch, setChannelSearch] = useState('')
 
   const onlineCount = peers.filter((p) => p.status !== 'offline').length
+
+  const filteredChannels = channelSearch.trim()
+    ? channels.filter((ch) => ch.name.includes(channelSearch.trim().toLowerCase()))
+    : channels
 
   return (
     <div className="sidebar">
@@ -76,6 +81,23 @@ export default function ChannelSidebar({
           </button>
         )}
         {onWorkspaceHeaderClick && <span className="sidebar__workspace-chevron">▾</span>}
+      </div>
+
+      {/* Channel search */}
+      <div className="sidebar__search">
+        <input
+          className="sidebar__search-input"
+          type="text"
+          placeholder="Cerca canali…"
+          value={channelSearch}
+          onChange={(e) => setChannelSearch(e.target.value)}
+          aria-label="Cerca canali"
+        />
+        {channelSearch && (
+          <button className="sidebar__search-clear" onClick={() => setChannelSearch('')} aria-label="Cancella ricerca">
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Scrollable section list */}
@@ -113,7 +135,7 @@ export default function ChannelSidebar({
           </div>
 
           {!channelsCollapsed &&
-            channels.map((ch) => (
+            filteredChannels.map((ch) => (
               <ChannelItem
                 key={ch.name}
                 channel={ch}

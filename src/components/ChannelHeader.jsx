@@ -38,7 +38,7 @@ export default function ChannelHeader({
 
   function startEditing() {
     setTopicDraft(topic) // init draft from current prop
-    startEditing()
+    setEditingTopic(true)
   }
 
   function commitTopic() {

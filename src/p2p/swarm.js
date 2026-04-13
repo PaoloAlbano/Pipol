@@ -387,6 +387,9 @@ export class RoomSwarm extends EventTarget {
       case 'SCREEN_SHARE_END':
         this.dispatchEvent(new CustomEvent('screen-share-end', { detail: { peerId: remoteId } }))
         break
+      case 'WORKSPACE_META':
+        this.dispatchEvent(new CustomEvent('workspace-meta', { detail: { peerId: remoteId, channels: msg.channels } }))
+        break
     }
   }
 
