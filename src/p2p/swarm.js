@@ -25,6 +25,19 @@ const ICE_SERVERS = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ]
 
+/**
+ * Extracts the DTLS fingerprint from an SDP string.
+ * SDP format: a=fingerprint:sha-256 XX:XX:XX:...
+ * @param {string} sdp
+ * @returns {string | null} Lowercase fingerprint without colons, or null if not found
+ */
+function extractFingerprint(sdp) {
+  if (!sdp) return null
+  const match = sdp.match(/a=fingerprint:sha-256 ([0-9A-Fa-f:]+)/)
+  if (!match) return null
+  return match[1].toLowerCase().replace(/:/g, '')
+}
+
 /** Build the signaling WebSocket URL.
  *  Priority: user setting (localStorage) → VITE_DHT_RELAY_URL env → auto-derive from window.location.
  */
@@ -163,8 +176,16 @@ export class RoomSwarm extends EventTarget {
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    this._sendSignal(remotePeerId, { type: 'offer', sdp: { type: offer.type, sdp: offer.sdp } })
-    console.info('[swarm] offer sent to', remotePeerId.slice(0, 16) + '…')
+    
+    // Extract our DTLS fingerprint from the SDP
+    const localFingerprint = extractFingerprint(offer.sdp)
+    
+    this._sendSignal(remotePeerId, { 
+      type: 'offer', 
+      sdp: { type: offer.type, sdp: offer.sdp },
+      fingerprint: localFingerprint // Include fingerprint in signaling
+    })
+    console.info('[swarm] offer sent to', remotePeerId.slice(0, 16) + '…', localFingerprint ? '(with fingerprint)' : '')
   }
 
   async _handleRTCSignal(remotePeerId, signal) {
@@ -174,7 +195,9 @@ export class RoomSwarm extends EventTarget {
       if (this.peers.has(remotePeerId)) return // already connected
 
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
-      this._registerPeer(remotePeerId, pc)
+      const expectedFingerprint = signal.fingerprint || null
+      
+      this._registerPeer(remotePeerId, pc, expectedFingerprint)
 
       pc.addEventListener('datachannel', (e) => {
         this._setupDataChannel(remotePeerId, e.channel)
@@ -190,14 +213,25 @@ export class RoomSwarm extends EventTarget {
 
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
+      
+      // Extract our DTLS fingerprint from the answer SDP
+      const localFingerprint = extractFingerprint(answer.sdp)
+      
       this._sendSignal(remotePeerId, {
         type: 'answer',
         sdp: { type: answer.type, sdp: answer.sdp },
+        fingerprint: localFingerprint,
       })
-      console.info('[swarm] answer sent to', remotePeerId.slice(0, 16) + '…')
+      console.info('[swarm] answer sent to', remotePeerId.slice(0, 16) + '…', localFingerprint ? '(with fingerprint)' : '')
     } else if (signal.type === 'answer') {
       const peer = this.peers.get(remotePeerId)
       if (!peer?.pc) return
+      
+      // Store the expected fingerprint before setting remote description
+      if (signal.fingerprint && !peer.expectedFingerprint) {
+        peer.expectedFingerprint = signal.fingerprint
+      }
+      
       await peer.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
       await this._flushCandidates(remotePeerId)
     } else if (signal.type === 'ice') {
@@ -223,7 +257,7 @@ export class RoomSwarm extends EventTarget {
     }
   }
 
-  _registerPeer(remotePeerId, pc) {
+  _registerPeer(remotePeerId, pc, expectedFingerprint = null) {
     this.peers.set(remotePeerId, {
       id: remotePeerId,
       username: '…',
@@ -231,6 +265,7 @@ export class RoomSwarm extends EventTarget {
       pc,
       dc: null,
       sendControl: null,
+      expectedFingerprint,
     })
 
     pc.addEventListener('connectionstatechange', () => {
@@ -260,11 +295,16 @@ export class RoomSwarm extends EventTarget {
     dc.addEventListener('open', () => {
       console.info('[swarm] DataChannel open with', remotePeerId.slice(0, 16) + '…')
       // Send HELLO once the DataChannel is ready
+      // Include our DTLS fingerprint for remote peer verification
+      const localFingerprint = peer.pc.localDescription 
+        ? extractFingerprint(peer.pc.localDescription.sdp) 
+        : null
       peer.sendControl({
         type: 'HELLO',
         username: getIdentity().username,
         publicKey: this._localPeerId,
         messageCoreKey: this.messageCoreKey,
+        fingerprint: localFingerprint,
       })
     })
 
@@ -295,6 +335,22 @@ export class RoomSwarm extends EventTarget {
       case 'HELLO':
         peer.username = msg.username
         peer.messageCoreKey = msg.messageCoreKey
+        
+        // Verify DTLS fingerprint if we have one from signaling
+        if (msg.fingerprint && peer.expectedFingerprint) {
+          if (msg.fingerprint !== peer.expectedFingerprint) {
+            console.error(
+              '[swarm] DTLS fingerprint mismatch for peer', remoteId.slice(0, 16) + '…',
+              'Expected:', peer.expectedFingerprint,
+              'Got:', msg.fingerprint
+            )
+            // Disconnect peer - potential MITM attack
+            this._handleDisconnect(remoteId)
+            return
+          }
+          console.info('[swarm] DTLS fingerprint verified for', remoteId.slice(0, 16) + '…')
+        }
+        
         this.peers.set(remoteId, peer)
         this.dispatchEvent(
           new CustomEvent('peer-joined', {
