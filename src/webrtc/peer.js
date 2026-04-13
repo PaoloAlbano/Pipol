@@ -21,10 +21,7 @@
  * once the remote description is set.
  */
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-]
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
 
 export class WebRTCPeer extends EventTarget {
   /**
@@ -190,10 +187,7 @@ export class WebRTCPeer extends EventTarget {
       remoteType: remote?.candidateType ?? '?',
       localAddress: local?.address ?? '',
       remoteAddress: remote?.address ?? '',
-      rtt:
-        activePair.currentRoundTripTime != null
-          ? Math.round(activePair.currentRoundTripTime * 1000)
-          : null,
+      rtt: activePair.currentRoundTripTime != null ? Math.round(activePair.currentRoundTripTime * 1000) : null,
       bytesSent: activePair.bytesSent ?? 0,
       bytesReceived: activePair.bytesReceived ?? 0,
     }

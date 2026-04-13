@@ -20,10 +20,7 @@
 import b4a from 'b4a'
 import { getIdentity, getRelayUrl } from './storage.js'
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-]
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
 
 /**
  * Extracts the DTLS fingerprint from an SDP string.
@@ -126,9 +123,7 @@ export class RoomSwarm extends EventTarget {
         // the WebRTC connection survives the closure of the WebSocket.
         const hasOpenChannels = [...this.peers.values()].some((p) => p.dc?.readyState === 'open')
         if (this.peers.size > 0 && !hasOpenChannels) {
-          this.dispatchEvent(
-            new CustomEvent('error', { detail: new Error('Signaling connection lost') })
-          )
+          this.dispatchEvent(new CustomEvent('error', { detail: new Error('Signaling connection lost') }))
         }
       })
     })
@@ -143,10 +138,7 @@ export class RoomSwarm extends EventTarget {
           console.info('[swarm] peer-joined — I initiate WebRTC to', msg.peerId.slice(0, 16) + '…')
           this._initiateConnection(msg.peerId)
         } else {
-          console.info(
-            '[swarm] peer-joined — waiting for offer from',
-            msg.peerId.slice(0, 16) + '…'
-          )
+          console.info('[swarm] peer-joined — waiting for offer from', msg.peerId.slice(0, 16) + '…')
         }
         break
       case 'peer-left':
@@ -170,20 +162,19 @@ export class RoomSwarm extends EventTarget {
     this._setupDataChannel(remotePeerId, dc)
 
     pc.addEventListener('icecandidate', (e) => {
-      if (e.candidate)
-        this._sendSignal(remotePeerId, { type: 'ice', candidate: e.candidate.toJSON() })
+      if (e.candidate) this._sendSignal(remotePeerId, { type: 'ice', candidate: e.candidate.toJSON() })
     })
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    
+
     // Extract our DTLS fingerprint from the SDP
     const localFingerprint = extractFingerprint(offer.sdp)
-    
-    this._sendSignal(remotePeerId, { 
-      type: 'offer', 
+
+    this._sendSignal(remotePeerId, {
+      type: 'offer',
       sdp: { type: offer.type, sdp: offer.sdp },
-      fingerprint: localFingerprint // Include fingerprint in signaling
+      fingerprint: localFingerprint, // Include fingerprint in signaling
     })
     console.info('[swarm] offer sent to', remotePeerId.slice(0, 16) + '…', localFingerprint ? '(with fingerprint)' : '')
   }
@@ -196,7 +187,7 @@ export class RoomSwarm extends EventTarget {
 
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
       const expectedFingerprint = signal.fingerprint || null
-      
+
       this._registerPeer(remotePeerId, pc, expectedFingerprint)
 
       pc.addEventListener('datachannel', (e) => {
@@ -204,8 +195,7 @@ export class RoomSwarm extends EventTarget {
       })
 
       pc.addEventListener('icecandidate', (e) => {
-        if (e.candidate)
-          this._sendSignal(remotePeerId, { type: 'ice', candidate: e.candidate.toJSON() })
+        if (e.candidate) this._sendSignal(remotePeerId, { type: 'ice', candidate: e.candidate.toJSON() })
       })
 
       await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
@@ -213,25 +203,29 @@ export class RoomSwarm extends EventTarget {
 
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
-      
+
       // Extract our DTLS fingerprint from the answer SDP
       const localFingerprint = extractFingerprint(answer.sdp)
-      
+
       this._sendSignal(remotePeerId, {
         type: 'answer',
         sdp: { type: answer.type, sdp: answer.sdp },
         fingerprint: localFingerprint,
       })
-      console.info('[swarm] answer sent to', remotePeerId.slice(0, 16) + '…', localFingerprint ? '(with fingerprint)' : '')
+      console.info(
+        '[swarm] answer sent to',
+        remotePeerId.slice(0, 16) + '…',
+        localFingerprint ? '(with fingerprint)' : ''
+      )
     } else if (signal.type === 'answer') {
       const peer = this.peers.get(remotePeerId)
       if (!peer?.pc) return
-      
+
       // Store the expected fingerprint before setting remote description
       if (signal.fingerprint && !peer.expectedFingerprint) {
         peer.expectedFingerprint = signal.fingerprint
       }
-      
+
       await peer.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
       await this._flushCandidates(remotePeerId)
     } else if (signal.type === 'ice') {
@@ -240,8 +234,7 @@ export class RoomSwarm extends EventTarget {
         await peer.pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(() => {})
       } else {
         // Buffer until remote description is set
-        if (!this._pendingCandidates.has(remotePeerId))
-          this._pendingCandidates.set(remotePeerId, [])
+        if (!this._pendingCandidates.has(remotePeerId)) this._pendingCandidates.set(remotePeerId, [])
         this._pendingCandidates.get(remotePeerId).push(signal.candidate)
       }
     }
@@ -296,9 +289,7 @@ export class RoomSwarm extends EventTarget {
       console.info('[swarm] DataChannel open with', remotePeerId.slice(0, 16) + '…')
       // Send HELLO once the DataChannel is ready
       // Include our DTLS fingerprint for remote peer verification
-      const localFingerprint = peer.pc.localDescription 
-        ? extractFingerprint(peer.pc.localDescription.sdp) 
-        : null
+      const localFingerprint = peer.pc.localDescription ? extractFingerprint(peer.pc.localDescription.sdp) : null
       peer.sendControl({
         type: 'HELLO',
         username: getIdentity().username,
@@ -335,14 +326,17 @@ export class RoomSwarm extends EventTarget {
       case 'HELLO':
         peer.username = msg.username
         peer.messageCoreKey = msg.messageCoreKey
-        
+
         // Verify DTLS fingerprint if we have one from signaling
         if (msg.fingerprint && peer.expectedFingerprint) {
           if (msg.fingerprint !== peer.expectedFingerprint) {
             console.error(
-              '[swarm] DTLS fingerprint mismatch for peer', remoteId.slice(0, 16) + '…',
-              'Expected:', peer.expectedFingerprint,
-              'Got:', msg.fingerprint
+              '[swarm] DTLS fingerprint mismatch for peer',
+              remoteId.slice(0, 16) + '…',
+              'Expected:',
+              peer.expectedFingerprint,
+              'Got:',
+              msg.fingerprint
             )
             // Disconnect peer - potential MITM attack
             this._handleDisconnect(remoteId)
@@ -350,7 +344,7 @@ export class RoomSwarm extends EventTarget {
           }
           console.info('[swarm] DTLS fingerprint verified for', remoteId.slice(0, 16) + '…')
         }
-        
+
         this.peers.set(remoteId, peer)
         this.dispatchEvent(
           new CustomEvent('peer-joined', {
@@ -370,24 +364,16 @@ export class RoomSwarm extends EventTarget {
         }
         break
       case 'HISTORY_REQ':
-        this.dispatchEvent(
-          new CustomEvent('history-req', { detail: { peerId: remoteId, since: msg.since ?? 0 } })
-        )
+        this.dispatchEvent(new CustomEvent('history-req', { detail: { peerId: remoteId, since: msg.since ?? 0 } }))
         break
       case 'VIDEO_OFFER':
-        this.dispatchEvent(
-          new CustomEvent('video-offer', { detail: { peerId: remoteId, sdp: msg.sdp } })
-        )
+        this.dispatchEvent(new CustomEvent('video-offer', { detail: { peerId: remoteId, sdp: msg.sdp } }))
         break
       case 'VIDEO_ANSWER':
-        this.dispatchEvent(
-          new CustomEvent('video-answer', { detail: { peerId: remoteId, sdp: msg.sdp } })
-        )
+        this.dispatchEvent(new CustomEvent('video-answer', { detail: { peerId: remoteId, sdp: msg.sdp } }))
         break
       case 'VIDEO_ICE':
-        this.dispatchEvent(
-          new CustomEvent('video-ice', { detail: { peerId: remoteId, candidate: msg.candidate } })
-        )
+        this.dispatchEvent(new CustomEvent('video-ice', { detail: { peerId: remoteId, candidate: msg.candidate } }))
         break
       case 'CALL_INIT':
         this.dispatchEvent(new CustomEvent('call-init', { detail: { peerId: remoteId } }))

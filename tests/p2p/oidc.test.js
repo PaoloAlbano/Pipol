@@ -195,9 +195,7 @@ describe('startOIDCFlow — OIDC provider (with discovery)', () => {
 
     await startOIDCFlow(provider, 'https://auth.example.com')
 
-    expect(fetch).toHaveBeenCalledWith(
-      'https://accounts.google.com/.well-known/openid-configuration'
-    )
+    expect(fetch).toHaveBeenCalledWith('https://accounts.google.com/.well-known/openid-configuration')
   })
 
   it('saves the discovered token endpoint to sessionStorage', async () => {
@@ -262,10 +260,7 @@ describe('handleOIDCCallback — error cases', () => {
 
   it('throws state-mismatch if returned state does not match', async () => {
     setCallbackUrl('mycode', 'wrong-state')
-    sessionStorage.setItem(
-      SESSION_KEY,
-      JSON.stringify(makePendingSession({ state: 'correct-state' }))
-    )
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(makePendingSession({ state: 'correct-state' })))
     await expect(handleOIDCCallback()).rejects.toThrow('state-mismatch')
   })
 })
@@ -281,10 +276,7 @@ describe('handleOIDCCallback — oauth2 path', () => {
     vi.resetModules()
     ;({ handleOIDCCallback } = await import('../../src/p2p/oidc.js'))
     setCallbackUrl('gh-code', 'test-state')
-    sessionStorage.setItem(
-      SESSION_KEY,
-      JSON.stringify(makePendingSession({ returnTo: '?room=abc' }))
-    )
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(makePendingSession({ returnTo: '?room=abc' })))
   })
 
   it('sends code and code_verifier to /derive and returns serverSecret', async () => {
@@ -302,10 +294,7 @@ describe('handleOIDCCallback — oauth2 path', () => {
     expect(result.keyVersion).toBe('v1')
     expect(result.provider.id).toBe('github')
 
-    expect(fetch).toHaveBeenCalledWith(
-      'https://auth.example.com/derive',
-      expect.objectContaining({ method: 'POST' })
-    )
+    expect(fetch).toHaveBeenCalledWith('https://auth.example.com/derive', expect.objectContaining({ method: 'POST' }))
     const body = JSON.parse(fetch.mock.calls[0][1].body)
     expect(body.code).toBe('gh-code')
     expect(body.code_verifier).toBe('test-verifier')

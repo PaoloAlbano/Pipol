@@ -69,11 +69,7 @@ export default function VideoControls({
         </button>
       )}
 
-      <button
-        className="control-btn control-btn--danger"
-        onClick={onEndCall}
-        title="Leave video call"
-      >
+      <button className="control-btn control-btn--danger" onClick={onEndCall} title="Leave video call">
         📞
         <span className="control-label">End call</span>
       </button>

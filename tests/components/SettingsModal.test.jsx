@@ -231,16 +231,12 @@ describe('SettingsModal — biometric unlock not yet enabled', () => {
 
   it('shows the Enable button when biometric is not yet set up', async () => {
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
   })
 
   it('calls setupBiometricUnlock with passphrase and identity meta on Enable click', async () => {
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
     await waitFor(() =>
       expect(mockSetupBiometricUnlock).toHaveBeenCalledWith(
@@ -253,42 +249,30 @@ describe('SettingsModal — biometric unlock not yet enabled', () => {
   it('shows "Setting up…" while setup is in progress', async () => {
     mockSetupBiometricUnlock.mockReturnValue(new Promise(() => {})) // never resolves
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
     expect(await screen.findByText(/setting up/i)).toBeInTheDocument()
   })
 
   it('switches to Disable button after successful setup', async () => {
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument())
   })
 
   it('shows the not-supported message when setup returns not-supported', async () => {
     mockSetupBiometricUnlock.mockRejectedValue(new Error('not-supported'))
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
-    await waitFor(() =>
-      expect(screen.getByText(/does not support biometric unlock/i)).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByText(/does not support biometric unlock/i)).toBeInTheDocument())
   })
 
   it('shows the create-failed message when passkey creation fails', async () => {
     mockSetupBiometricUnlock.mockRejectedValue(new Error('create-failed'))
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
     await waitFor(() => expect(screen.getByText(/passkey creation failed/i)).toBeInTheDocument())
   })
@@ -296,22 +280,16 @@ describe('SettingsModal — biometric unlock not yet enabled', () => {
   it('shows no error message when the user cancels the biometric prompt', async () => {
     mockSetupBiometricUnlock.mockRejectedValue(new Error('cancelled'))
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).not.toBeDisabled()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).not.toBeDisabled())
     expect(screen.queryByText(/failed|not support/i)).not.toBeInTheDocument()
   })
 
   it('shows a generic error for unexpected failures', async () => {
     mockSetupBiometricUnlock.mockRejectedValue(new Error('network-error'))
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /enable biometric unlock/i }))
     await waitFor(() => expect(screen.getByText(/setup failed\. try again/i)).toBeInTheDocument())
   })
@@ -325,9 +303,7 @@ describe('SettingsModal — biometric unlock already enabled', () => {
 
   it('shows the Disable button when biometric is already enabled', async () => {
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument())
   })
 
   it('shows the active-state hint text when enabled', async () => {
@@ -337,9 +313,7 @@ describe('SettingsModal — biometric unlock already enabled', () => {
 
   it('shows confirmation warning when Disable is clicked', async () => {
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /^disable$/i }))
     expect(screen.getByText(/log out and log back in/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /yes, disable/i })).toBeInTheDocument()
@@ -348,9 +322,7 @@ describe('SettingsModal — biometric unlock already enabled', () => {
 
   it('cancelling confirmation keeps biometric enabled', async () => {
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /^disable$/i }))
     fireEvent.click(screen.getByRole('button', { name: /keep enabled/i }))
     expect(mockRemoveBiometricUnlock).not.toHaveBeenCalled()
@@ -359,15 +331,11 @@ describe('SettingsModal — biometric unlock already enabled', () => {
 
   it('calls removeBiometricUnlock and switches to Enable button after confirming disable', async () => {
     setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /^disable$/i })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /^disable$/i }))
     fireEvent.click(screen.getByRole('button', { name: /yes, disable/i }))
     expect(mockRemoveBiometricUnlock).toHaveBeenCalledOnce()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /enable biometric unlock/i })).toBeInTheDocument())
   })
 })
 

@@ -6,11 +6,7 @@ import {
   setUsername,
   generateUsername,
 } from '../p2p/storage.js'
-import {
-  hasBiometricUnlock,
-  isBiometricUnlockAvailable,
-  unlockWithBiometrics,
-} from '../p2p/webauthn.js'
+import { hasBiometricUnlock, isBiometricUnlockAvailable, unlockWithBiometrics } from '../p2p/webauthn.js'
 import { fetchProviders, startOIDCFlow } from '../p2p/oidc.js'
 import EmojiPicker from './EmojiPicker.jsx'
 import '../styles/login.css'
@@ -93,9 +89,7 @@ export default function LoginScreen({ onLogin }) {
     if (isMethodA) {
       const s = passphraseStrength(passphrase)
       const mismatch = isCreate && confirm && passphrase !== confirm
-      return (
-        passphrase.length > 0 && !mismatch && (isUnlock || (s.score >= 3 && passphrase === confirm))
-      )
+      return passphrase.length > 0 && !mismatch && (isUnlock || (s.score >= 3 && passphrase === confirm))
     }
     // Method B
     if (selectedSymbols.length < 6) return false
@@ -357,9 +351,7 @@ export default function LoginScreen({ onLogin }) {
                     type="password"
                     inputMode="numeric"
                     value={confirmPin}
-                    onChange={(e) =>
-                      setConfirmPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))
-                    }
+                    onChange={(e) => setConfirmPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))}
                     placeholder="••••"
                     autoComplete="new-password"
                     disabled={loading}
@@ -414,9 +406,7 @@ export default function LoginScreen({ onLogin }) {
                             style={{ width: `${(s.score / 4) * 100}%` }}
                           />
                           <span className="strength-text">{s.label}</span>
-                          {s.score < 3 && (
-                            <span className="strength-count">{s.score} / 3 to unlock</span>
-                          )}
+                          {s.score < 3 && <span className="strength-count">{s.score} / 3 to unlock</span>}
                         </div>
                         {s.score < 3 && (
                           <ul className="strength-hints">
@@ -501,9 +491,7 @@ export default function LoginScreen({ onLogin }) {
         </form>
 
         {isCreate && isMethodA && (
-          <p className="login-note">
-            Your passphrase cannot be recovered. Choose a strong one and keep it safe.
-          </p>
+          <p className="login-note">Your passphrase cannot be recovered. Choose a strong one and keep it safe.</p>
         )}
 
         {storedMeta && isCreate && (

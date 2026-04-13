@@ -242,9 +242,7 @@ describe('LoginScreen — biometric mode', () => {
     mockDeriveIdentityA.mockResolvedValue({ isNewAccount: false })
     const { onLogin } = setup()
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /unlock with biometrics/i })).not.toBeDisabled()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /unlock with biometrics/i })).not.toBeDisabled())
 
     fireEvent.click(screen.getByRole('button', { name: /unlock with biometrics/i }))
     await waitFor(() => expect(onLogin).toHaveBeenCalled())
@@ -254,9 +252,7 @@ describe('LoginScreen — biometric mode', () => {
     mockUnlockWithBiometrics.mockRejectedValue(new Error('decrypt-failed'))
     setup()
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /unlock with biometrics/i })).not.toBeDisabled()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /unlock with biometrics/i })).not.toBeDisabled())
 
     fireEvent.click(screen.getByRole('button', { name: /unlock with biometrics/i }))
     await waitFor(() => expect(screen.getByText(/biometric unlock failed/i)).toBeInTheDocument())
@@ -266,9 +262,7 @@ describe('LoginScreen — biometric mode', () => {
     mockUnlockWithBiometrics.mockRejectedValue(new Error('cancelled'))
     setup()
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /unlock with biometrics/i })).not.toBeDisabled()
-    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /unlock with biometrics/i })).not.toBeDisabled())
 
     fireEvent.click(screen.getByRole('button', { name: /unlock with biometrics/i }))
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
@@ -621,9 +615,7 @@ describe('LoginScreen — symbol method (unlock)', () => {
     const cells = screen.getAllByRole('option')
     for (let i = 0; i < 6; i++) fireEvent.click(cells[i])
     fireEvent.click(screen.getByRole('button', { name: /unlock/i }))
-    await waitFor(() =>
-      expect(screen.getByText(/wrong symbol sequence or pin/i)).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByText(/wrong symbol sequence or pin/i)).toBeInTheDocument())
   })
 })
 

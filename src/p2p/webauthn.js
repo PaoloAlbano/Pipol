@@ -51,9 +51,7 @@ function b64Decode(str) {
  * `salt` is a random value stored in localStorage alongside the ciphertext.
  */
 async function deriveAesKey(material, salt) {
-  const keyMaterial = await crypto.subtle.importKey('raw', material, { name: 'HKDF' }, false, [
-    'deriveKey',
-  ])
+  const keyMaterial = await crypto.subtle.importKey('raw', material, { name: 'HKDF' }, false, ['deriveKey'])
   return crypto.subtle.deriveKey(
     { name: 'HKDF', hash: 'SHA-256', salt, info: HKDF_INFO },
     keyMaterial,
@@ -198,11 +196,7 @@ export async function unlockWithBiometrics() {
     const userHandle = assertion.response?.userHandle
     if (!userHandle) throw new Error('userhandle-unavailable')
     const decKey = await deriveAesKey(new Uint8Array(userHandle), b64Decode(saltB64))
-    const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: b64Decode(ivB64) },
-      decKey,
-      b64Decode(ctB64)
-    )
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64Decode(ivB64) }, decKey, b64Decode(ctB64))
     return JSON.parse(new TextDecoder().decode(plaintext))
   } catch (err) {
     if (err.message === 'userhandle-unavailable') throw err

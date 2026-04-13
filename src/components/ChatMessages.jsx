@@ -9,22 +9,7 @@ marked.use({ breaks: true, gfm: true })
 
 // Only allow safe inline/block elements — no iframes, scripts, or styles
 const PURIFY_CONFIG = {
-  ALLOWED_TAGS: [
-    'p',
-    'br',
-    'strong',
-    'b',
-    'em',
-    'i',
-    'del',
-    's',
-    'code',
-    'pre',
-    'ul',
-    'ol',
-    'li',
-    'blockquote',
-  ],
+  ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'del', 's', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote'],
   ALLOWED_ATTR: [],
 }
 
@@ -59,10 +44,7 @@ export default function ChatMessages({ messages, identity }) {
         const isOwn = msg.publicKey === b4a.toString(identity.publicKey, 'hex')
         const displayName = isOwn ? identity.username : msg.username
         return (
-          <div
-            key={msg.id}
-            className={`message-row ${isOwn ? 'message-row--own' : 'message-row--remote'}`}
-          >
+          <div key={msg.id} className={`message-row ${isOwn ? 'message-row--own' : 'message-row--remote'}`}>
             <div className="message-bubble">
               {!isOwn && <span className="message-sender">{displayName}</span>}
               <MessageContent content={msg.content} />
@@ -85,9 +67,7 @@ function formatTime(ts) {
   const date = new Date(ts)
   const now = new Date()
   const isToday =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
+    date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
 
   const timePart = date.toLocaleTimeString(undefined, {
     hour: '2-digit',

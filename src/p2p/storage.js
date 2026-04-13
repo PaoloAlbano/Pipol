@@ -229,11 +229,7 @@ export function getIdentity() {
  * @returns {Promise<{ isNewAccount: boolean }>}
  * @throws {Error} 'wrong-passphrase' if handle exists but passphrase is incorrect
  */
-export async function deriveIdentityA(
-  handle,
-  passphrase,
-  { method = 'passphrase', hasPIN = false } = {}
-) {
+export async function deriveIdentityA(handle, passphrase, { method = 'passphrase', hasPIN = false } = {}) {
   const normHandle = handle.toLowerCase().trim()
 
   // Normalise origin: strip leading "www." so pipol.app and www.pipol.app share the same salt.
@@ -247,13 +243,9 @@ export async function deriveIdentityA(
   const saltHash = await webcrypto.subtle.digest('SHA-256', saltBytes)
 
   // masterSeed = PBKDF2(passphrase, salt, 600_000 iter, SHA-256, 256 bits)
-  const keyMaterial = await webcrypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(passphrase),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  )
+  const keyMaterial = await webcrypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, [
+    'deriveBits',
+  ])
   const derived = await webcrypto.subtle.deriveBits(
     { name: 'PBKDF2', salt: saltHash, iterations: 600_000, hash: 'SHA-256' },
     keyMaterial,
@@ -318,13 +310,9 @@ export async function deriveIdentityOIDC(serverSecret, keyVersion, providerId) {
   const saltBytes = new TextEncoder().encode(`pipol:${normOrigin}`)
   const saltHash = await webcrypto.subtle.digest('SHA-256', saltBytes)
 
-  const keyMaterial = await webcrypto.subtle.importKey(
-    'raw',
-    b4a.from(serverSecret, 'hex'),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  )
+  const keyMaterial = await webcrypto.subtle.importKey('raw', b4a.from(serverSecret, 'hex'), 'PBKDF2', false, [
+    'deriveBits',
+  ])
   const derived = await webcrypto.subtle.deriveBits(
     { name: 'PBKDF2', salt: saltHash, iterations: 600_000, hash: 'SHA-256' },
     keyMaterial,
@@ -336,8 +324,7 @@ export async function deriveIdentityOIDC(serverSecret, keyVersion, providerId) {
   const pubKeyHex = b4a.toString(keyPair.publicKey, 'hex')
 
   const storedMeta = getStoredIdentityMeta()
-  const isNewAccount =
-    !storedMeta || storedMeta.method !== 'oidc' || storedMeta.provider !== providerId
+  const isNewAccount = !storedMeta || storedMeta.method !== 'oidc' || storedMeta.provider !== providerId
 
   if (!isNewAccount && storedMeta.publicKey !== pubKeyHex) {
     // The serverSecret changed (key rotation on the backend). Treat as new account.

@@ -96,9 +96,7 @@ export default function ChatInput({ onSend }) {
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(pointer: fine)').matches
-  const placeholder = hasFinePointer
-    ? 'Type a message…  (Enter to send, Shift+Enter for new line)'
-    : 'Type a message…'
+  const placeholder = hasFinePointer ? 'Type a message…  (Enter to send, Shift+Enter for new line)' : 'Type a message…'
 
   function updateActiveFormats() {
     const editor = editorRef.current
@@ -238,13 +236,7 @@ export default function ChatInput({ onSend }) {
             onClick={updateActiveFormats}
             suppressContentEditableWarning
           />
-          <button
-            className="chat-send-btn"
-            type="submit"
-            disabled={!hasContent}
-            title="Send message"
-            aria-label="Send"
-          >
+          <button className="chat-send-btn" type="submit" disabled={!hasContent} title="Send message" aria-label="Send">
             ↑
           </button>
         </div>

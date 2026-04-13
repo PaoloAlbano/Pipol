@@ -75,9 +75,7 @@ describe('EmojiPicker — selecting emoji', () => {
   it('calls onChange with the emoji added when a cell is clicked', () => {
     const { onChange } = setup()
     fireEvent.click(emojiCell(firstEmoji().name))
-    expect(onChange).toHaveBeenCalledWith([
-      expect.objectContaining({ name: firstEmoji().name, index: 0 }),
-    ])
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ name: firstEmoji().name, index: 0 })])
   })
 
   it('appends to the existing value on each click', () => {
