@@ -22,7 +22,6 @@ import {
   deriveChannelRoomCode,
   deriveDMRoomCode,
   addChannel,
-  setChannelTopic,
   parseInviteUrl,
   createWorkspace,
   getInviteParamFromUrl,
@@ -242,11 +241,6 @@ export default function App() {
     }
   }
 
-  function handleTopicChange(channelName, topic) {
-    setChannelTopic(activeWorkspaceId, channelName, topic)
-    setWorkspaces(getWorkspaces())
-  }
-
   // ── Create workspace ──────────────────────────────────────────────────────
 
   function handleCreateWorkspace() {
@@ -362,11 +356,6 @@ export default function App() {
   // Effective relay URL for active workspace (null = use global/env default)
   const { relayUrl: activeRelayUrl } = getEffectiveConfig(activeWorkspace?.config ?? null)
 
-  // Active channel topic (only for regular channels)
-  const activeChannelTopic = !isDM
-    ? activeWorkspace?.channels.find((c) => c.name === activeChannelName)?.topic || ''
-    : ''
-
   const isWorkspaceAdmin = activeWorkspace?.createdBy && myPubkeyHex ? activeWorkspace.createdBy === myPubkeyHex : false
 
   // Convert members Map → arrays for sidebar (exclude self)
@@ -451,12 +440,7 @@ export default function App() {
         >
           {activeRoomCode ? (
             <>
-              <ChannelHeader
-                channelName={activeDisplayName}
-                topic={isDM ? '' : activeChannelTopic}
-                onTopicChange={isDM ? undefined : (t) => handleTopicChange(activeChannelName, t)}
-                isPrivate={isDM}
-              />
+              <ChannelHeader channelName={activeDisplayName} isPrivate={isDM} />
               <Suspense fallback={null}>
                 <Room
                   key={activeRoomCode}

@@ -27,54 +27,6 @@
   flex-shrink: 0;
 }
 
-.channel-header__divider {
-  width: 1px;
-  height: 16px;
-  background: var(--border-strong);
-  flex-shrink: 0;
-}
-
-/* Topic — truncated, click to edit */
-.channel-header__topic {
-  font-size: 13px;
-  color: var(--text-muted);
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  transition:
-    background 0.1s,
-    color 0.1s;
-  min-width: 0;
-}
-
-.channel-header__topic:hover {
-  background: var(--surface-3);
-  color: var(--text);
-}
-
-.channel-header__topic--placeholder {
-  color: var(--text-faint);
-  font-style: italic;
-}
-
-/* Inline topic edit input */
-.channel-header__topic-input {
-  font-size: 13px;
-  color: var(--text);
-  background: var(--surface-3);
-  border: 1px solid var(--primary);
-  border-radius: var(--radius-sm);
-  padding: 2px 6px;
-  flex: 1;
-  min-width: 0;
-  outline: none;
-  font-family: var(--font-sans);
-}
-
 /* Actions */
 .channel-header__actions {
   display: flex;

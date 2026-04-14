@@ -635,14 +635,17 @@ export default function Room({
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  const handleSendMessage = useCallback(async (content) => {
-    // Clear our typing state when we send + notify peers immediately
-    clearTimeout(typingThrottleRef.current)
-    typingThrottleRef.current = null
-    swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown', stopped: true })
-    const msg = await msgStoreRef.current?.addMessage(content)
-    if (msg) swarmRef.current?.sendToAll({ type: 'MSG', message: msg })
-  }, [identity?.username])
+  const handleSendMessage = useCallback(
+    async (content) => {
+      // Clear our typing state when we send + notify peers immediately
+      clearTimeout(typingThrottleRef.current)
+      typingThrottleRef.current = null
+      swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown', stopped: true })
+      const msg = await msgStoreRef.current?.addMessage(content)
+      if (msg) swarmRef.current?.sendToAll({ type: 'MSG', message: msg })
+    },
+    [identity?.username]
+  )
 
   const handleTypingNotification = useCallback(() => {
     if (typingThrottleRef.current) return // already sent recently
