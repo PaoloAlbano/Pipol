@@ -223,13 +223,13 @@ Il client non conosce mai il workspaceSecret grezzo
 
 ## Blocco 2 — Comunicazione asincrona
 
-- [ ] **DM 1:1** — bilateral room derivata da `BLAKE2b(sort([keyA, keyB]))`
-  - [ ] Discovery tramite member directory del workspace swarm
-  - [ ] UI: click su utente in sidebar → apre DM
-  - [ ] ⚠️ **Privacy issue da rivedere**: il room code DM è attualmente calcolabile da chiunque conosca entrambe le pubkey (trasmesse in chiaro via `MEMBER_HELLO`). Un osservatore nel swarm può precalcolare tutti i room code DM. I messaggi sono E2E su DataChannel ma il relay può fingersi partecipante. Fix: includere il workspace secret nella derivazione → `BLAKE2b(secret + ':dm:' + sort([A,B]))[0:20]` — così solo i membri del workspace possono calcolare il room code.
+- [x] **DM 1:1** — bilateral room derivata da `BLAKE2b(secret + ':dm:' + sort([keyA, keyB]))[0:20]`
+  - [x] Discovery tramite member directory del workspace swarm
+  - [x] UI: click su utente in sidebar → apre DM
+  - [x] Fix privacy: workspace secret incluso nella derivazione — solo i membri del workspace possono calcolare il room code
 - [x] **Indicatore presenza** — peer online/offline visibile in sidebar e DM
-- [ ] **Typing indicator** — messaggio effimero `TYPING` via DataChannel, timeout 3s
-- [ ] **@mention** — parsing `@username`, badge notifica, evidenziazione messaggio
+- [x] **Typing indicator** — messaggio effimero `TYPING` via DataChannel, `stopped: true` per clear immediato all'invio
+- [x] **@mention** — parsing `@username`, evidenziazione in `ChatMessages`, autocomplete dropdown in `ChatInput`
 - [ ] **Notifiche browser** — `Notification` API, permesso utente
 - [ ] **Badge app non letti** — `navigator.setAppBadge()`
 

@@ -414,6 +414,14 @@ export class RoomSwarm extends EventTarget {
           })
         )
         break
+      case 'CHANNEL_NOTIFY':
+        this.dispatchEvent(
+          new CustomEvent('channel-notify', { detail: { peerId: remoteId, channelName: msg.channelName } })
+        )
+        break
+      case 'DM_INVITE':
+        this.dispatchEvent(new CustomEvent('dm-invite', { detail: { peerId: remoteId, from: msg.from, to: msg.to } }))
+        break
     }
   }
 

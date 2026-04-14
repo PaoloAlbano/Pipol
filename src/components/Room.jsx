@@ -34,6 +34,7 @@ export default function Room({
   onOpenSettings,
   embedded = false,
   relayUrl = null,
+  onMessageSent,
 }) {
   const [peers, setPeers] = useState([])
   const [messages, setMessages] = useState([])
@@ -642,9 +643,12 @@ export default function Room({
       typingThrottleRef.current = null
       swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown', stopped: true })
       const msg = await msgStoreRef.current?.addMessage(content)
-      if (msg) swarmRef.current?.sendToAll({ type: 'MSG', message: msg })
+      if (msg) {
+        swarmRef.current?.sendToAll({ type: 'MSG', message: msg })
+        onMessageSent?.()
+      }
     },
-    [identity?.username]
+    [identity?.username, onMessageSent]
   )
 
   const handleTypingNotification = useCallback(() => {

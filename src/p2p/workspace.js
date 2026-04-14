@@ -64,15 +64,21 @@ export function deriveChannelRoomCode(secret, channelName) {
 
 /**
  * Derives a deterministic bilateral room code for a 1:1 DM between two users.
- * Sorts the two pubkey hex strings so the result is the same regardless of who initiates.
+ * The workspace secret is mixed in so that only members who know the secret
+ * can compute the room code — preventing external swarm observers from
+ * pre-calculating all DM channels from publicly visible pubkeys.
  *
+ * Sorts the two pubkey hex strings so the result is the same regardless of
+ * who initiates.
+ *
+ * @param {string} secret   Workspace secret (hex)
  * @param {string} pubkeyA  Hex pubkey of user A
  * @param {string} pubkeyB  Hex pubkey of user B
  * @returns {string}  20-char hex room code
  */
-export function deriveDMRoomCode(pubkeyA, pubkeyB) {
+export function deriveDMRoomCode(secret, pubkeyA, pubkeyB) {
   const [lo, hi] = [pubkeyA, pubkeyB].sort()
-  const buf = b4a.concat([b4a.from('dm:'), b4a.from(lo), b4a.from(':'), b4a.from(hi)])
+  const buf = b4a.concat([b4a.from(secret, 'hex'), b4a.from(':dm:'), b4a.from(lo), b4a.from(':'), b4a.from(hi)])
   return b4a.toString(crypto.hash(buf), 'hex').slice(0, 20)
 }
 

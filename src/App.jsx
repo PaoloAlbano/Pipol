@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import Home from './components/Home.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import LoginScreen from './components/LoginScreen.jsx'
@@ -45,6 +45,12 @@ function clearUnread(workspaceId, channelName) {
   localStorage.setItem(`p2p-chat:unread:${workspaceId}`, JSON.stringify(counts))
 }
 
+function incrementUnread(workspaceId, channelName) {
+  const counts = getUnreadCounts(workspaceId)
+  counts[channelName] = (counts[channelName] || 0) + 1
+  localStorage.setItem(`p2p-chat:unread:${workspaceId}`, JSON.stringify(counts))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -63,11 +69,41 @@ export default function App() {
   // Active workspace (derived — kept in sync for hooks that run before early returns)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0] || null
 
+  // Trigger re-render when unread counts change (localStorage isn't reactive)
+  const [unreadVersion, bumpUnread] = useState(0)
+
+  // Ref for stable access inside workspace sync callback without stale closures
+  const activeChannelNameRef = useRef(activeChannelName)
+  const activeWorkspaceIdRef = useRef(activeWorkspaceId)
+  useEffect(() => {
+    activeChannelNameRef.current = activeChannelName
+  }, [activeChannelName])
+  useEffect(() => {
+    activeWorkspaceIdRef.current = activeWorkspaceId
+  }, [activeWorkspaceId])
+
+  const onChannelNotify = useCallback((channelName) => {
+    const wsId = activeWorkspaceIdRef.current
+    const active = activeChannelNameRef.current
+    if (!wsId || channelName === active) return
+    incrementUnread(wsId, channelName)
+    bumpUnread((v) => v + 1)
+  }, [])
+
+  // When a peer sends us a DM_INVITE, auto-open the DM with them
+  const onDMInvite = useCallback((fromPubkey) => {
+    // Don't interrupt if already in that DM
+    if (activeChannelNameRef.current === `dm:${fromPubkey}`) return
+    setActiveChannelName(`dm:${fromPubkey}`)
+  }, [])
+
   // Workspace channel + presence sync (P2P)
-  const { broadcastChannels, members } = useWorkspaceSync(
+  const { broadcastChannels, members, notifyChannel, sendDMInvite } = useWorkspaceSync(
     activeWorkspace,
     identity,
-    useCallback(() => setWorkspaces(getWorkspaces()), [])
+    useCallback(() => setWorkspaces(getWorkspaces()), []),
+    onChannelNotify,
+    onDMInvite
   )
 
   // Pending invite (from ?invite= URL param)
@@ -209,6 +245,8 @@ export default function App() {
 
   function handleSelectDM(pubkey) {
     setActiveChannelName(`dm:${pubkey}`)
+    // Notify the other peer so they join the DM swarm automatically
+    sendDMInvite(pubkey)
   }
 
   function handleLeaveChannel() {
@@ -323,8 +361,9 @@ export default function App() {
 
   if (!identity) return <LoginScreen onLogin={handleLogin} />
 
-  // Build channel list with unread counts
-  const unreadCounts = activeWorkspace ? getUnreadCounts(activeWorkspace.id) : {}
+  // Build channel list with unread counts.
+  // unreadVersion changing forces a re-render so getUnreadCounts re-reads localStorage.
+  const unreadCounts = activeWorkspace && unreadVersion >= 0 ? getUnreadCounts(activeWorkspace.id) : {}
   const channels = (activeWorkspace?.channels ?? []).map((ch) => ({
     ...ch,
     unread: unreadCounts[ch.name] || 0,
@@ -341,8 +380,8 @@ export default function App() {
   const isDM = activeChannelName?.startsWith('dm:')
   const dmPeerPubkey = isDM ? activeChannelName.slice(3) : null
   const activeRoomCode = isDM
-    ? myPubkeyHex && dmPeerPubkey
-      ? deriveDMRoomCode(myPubkeyHex, dmPeerPubkey)
+    ? myPubkeyHex && dmPeerPubkey && activeWorkspace?.secret
+      ? deriveDMRoomCode(activeWorkspace.secret, myPubkeyHex, dmPeerPubkey)
       : null
     : activeWorkspace && activeChannelName
       ? deriveChannelRoomCode(activeWorkspace.secret, activeChannelName)
@@ -450,6 +489,7 @@ export default function App() {
                   onLeave={handleLeaveChannel}
                   onOpenSettings={() => setSettingsOpen(true)}
                   relayUrl={activeRelayUrl || null}
+                  onMessageSent={() => notifyChannel(activeChannelName)}
                   embedded
                 />
               </Suspense>
