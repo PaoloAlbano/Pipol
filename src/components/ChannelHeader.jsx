@@ -21,8 +21,6 @@ export default function ChannelHeader({
   topic = '',
   isPrivate = false,
   callActive = false,
-  rightPanelOpen,
-  toggleRightPanel,
   onTopicChange,
   onStartCall,
   onSearch,
@@ -117,16 +115,6 @@ export default function ChannelHeader({
             📹
           </button>
         )}
-
-        <button
-          className={['channel-header__btn', rightPanelOpen ? 'channel-header__btn--active' : ''].join(' ')}
-          onClick={toggleRightPanel}
-          title={rightPanelOpen ? 'Close panel' : 'Show members'}
-          aria-label={rightPanelOpen ? 'Close side panel' : 'Show members'}
-          aria-pressed={rightPanelOpen}
-        >
-          👥
-        </button>
       </div>
     </div>
   )

@@ -36,9 +36,11 @@ export function extractFingerprint(sdp) {
 }
 
 /** Build the signaling WebSocket URL.
- *  Priority: user setting (localStorage) → VITE_DHT_RELAY_URL env → auto-derive from window.location.
+ *  Priority: explicit override (workspace config) → user setting (localStorage) → VITE_DHT_RELAY_URL env → auto-derive from window.location.
+ * @param {string|null} [override]  Optional relay base URL that takes over everything else.
  */
-function signalUrl() {
+function signalUrl(override) {
+  if (override) return override.replace(/\/?$/, '') + '/signal'
   const stored = getRelayUrl()
   if (stored) return stored.replace(/\/?$/, '') + '/signal'
   if (import.meta.env.VITE_DHT_RELAY_URL) {
@@ -58,6 +60,9 @@ export class RoomSwarm extends EventTarget {
     this.peers = new Map() // peerId → { id, username, messageCoreKey, pc, dc, sendControl }
     this.mode = 'webrtc'
 
+    // Optional workspace-level relay override (takes priority over global settings)
+    this._relayUrl = opts.relayUrl || null
+
     this._ws = null // signaling WebSocket
     this._localPeerId = null
     this._identity = null
@@ -71,7 +76,7 @@ export class RoomSwarm extends EventTarget {
     this._localPeerId = b4a.toString(this._identity.publicKey, 'hex')
 
     return new Promise((resolve, reject) => {
-      const url = signalUrl()
+      const url = signalUrl(this._relayUrl)
       const ws = new WebSocket(url)
       this._ws = ws
 
@@ -389,6 +394,23 @@ export class RoomSwarm extends EventTarget {
         break
       case 'WORKSPACE_META':
         this.dispatchEvent(new CustomEvent('workspace-meta', { detail: { peerId: remoteId, channels: msg.channels } }))
+        break
+      case 'MEMBER_HELLO':
+        this.dispatchEvent(
+          new CustomEvent('member-hello', {
+            detail: { peerId: remoteId, pubkey: msg.pubkey, username: msg.username, status: msg.status ?? 'online' },
+          })
+        )
+        break
+      case 'PRESENCE_UPDATE':
+        this.dispatchEvent(
+          new CustomEvent('presence-update', { detail: { peerId: remoteId, pubkey: msg.pubkey, status: msg.status } })
+        )
+        break
+      case 'TYPING':
+        this.dispatchEvent(
+          new CustomEvent('typing', { detail: { peerId: remoteId, username: msg.username ?? remoteId.slice(0, 8), stopped: msg.stopped ?? false } })
+        )
         break
     }
   }

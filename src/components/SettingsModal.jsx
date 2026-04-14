@@ -23,7 +23,16 @@ const QUALITIES = [
   { value: '1080p', label: '1080p', desc: 'Best quality' },
 ]
 
-export default function SettingsModal({ identity, onUsernameChange, showStats, onShowStatsChange, onClose, onLock }) {
+export default function SettingsModal({
+  identity,
+  onUsernameChange,
+  showStats,
+  onShowStatsChange,
+  onClose,
+  onLock,
+  activeWorkspace,
+  onLeaveWorkspace,
+}) {
   const [name, setName] = useState(identity.username)
   const [nameError, setNameError] = useState('')
   const [quality, setQuality] = useState(getVideoQuality)
@@ -35,6 +44,7 @@ export default function SettingsModal({ identity, onUsernameChange, showStats, o
   const [biometricError, setBiometricError] = useState('')
   const [biometricLoading, setBiometricLoading] = useState(false)
   const [biometricDisableConfirm, setBiometricDisableConfirm] = useState(false)
+  const [leaveConfirm, setLeaveConfirm] = useState(false)
 
   useEffect(() => {
     if (identity.isGuest) return
@@ -250,6 +260,41 @@ export default function SettingsModal({ identity, onUsernameChange, showStats, o
               Removes the decryption key from memory. You&apos;ll need your passphrase to unlock again.
             </p>
           </div>
+
+          {activeWorkspace && onLeaveWorkspace && (
+            <div className="settings-section">
+              <label className="settings-label">Workspace</label>
+              <p className="settings-hint">
+                You are in <strong>{activeWorkspace.name}</strong>. Leaving removes this workspace from your device. You
+                can rejoin with an invite link.
+              </p>
+              {leaveConfirm ? (
+                <>
+                  <p className="settings-hint settings-hint--warn">
+                    Are you sure? This cannot be undone without an invite link.
+                  </p>
+                  <div className="settings-row">
+                    <button
+                      className="btn btn-lock"
+                      onClick={() => {
+                        onClose()
+                        onLeaveWorkspace()
+                      }}
+                    >
+                      Yes, leave
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => setLeaveConfirm(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button className="btn btn-lock" onClick={() => setLeaveConfirm(true)}>
+                  Leave workspace
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {/* settings-body */}
 

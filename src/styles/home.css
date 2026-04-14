@@ -66,10 +66,19 @@
   font-size: 14px;
 }
 
+.home-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
 .home-identity {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 99px;
@@ -79,16 +88,23 @@
 }
 .home-identity strong {
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .home-settings-btn {
-  align-self: flex-end;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 50%;
   color: var(--text-muted);
-  font-size: 13px;
-  padding: 6px 12px;
+  font-size: 15px;
   cursor: pointer;
   transition:
     background 0.15s,

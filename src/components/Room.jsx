@@ -26,11 +26,24 @@ import '../styles/room.css'
  * @param {object}   identity   { publicKey, secretKey, username }
  * @param {function} onLeave    Callback to return to the Home screen
  */
-export default function Room({ roomCode, identity, showStats, onLeave, onOpenSettings, embedded = false }) {
+export default function Room({
+  roomCode,
+  identity,
+  showStats,
+  onLeave,
+  onOpenSettings,
+  embedded = false,
+  relayUrl = null,
+}) {
   const [peers, setPeers] = useState([])
   const [messages, setMessages] = useState([])
   const [status, setStatus] = useState('connecting…')
   const [relayUnreachable, setRelayUnreachable] = useState(false)
+
+  // Typing indicators
+  const typingPeersRef = useRef(new Map()) // peerId → { username, timer }
+  const [typingUsers, setTypingUsers] = useState([]) // usernames currently typing
+  const typingThrottleRef = useRef(null) // throttle our own TYPING broadcasts
 
   // Panel collapse state (auto-reset on mobile)
   const isMobile = () => window.innerWidth <= 560
@@ -105,6 +118,12 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       })
       setIncomingCall((prev) => (prev?.peerId === id ? null : prev))
       setSpotlightPeerId((prev) => (prev === id ? null : prev))
+      // Clear typing indicator for departed peer
+      if (typingPeersRef.current.has(id)) {
+        clearTimeout(typingPeersRef.current.get(id)?.timer)
+        typingPeersRef.current.delete(id)
+        setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
+      }
     })
 
     swarm.addEventListener('call-init', async (e) => {
@@ -177,6 +196,22 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       console.error('[room] swarm error', e.detail)
       setStatus('⚠ swarm error — check console')
     })
+
+    swarm.addEventListener('typing', (e) => {
+      const { peerId, username, stopped } = e.detail
+      const existing = typingPeersRef.current.get(peerId)
+      if (existing?.timer) clearTimeout(existing.timer)
+      if (stopped) {
+        typingPeersRef.current.delete(peerId)
+      } else {
+        const timer = setTimeout(() => {
+          typingPeersRef.current.delete(peerId)
+          setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
+        }, 3000)
+        typingPeersRef.current.set(peerId, { username, timer })
+      }
+      setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
+    })
   }
 
   // ── Initialise P2P stack on mount ─────────────────────────────────────────
@@ -203,6 +238,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
           try {
             const swarm = await createRoomSwarm(roomCode, {
               messageCoreKey: msgStore.getLocalCoreKey(),
+              relayUrl,
             })
             if (cancelled) {
               swarm.leave()
@@ -284,6 +320,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         await swarmRef.current.leave().catch(() => {})
         const swarm = await createRoomSwarm(roomCode, {
           messageCoreKey: msgStoreRef.current?.getLocalCoreKey(),
+          relayUrl,
         })
         swarmRef.current = swarm
         attachSwarmListeners(swarm, msgStoreRef.current)
@@ -599,9 +636,21 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   // ── Actions ───────────────────────────────────────────────────────────────
 
   const handleSendMessage = useCallback(async (content) => {
+    // Clear our typing state when we send + notify peers immediately
+    clearTimeout(typingThrottleRef.current)
+    typingThrottleRef.current = null
+    swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown', stopped: true })
     const msg = await msgStoreRef.current?.addMessage(content)
     if (msg) swarmRef.current?.sendToAll({ type: 'MSG', message: msg })
-  }, [])
+  }, [identity?.username])
+
+  const handleTypingNotification = useCallback(() => {
+    if (typingThrottleRef.current) return // already sent recently
+    swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown' })
+    typingThrottleRef.current = setTimeout(() => {
+      typingThrottleRef.current = null
+    }, 2000)
+  }, [identity?.username])
 
   async function handleStartCall() {
     try {
@@ -918,17 +967,19 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
       {/* ── Right: chat (always visible) ── */}
       <section className={`room-chat ${chatOpen ? '' : 'room-chat--collapsed'}`}>
-        <button
-          className="btn-collapse-chat"
-          onClick={() => setChatOpen((v) => !v)}
-          title={chatOpen ? 'Collapse chat' : 'Expand chat'}
-        >
-          {chatOpen ? '▶' : '◀'}
-        </button>
+        {!embedded && (
+          <button
+            className="btn-collapse-chat"
+            onClick={() => setChatOpen((v) => !v)}
+            title={chatOpen ? 'Collapse chat' : 'Expand chat'}
+          >
+            {chatOpen ? '▶' : '◀'}
+          </button>
+        )}
         {chatOpen && (
           <>
-            <ChatMessages messages={messages} identity={identity} />
-            <ChatInput onSend={handleSendMessage} />
+            <ChatMessages messages={messages} identity={identity} typingUsers={typingUsers} peers={peers} />
+            <ChatInput onSend={handleSendMessage} onTyping={handleTypingNotification} peers={peers} />
           </>
         )}
       </section>

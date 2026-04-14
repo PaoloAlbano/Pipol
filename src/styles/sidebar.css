@@ -10,6 +10,11 @@
 
 /* ── Workspace header ────────────────────────────────────────── */
 
+.sidebar__workspace-header-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .sidebar__workspace-header {
   display: flex;
   align-items: center;
@@ -17,7 +22,6 @@
   padding: 0 12px;
   height: 48px;
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
   cursor: default;
   gap: 8px;
   transition: background 0.1s;
@@ -45,25 +49,66 @@
   color: var(--text-muted);
   font-size: 10px;
   flex-shrink: 0;
+  transition: transform 0.15s;
+  display: inline-block;
 }
 
-.sidebar__invite-btn {
+.sidebar__workspace-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* ── Workspace dropdown menu ─────────────────────────────────── */
+
+.sidebar__ws-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 8px;
+  right: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.sidebar__ws-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
   background: none;
   border: none;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  flex-shrink: 0;
-  opacity: 0.6;
-  transition:
-    opacity 0.1s,
-    background 0.1s;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.1s;
 }
 
-.sidebar__invite-btn:hover {
-  opacity: 1;
+.sidebar__ws-menu-item:hover {
   background: var(--surface-3);
+}
+
+.sidebar__ws-menu-item--danger {
+  color: var(--danger);
+}
+
+.sidebar__ws-menu-item--danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.sidebar__ws-menu-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.sidebar__ws-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
 }
 
 .sidebar__online-count {

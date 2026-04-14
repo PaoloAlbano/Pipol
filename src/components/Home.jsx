@@ -122,15 +122,15 @@ export default function Home({
         </h1>
         <p className="home-subtitle">P2P chat and video calls — no server, E2E encrypted.</p>
 
-        {/* Settings */}
-        <button className="home-settings-btn" onClick={onOpenSettings} title="Settings">
-          ⚙️ Settings
-        </button>
-
-        {/* Identity */}
-        <div className="home-identity">
-          <span className="home-identity-dot" />
-          Connected as <strong>{identity.username}</strong>
+        {/* Identity + settings */}
+        <div className="home-identity-row">
+          <div className="home-identity">
+            <span className="home-identity-dot" />
+            Connected as <strong>{identity.username}</strong>
+          </div>
+          <button className="home-settings-btn" onClick={onOpenSettings} title="Settings" aria-label="Open settings">
+            ⚙
+          </button>
         </div>
 
         {/* Tab switcher */}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { getAvatarVisuals } from './Avatar.jsx'
 import '../styles/sidebar.css'
 
@@ -23,6 +23,7 @@ import '../styles/sidebar.css'
  * @param {function} onSelectDM(pubkey)
  * @param {function} onToggleMute
  * @param {function} onOpenSettings
+ * @param {function} onInvite               Opens share-invite modal (admin only)
  * @param {function} onWorkspaceHeaderClick  Opens workspace dropdown/settings
  */
 export default function ChannelSidebar({
@@ -45,6 +46,18 @@ export default function ChannelSidebar({
   const [channelsCollapsed, setChannelsCollapsed] = useState(false)
   const [dmsCollapsed, setDmsCollapsed] = useState(false)
   const [channelSearch, setChannelSearch] = useState('')
+  const [wsMenuOpen, setWsMenuOpen] = useState(false)
+  const wsMenuRef = useRef(null)
+
+  // Close workspace dropdown on outside click
+  useEffect(() => {
+    if (!wsMenuOpen) return
+    function onOutsideClick(e) {
+      if (!wsMenuRef.current?.contains(e.target)) setWsMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onOutsideClick)
+    return () => document.removeEventListener('mousedown', onOutsideClick)
+  }, [wsMenuOpen])
 
   const onlineCount = peers.filter((p) => p.status !== 'offline').length
 
@@ -55,32 +68,48 @@ export default function ChannelSidebar({
   return (
     <div className="sidebar">
       {/* Workspace header */}
-      <div
-        className={['sidebar__workspace-header', onWorkspaceHeaderClick ? 'sidebar__workspace-header--clickable' : '']
-          .filter(Boolean)
-          .join(' ')}
-        onClick={onWorkspaceHeaderClick}
-        role={onWorkspaceHeaderClick ? 'button' : undefined}
-        tabIndex={onWorkspaceHeaderClick ? 0 : undefined}
-        onKeyDown={onWorkspaceHeaderClick ? (e) => e.key === 'Enter' && onWorkspaceHeaderClick() : undefined}
-        aria-label={`Workspace: ${workspace?.name}`}
-      >
-        <span className="sidebar__workspace-name">{workspace?.name ?? 'Workspace'}</span>
-        {onlineCount > 0 && <span className="sidebar__online-count">{onlineCount} online</span>}
-        {isAdmin && onInvite && (
-          <button
-            className="sidebar__invite-btn"
-            onClick={(e) => {
-              e.stopPropagation()
-              onInvite()
-            }}
-            title="Copy invite link"
-            aria-label="Copy invite link"
-          >
-            🔗
-          </button>
+      <div className="sidebar__workspace-header-wrap" ref={wsMenuRef}>
+        <div
+          className={['sidebar__workspace-header', isAdmin ? 'sidebar__workspace-header--clickable' : '']
+            .filter(Boolean)
+            .join(' ')}
+          onClick={isAdmin ? () => setWsMenuOpen((v) => !v) : undefined}
+          role={isAdmin ? 'button' : undefined}
+          tabIndex={isAdmin ? 0 : undefined}
+          onKeyDown={isAdmin ? (e) => e.key === 'Enter' && setWsMenuOpen((v) => !v) : undefined}
+          aria-label={`Workspace: ${workspace?.name}`}
+          aria-haspopup={isAdmin ? 'menu' : undefined}
+          aria-expanded={isAdmin ? wsMenuOpen : undefined}
+        >
+          <span className="sidebar__workspace-name">{workspace?.name ?? 'Workspace'}</span>
+          {onlineCount > 0 && <span className="sidebar__online-count">{onlineCount} online</span>}
+          {isAdmin && (
+            <span
+              className={['sidebar__workspace-chevron', wsMenuOpen ? 'sidebar__workspace-chevron--open' : ''].join(' ')}
+            >
+              ▾
+            </span>
+          )}
+        </div>
+
+        {/* Workspace dropdown — invite link (admin only) */}
+        {isAdmin && wsMenuOpen && (
+          <div className="sidebar__ws-menu" role="menu">
+            {onInvite && (
+              <button
+                className="sidebar__ws-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setWsMenuOpen(false)
+                  onInvite()
+                }}
+              >
+                <span className="sidebar__ws-menu-icon">🔗</span>
+                Copy invite link
+              </button>
+            )}
+          </div>
         )}
-        {onWorkspaceHeaderClick && <span className="sidebar__workspace-chevron">▾</span>}
       </div>
 
       {/* Channel search */}

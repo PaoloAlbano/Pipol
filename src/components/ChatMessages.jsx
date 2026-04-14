@@ -7,30 +7,56 @@ import '../styles/chat.css'
 // Configure marked once: GFM (~~strike~~, `code`) + single newline → <br>
 marked.use({ breaks: true, gfm: true })
 
-// Only allow safe inline/block elements — no iframes, scripts, or styles
+// Allow mark tag for @mention highlighting
 const PURIFY_CONFIG = {
-  ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'del', 's', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote'],
-  ALLOWED_ATTR: [],
+  ALLOWED_TAGS: [
+    'p',
+    'br',
+    'strong',
+    'b',
+    'em',
+    'i',
+    'del',
+    's',
+    'code',
+    'pre',
+    'ul',
+    'ol',
+    'li',
+    'blockquote',
+    'mark',
+  ],
+  ALLOWED_ATTR: ['class'],
 }
 
 function renderMarkdown(content) {
   const raw = marked.parse(content)
-  return DOMPurify.sanitize(raw, PURIFY_CONFIG)
+  const sanitized = DOMPurify.sanitize(raw, PURIFY_CONFIG)
+  // Highlight @mentions — safe to do after DOMPurify since < in text is already &lt;
+  return sanitized.replace(/>([^<]+)</g, (match, text) => {
+    const highlighted = text.replace(/\B@([\w-]+)/g, '<mark class="mention">@$1</mark>')
+    return `>${highlighted}<`
+  })
 }
 
 /**
  * Renders the scrollable list of chat messages.
  * Message content is parsed as Markdown (GFM subset, sanitized).
  * Auto-scrolls to the bottom when new messages arrive.
+ *
+ * @param {object[]} messages
+ * @param {object}   identity
+ * @param {string[]} [typingUsers]   Usernames of peers currently typing
+ * @param {object[]} [peers]         Peer list (unused currently, reserved for future)
  */
-export default function ChatMessages({ messages, identity }) {
+export default function ChatMessages({ messages, identity, typingUsers = [], peers = [] }) {
   const bottomRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, typingUsers])
 
-  if (messages.length === 0) {
+  if (messages.length === 0 && typingUsers.length === 0) {
     return (
       <div className="messages-empty">
         <p>No messages yet. Say hello! 👋</p>
@@ -53,6 +79,25 @@ export default function ChatMessages({ messages, identity }) {
           </div>
         )
       })}
+
+      {/* Typing indicator */}
+      {typingUsers.length > 0 && (
+        <div className="typing-indicator" aria-live="polite" aria-label={`${typingUsers.join(', ')} is typing`}>
+          <span className="typing-indicator__dots">
+            <span />
+            <span />
+            <span />
+          </span>
+          <span className="typing-indicator__text">
+            {typingUsers.length === 1
+              ? `${typingUsers[0]} is typing…`
+              : typingUsers.length === 2
+                ? `${typingUsers[0]} and ${typingUsers[1]} are typing…`
+                : 'Several people are typing…'}
+          </span>
+        </div>
+      )}
+
       <div ref={bottomRef} />
     </div>
   )

@@ -193,7 +193,7 @@ Il client non conosce mai il workspaceSecret grezzo
 - [x] Quando si seleziona canale: montare `Room` nell'area main senza smontare `WorkspaceLayout`
 - [x] Cambiare `Room` key al cambio canale (come ora)
 - [x] Gestire URL: `?ws=wsId&ch=channelName` per deep link canale
-- [ ] Config workspace (relayUrl, authUrl) applicata quando si entra nel workspace
+- [x] Config workspace (relayUrl, authUrl) applicata quando si entra nel workspace
 
 ### Step 9 — Refactor Home.jsx → OnboardingScreen
 - [x] Se utente ha già workspace salvati → skip diretto a WorkspaceLayout
@@ -202,22 +202,22 @@ Il client non conosce mai il workspaceSecret grezzo
 - [x] Flusso "Entra con invito": incolla URL o il ?invite= è già nell'URL → confirm modal
 
 ### Step 11 — CreateWorkspaceModal
-- [ ] Creare `src/components/CreateWorkspaceModal.jsx`
-  - [ ] Step 1: nome workspace (input + validazione)
-  - [ ] Step 2: canali seed (lista editabile, aggiungi/rimuovi, default: "generale" + "random")
-  - [ ] Step 3 (opzionale, collassabile): configurazione avanzata
-    - [ ] Custom relay URL
-    - [ ] Custom auth URL
-  - [ ] Genera invite URL via `createWorkspace()` + `buildInviteUrl()`
-  - [ ] Schermata risultato: mostra URL con pulsante copia, tasto "Apri in nuova tab" per test
-  - [ ] Accessibile anche da workspace già esistente (per rigenerare il link o aggiornarlo dopo nuovi canali)
-- [ ] Creare `src/styles/create-workspace.css`
+- [x] Creare `src/components/CreateWorkspaceModal.jsx`
+  - [x] Step 1: nome workspace (input + validazione)
+  - [x] Step 2: canali seed (lista editabile, aggiungi/rimuovi, default: "generale" + "random")
+  - [x] Step 3 (opzionale, collassabile): configurazione avanzata
+    - [x] Custom relay URL
+    - [x] Custom auth URL
+  - [x] Genera invite URL via `createWorkspace()` + `buildInviteUrl()`
+  - [x] Schermata risultato: mostra URL con pulsante copia, tasto "Apri in nuova tab" per test
+  - [x] Accessibile anche da workspace già esistente (per rigenerare il link o aggiornarlo dopo nuovi canali)
+- [x] Creare `src/styles/create-workspace-modal.css`
 
 ### Step 10 — Adattamenti Room.jsx
 - [x] Sidebar interna nascosta con prop `embedded`
 - [x] Mobile header nascosto con prop `embedded`
 - [x] `onLeave` → torna ai canali (non naviga a Home)
-- [ ] Logica P2P interna invariata
+- [x] Logica P2P interna invariata
 
 ---
 
@@ -226,7 +226,8 @@ Il client non conosce mai il workspaceSecret grezzo
 - [ ] **DM 1:1** — bilateral room derivata da `BLAKE2b(sort([keyA, keyB]))`
   - [ ] Discovery tramite member directory del workspace swarm
   - [ ] UI: click su utente in sidebar → apre DM
-- [ ] **Indicatore presenza** — peer online/offline visibile in sidebar e DM
+  - [ ] ⚠️ **Privacy issue da rivedere**: il room code DM è attualmente calcolabile da chiunque conosca entrambe le pubkey (trasmesse in chiaro via `MEMBER_HELLO`). Un osservatore nel swarm può precalcolare tutti i room code DM. I messaggi sono E2E su DataChannel ma il relay può fingersi partecipante. Fix: includere il workspace secret nella derivazione → `BLAKE2b(secret + ':dm:' + sort([A,B]))[0:20]` — così solo i membri del workspace possono calcolare il room code.
+- [x] **Indicatore presenza** — peer online/offline visibile in sidebar e DM
 - [ ] **Typing indicator** — messaggio effimero `TYPING` via DataChannel, timeout 3s
 - [ ] **@mention** — parsing `@username`, badge notifica, evidenziazione messaggio
 - [ ] **Notifiche browser** — `Notification` API, permesso utente

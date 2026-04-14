@@ -1,41 +1,95 @@
 /**
- * useWorkspaceSync — keeps the channel list in sync across peers.
+ * useWorkspaceSync — keeps channels and member presence in sync across peers.
  *
  * Joins a dedicated swarm room derived from the workspace secret (meta topic).
- * On peer connect: sends the current channel list.
- * On receiving WORKSPACE_META: merges remote channels into local storage and
- * calls onChannelsUpdated() so the UI can re-render.
  *
- * Also exposes broadcastChannels() so App.jsx can push updates after
- * creating a new channel.
+ * Messages:
+ *   WORKSPACE_META { channels[] }     — channel list sync (append-only)
+ *   MEMBER_HELLO   { pubkey, username, status }  — sent on join / to new peers
+ *   PRESENCE_UPDATE { pubkey, status }            — sent on visibilitychange
+ *
+ * Returns:
+ *   broadcastChannels(channels)   — push channel list to all peers immediately
+ *   members                       — Map<pubkey, { pubkey, username, status, lastSeen }>
  */
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { RoomSwarm } from './swarm.js'
-import { deriveSwarmTopic, mergeChannelList, getWorkspaces, saveWorkspace } from './workspace.js'
+import { deriveSwarmTopic, mergeChannelList, getWorkspaces, saveWorkspace, getEffectiveConfig } from './workspace.js'
 
-export function useWorkspaceSync(workspace, onChannelsUpdated) {
+function pubkeyToHex(publicKey) {
+  if (!publicKey) return null
+  return Array.from(publicKey)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+export function useWorkspaceSync(workspace, identity, onChannelsUpdated) {
   const swarmRef = useRef(null)
-  // Keep a ref so event handlers always see the latest channels without re-subscribing
   const channelsRef = useRef(workspace?.channels ?? [])
+  const identityRef = useRef(identity)
+
+  // members: Map<pubkey, { pubkey, username, status, lastSeen }>
+  const membersRef = useRef(new Map())
+  const [members, setMembers] = useState(() => new Map())
 
   useEffect(() => {
     channelsRef.current = workspace?.channels ?? []
   }, [workspace?.channels])
 
   useEffect(() => {
+    identityRef.current = identity
+  }, [identity])
+
+  useEffect(() => {
     if (!workspace?.secret) return
 
     const topic = deriveSwarmTopic(workspace.secret)
-    const swarm = new RoomSwarm(topic)
+    const { relayUrl } = getEffectiveConfig(workspace.config)
+    const swarm = new RoomSwarm(topic, { relayUrl: relayUrl || null })
     swarmRef.current = swarm
 
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    function myHello(status = 'online') {
+      const id = identityRef.current
+      const pubkey = pubkeyToHex(id?.publicKey)
+      if (!pubkey) return null
+      return { type: 'MEMBER_HELLO', pubkey, username: id?.username ?? 'unknown', status }
+    }
+
+    function upsertMember(pubkey, update) {
+      const existing = membersRef.current.get(pubkey) ?? {
+        pubkey,
+        username: pubkey.slice(0, 8),
+        status: 'online',
+        lastSeen: Date.now(),
+      }
+      membersRef.current.set(pubkey, { ...existing, ...update, lastSeen: Date.now() })
+      setMembers(new Map(membersRef.current))
+    }
+
+    // ── event handlers ─────────────────────────────────────────────────────
+
     function onPeerJoined(e) {
-      // Send our current channel list to the new peer
-      swarm.sendToPeer(e.detail.id, {
-        type: 'WORKSPACE_META',
-        channels: channelsRef.current,
-      })
+      const { id } = e.detail
+      // Send our channel list
+      swarm.sendToPeer(id, { type: 'WORKSPACE_META', channels: channelsRef.current })
+      // Send our presence
+      const hello = myHello()
+      if (hello) swarm.sendToPeer(id, hello)
+    }
+
+    function onPeerLeft(e) {
+      const { id } = e.detail
+      // Mark offline but keep in list (we know their pubkey from MEMBER_HELLO)
+      for (const [pubkey, member] of membersRef.current) {
+        // Match by peerId which is their pubkey hex
+        if (pubkey === id) {
+          upsertMember(pubkey, { status: 'offline' })
+          break
+        }
+      }
     }
 
     function onWorkspaceMeta(e) {
@@ -46,29 +100,65 @@ export function useWorkspaceSync(workspace, onChannelsUpdated) {
       if (!current) return
 
       const merged = mergeChannelList(current.channels, received)
-      if (merged.length === current.channels.length) return // nothing new
+      if (merged.length === current.channels.length) return
 
       saveWorkspace({ ...current, channels: merged })
       onChannelsUpdated?.()
     }
 
-    swarm.addEventListener('peer-joined', onPeerJoined)
-    swarm.addEventListener('workspace-meta', onWorkspaceMeta)
+    function onMemberHello(e) {
+      const { pubkey, username, status } = e.detail
+      if (!pubkey) return
+      upsertMember(pubkey, { pubkey, username, status: status ?? 'online' })
+    }
 
-    swarm.join().catch((err) => console.warn('[workspace-sync] join failed', err))
+    function onPresenceUpdate(e) {
+      const { pubkey, status } = e.detail
+      if (!pubkey || !status) return
+      upsertMember(pubkey, { status })
+    }
+
+    function onVisibilityChange() {
+      const status = document.visibilityState === 'hidden' ? 'away' : 'online'
+      const pubkey = pubkeyToHex(identityRef.current?.publicKey)
+      if (pubkey) swarm.sendToAll({ type: 'PRESENCE_UPDATE', pubkey, status })
+    }
+
+    // ── subscribe ────────────────────────────────────────────────────────────
+
+    swarm.addEventListener('peer-joined', onPeerJoined)
+    swarm.addEventListener('peer-left', onPeerLeft)
+    swarm.addEventListener('workspace-meta', onWorkspaceMeta)
+    swarm.addEventListener('member-hello', onMemberHello)
+    swarm.addEventListener('presence-update', onPresenceUpdate)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    // Join and announce ourselves
+    swarm
+      .join()
+      .then(() => {
+        const hello = myHello()
+        if (hello) swarm.sendToAll(hello)
+      })
+      .catch((err) => console.warn('[workspace-sync] join failed', err))
 
     return () => {
       swarm.removeEventListener('peer-joined', onPeerJoined)
+      swarm.removeEventListener('peer-left', onPeerLeft)
       swarm.removeEventListener('workspace-meta', onWorkspaceMeta)
+      swarm.removeEventListener('member-hello', onMemberHello)
+      swarm.removeEventListener('presence-update', onPresenceUpdate)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      membersRef.current.clear()
+      setMembers(new Map())
       swarm.leave()
       swarmRef.current = null
     }
   }, [workspace?.id, workspace?.secret]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Call after creating a channel to immediately push to connected peers
   const broadcastChannels = useCallback((channels) => {
     swarmRef.current?.sendToAll({ type: 'WORKSPACE_META', channels })
   }, [])
 
-  return { broadcastChannels }
+  return { broadcastChannels, members }
 }

@@ -20,11 +20,13 @@ import {
   setActiveWorkspaceId,
   getActiveWorkspace,
   deriveChannelRoomCode,
+  deriveDMRoomCode,
   addChannel,
   setChannelTopic,
   parseInviteUrl,
   createWorkspace,
   getInviteParamFromUrl,
+  getEffectiveConfig,
 } from './p2p/workspace.js'
 import { useWorkspaceSync } from './p2p/useWorkspaceSync.js'
 
@@ -62,9 +64,10 @@ export default function App() {
   // Active workspace (derived — kept in sync for hooks that run before early returns)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0] || null
 
-  // Workspace channel sync (P2P)
-  const { broadcastChannels } = useWorkspaceSync(
+  // Workspace channel + presence sync (P2P)
+  const { broadcastChannels, members } = useWorkspaceSync(
     activeWorkspace,
+    identity,
     useCallback(() => setWorkspaces(getWorkspaces()), [])
   )
 
@@ -205,6 +208,10 @@ export default function App() {
     setActiveChannelName(channelName)
   }
 
+  function handleSelectDM(pubkey) {
+    setActiveChannelName(`dm:${pubkey}`)
+  }
+
   function handleLeaveChannel() {
     setActiveChannelName(null)
   }
@@ -276,7 +283,25 @@ export default function App() {
     if (!activeWorkspace) return
     setWorkspaceModal(activeWorkspace)
   }
+  // ── Leave workspace ─────────────────────────────────────────────────
 
+  function handleLeaveWorkspace() {
+    if (!activeWorkspaceId) return
+    removeWorkspace(activeWorkspaceId)
+    const remaining = getWorkspaces()
+    const next = remaining[0] ?? null
+    setWorkspaces(remaining)
+    setActiveChannelName(null)
+    if (next) {
+      setActiveWorkspaceIdState(next.id)
+      setActiveWorkspaceId(next.id)
+      setView('workspace')
+    } else {
+      setActiveWorkspaceIdState(null)
+      setActiveWorkspaceId(null)
+      setView('home')
+    }
+  }
   // ── Invite join ───────────────────────────────────────────────────────────
 
   function handleJoinInvite(workspace) {
@@ -311,20 +336,47 @@ export default function App() {
     unread: unreadCounts[ch.name] || 0,
   }))
 
-  // Derive room code for active channel
-  const activeRoomCode =
-    activeWorkspace && activeChannelName ? deriveChannelRoomCode(activeWorkspace.secret, activeChannelName) : null
-
-  // Active channel topic
-  const activeChannelTopic = activeWorkspace?.channels.find((c) => c.name === activeChannelName)?.topic || ''
-
-  // Check if current user is admin of the active workspace
+  // Current user pubkey hex (needed for DM derivation and admin check)
   const myPubkeyHex = identity?.publicKey
     ? Array.from(identity.publicKey)
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('')
     : null
+
+  // Derive room code for active channel or DM
+  const isDM = activeChannelName?.startsWith('dm:')
+  const dmPeerPubkey = isDM ? activeChannelName.slice(3) : null
+  const activeRoomCode = isDM
+    ? myPubkeyHex && dmPeerPubkey
+      ? deriveDMRoomCode(myPubkeyHex, dmPeerPubkey)
+      : null
+    : activeWorkspace && activeChannelName
+      ? deriveChannelRoomCode(activeWorkspace.secret, activeChannelName)
+      : null
+
+  // Display name for the active view (channel name or DM peer username)
+  const activeDisplayName = isDM
+    ? (members.get(dmPeerPubkey)?.username ?? dmPeerPubkey?.slice(0, 8) ?? 'DM')
+    : activeChannelName
+
+  // Effective relay URL for active workspace (null = use global/env default)
+  const { relayUrl: activeRelayUrl } = getEffectiveConfig(activeWorkspace?.config ?? null)
+
+  // Active channel topic (only for regular channels)
+  const activeChannelTopic = !isDM
+    ? activeWorkspace?.channels.find((c) => c.name === activeChannelName)?.topic || ''
+    : ''
+
   const isWorkspaceAdmin = activeWorkspace?.createdBy && myPubkeyHex ? activeWorkspace.createdBy === myPubkeyHex : false
+
+  // Convert members Map → arrays for sidebar (exclude self)
+  const workspacePeers = Array.from(members.values()).filter((m) => m.pubkey !== myPubkeyHex)
+  const dmPeers = workspacePeers.map((m) => ({
+    pubkey: m.pubkey,
+    username: m.username,
+    online: m.status === 'online',
+    unread: 0,
+  }))
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -384,14 +436,15 @@ export default function App() {
             <ChannelSidebar
               workspace={activeWorkspace}
               channels={channels}
-              peers={[]}
-              dmPeers={[]}
+              peers={workspacePeers}
+              dmPeers={dmPeers}
               activeChannelName={activeChannelName}
               identity={identity}
               isAdmin={isWorkspaceAdmin}
               onSelectChannel={handleSelectChannel}
               onCreateChannel={() => handleCreateChannel(activeWorkspace?.id)}
               onInvite={handleShareInvite}
+              onSelectDM={handleSelectDM}
               onOpenSettings={() => setSettingsOpen(true)}
             />
           }
@@ -399,11 +452,10 @@ export default function App() {
           {activeRoomCode ? (
             <>
               <ChannelHeader
-                channelName={activeChannelName}
-                topic={activeChannelTopic}
-                onTopicChange={(t) => handleTopicChange(activeChannelName, t)}
-                rightPanelOpen={rightPanelOpen}
-                toggleRightPanel={() => setRightPanelOpen((v) => !v)}
+                channelName={activeDisplayName}
+                topic={isDM ? '' : activeChannelTopic}
+                onTopicChange={isDM ? undefined : (t) => handleTopicChange(activeChannelName, t)}
+                isPrivate={isDM}
               />
               <Suspense fallback={null}>
                 <Room
@@ -413,6 +465,7 @@ export default function App() {
                   showStats={showStats}
                   onLeave={handleLeaveChannel}
                   onOpenSettings={() => setSettingsOpen(true)}
+                  relayUrl={activeRelayUrl || null}
                   embedded
                 />
               </Suspense>
@@ -438,6 +491,8 @@ export default function App() {
           }}
           onClose={() => setSettingsOpen(false)}
           onLock={handleLock}
+          activeWorkspace={view === 'workspace' ? activeWorkspace : null}
+          onLeaveWorkspace={view === 'workspace' ? handleLeaveWorkspace : null}
         />
       )}
     </>
