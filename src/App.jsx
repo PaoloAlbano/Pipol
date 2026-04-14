@@ -6,6 +6,7 @@ import OIDCCallback from './components/OIDCCallback.jsx'
 import WorkspaceLayout from './components/WorkspaceLayout.jsx'
 import ChannelSidebar from './components/ChannelSidebar.jsx'
 import ChannelHeader from './components/ChannelHeader.jsx'
+import CreateWorkspaceModal from './components/CreateWorkspaceModal.jsx'
 
 const Room = lazy(() => import('./components/Room.jsx'))
 
@@ -24,7 +25,6 @@ import {
   parseInviteUrl,
   createWorkspace,
   getInviteParamFromUrl,
-  buildInviteUrl,
 } from './p2p/workspace.js'
 import { useWorkspaceSync } from './p2p/useWorkspaceSync.js'
 
@@ -70,6 +70,11 @@ export default function App() {
 
   // Pending invite (from ?invite= URL param)
   const [pendingInvite, setPendingInvite] = useState(null)
+
+  // CreateWorkspaceModal: null = closed, 'new' = create mode, workspace object = share mode
+  const [workspaceModal, setWorkspaceModal] = useState(null)
+  // Ref to the modal's setCreatedWorkspace setter — set after workspace is created
+  const [modalCreatedWorkspace, setModalCreatedWorkspace] = useState(null)
 
   // Direct room join (no workspace)
   const [directRoomCode, setDirectRoomCode] = useState(null)
@@ -205,7 +210,7 @@ export default function App() {
   }
 
   function handleCreateChannel(workspaceId) {
-    const name = window.prompt('Nome del canale (solo lettere, numeri, trattini):')
+    const name = window.prompt('Channel name (letters, numbers, hyphens only):')
     if (!name) return
     const clean = name
       .toLowerCase()
@@ -235,15 +240,20 @@ export default function App() {
     setWorkspaces(getWorkspaces())
   }
 
-  // ── Create workspace (basic inline, Step 11 will add proper modal) ─────────
+  // ── Create workspace ──────────────────────────────────────────────────────
 
-  function handleCreateWorkspace(name, channels = ['general', 'random']) {
+  function handleCreateWorkspace() {
+    setWorkspaceModal('new')
+  }
+
+  // Called by CreateWorkspaceModal when user confirms name + channels
+  function handleModalCreate(name, channels, config) {
     const pubkeyHex = identity?.publicKey
       ? Array.from(identity.publicKey)
           .map((b) => b.toString(16).padStart(2, '0'))
           .join('')
       : null
-    const { workspace } = createWorkspace(name, channels, null, pubkeyHex)
+    const { workspace } = createWorkspace(name, channels, config, pubkeyHex)
     saveWorkspace(workspace)
     const ws = getWorkspaces()
     setWorkspaces(ws)
@@ -251,21 +261,20 @@ export default function App() {
     setActiveWorkspaceId(workspace.id)
     setActiveChannelName(null)
     setView('workspace')
+    // Pass created workspace back to modal so it can show invite URL on step 3
+    setModalCreatedWorkspace(workspace)
   }
 
-  // ── Share invite URL ─────────────────────────────────────────────────────
+  function handleModalClose() {
+    setWorkspaceModal(null)
+    setModalCreatedWorkspace(null)
+  }
+
+  // ── Share invite URL (opens modal in share mode) ──────────────────────────
 
   function handleShareInvite() {
     if (!activeWorkspace) return
-    const url = buildInviteUrl(activeWorkspace)
-    navigator.clipboard
-      .writeText(url)
-      .then(() => {
-        alert('Link di invito copiato negli appunti!')
-      })
-      .catch(() => {
-        window.prompt('Copia il link di invito:', url)
-      })
+    setWorkspaceModal(activeWorkspace)
   }
 
   // ── Invite join ───────────────────────────────────────────────────────────
@@ -321,6 +330,16 @@ export default function App() {
 
   return (
     <>
+      {/* ── Create / share workspace modal ── */}
+      {workspaceModal && (
+        <CreateWorkspaceModal
+          workspace={workspaceModal === 'new' ? null : workspaceModal}
+          createdWorkspace={modalCreatedWorkspace}
+          onCreated={handleModalCreate}
+          onClose={handleModalClose}
+        />
+      )}
+
       {/* ── Invite confirmation modal ── */}
       {pendingInvite && (
         <InviteConfirmModal
@@ -431,18 +450,18 @@ function InviteConfirmModal({ workspace, onConfirm, onDismiss }) {
   return (
     <div style={overlayStyle}>
       <div style={modalStyle}>
-        <h2 style={{ marginBottom: 8, fontSize: 18 }}>Unisciti al workspace</h2>
-        <p style={{ color: 'var(--text-muted)', marginBottom: 4, fontSize: 14 }}>Sei stato invitato a:</p>
+        <h2 style={{ marginBottom: 8, fontSize: 18 }}>Join workspace</h2>
+        <p style={{ color: 'var(--text-muted)', marginBottom: 4, fontSize: 14 }}>You have been invited to:</p>
         <p style={{ fontWeight: 700, fontSize: 20, marginBottom: 8 }}>{workspace.name}</p>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 24 }}>
-          {workspace.channels.length} canali · connessione P2P E2E cifrata
+          {workspace.channels.length} channels · P2P E2E encrypted connection
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-secondary" onClick={onDismiss}>
-            Annulla
+            Cancel
           </button>
           <button className="btn btn-primary" onClick={onConfirm}>
-            Entra
+            Join
           </button>
         </div>
       </div>
@@ -487,12 +506,12 @@ function ChannelWelcome({ workspaceName, onCreateChannel }) {
       }}
     >
       <div style={{ fontSize: 48 }}>👋</div>
-      <h2 style={{ color: 'var(--text)', fontSize: 20, fontWeight: 700 }}>Benvenuto in {workspaceName}</h2>
+      <h2 style={{ color: 'var(--text)', fontSize: 20, fontWeight: 700 }}>Welcome to {workspaceName}</h2>
       <p style={{ fontSize: 14, textAlign: 'center', maxWidth: 360 }}>
-        Seleziona un canale dalla sidebar per iniziare a chattare, oppure creane uno nuovo.
+        Select a channel from the sidebar to start chatting, or create a new one.
       </p>
       <button className="btn btn-primary" onClick={onCreateChannel}>
-        + Crea canale
+        + Create channel
       </button>
     </div>
   )

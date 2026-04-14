@@ -1,0 +1,297 @@
+/* ── CreateWorkspaceModal ────────────────────────────────────── */
+
+.cwm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+
+.cwm {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Header ── */
+
+.cwm__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cwm__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cwm__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition:
+    color 0.1s,
+    background 0.1s;
+}
+
+.cwm__close:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+/* ── Step indicator ── */
+
+.cwm__steps {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.cwm__step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--surface-4);
+  transition: background 0.2s;
+}
+
+.cwm__step-dot--active {
+  background: var(--primary);
+  width: 20px;
+  border-radius: 4px;
+}
+
+.cwm__step-dot--done {
+  background: var(--primary-dim);
+}
+
+/* ── Fields ── */
+
+.cwm__label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.cwm__input {
+  width: 100%;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: var(--font-sans);
+}
+
+.cwm__input:focus {
+  border-color: var(--primary);
+}
+
+.cwm__input::placeholder {
+  color: var(--text-faint);
+}
+
+.cwm__hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.cwm__error {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 4px;
+}
+
+/* ── Channel list ── */
+
+.cwm__channels {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cwm__channel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cwm__channel-prefix {
+  color: var(--text-muted);
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+
+.cwm__channel-input {
+  flex: 1;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+  font-family: var(--font-sans);
+  transition: border-color 0.15s;
+}
+
+.cwm__channel-input:focus {
+  border-color: var(--primary);
+}
+
+.cwm__channel-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+
+.cwm__channel-remove:hover {
+  color: var(--danger);
+}
+
+.cwm__add-channel {
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.1s,
+    color 0.1s;
+  font-family: var(--font-sans);
+  margin-top: 2px;
+}
+
+.cwm__add-channel:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ── Advanced config (collapsible) ── */
+
+.cwm__advanced-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-sans);
+  transition: color 0.1s;
+}
+
+.cwm__advanced-toggle:hover {
+  color: var(--text);
+}
+
+.cwm__advanced-chevron {
+  font-size: 9px;
+  transition: transform 0.15s;
+}
+
+.cwm__advanced-chevron--open {
+  transform: rotate(90deg);
+}
+
+.cwm__advanced-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+/* ── Invite URL result ── */
+
+.cwm__invite-box {
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.cwm__invite-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cwm__copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.cwm__copy-btn--copied {
+  color: var(--success) !important;
+  border-color: var(--success) !important;
+}
+
+.cwm__workspace-name-preview {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cwm__success-icon {
+  font-size: 32px;
+  text-align: center;
+}
+
+/* ── Footer actions ── */
+
+.cwm__footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}

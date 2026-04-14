@@ -58,7 +58,7 @@ async function _decrypt(record) {
     const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _encKey, ciphertext)
     return new TextDecoder().decode(plaintext)
   } catch {
-    // Chiave sbagliata (account diverso) → scarta il messaggio
+    // Wrong key (different account) — discard the message
     return null
   }
 }

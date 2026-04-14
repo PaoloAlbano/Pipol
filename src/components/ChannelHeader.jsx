@@ -80,9 +80,9 @@ export default function ChannelHeader({
           onChange={(e) => setTopicDraft(e.target.value)}
           onBlur={commitTopic}
           onKeyDown={handleTopicKeyDown}
-          placeholder="Aggiungi una descrizione…"
+          placeholder="Add a description…"
           maxLength={250}
-          aria-label="Modifica topic canale"
+          aria-label="Edit channel topic"
         />
       ) : (
         <span
@@ -91,17 +91,17 @@ export default function ChannelHeader({
           role="button"
           tabIndex={0}
           onKeyDown={(e) => e.key === 'Enter' && startEditing()}
-          title={topic || 'Clicca per aggiungere un topic'}
-          aria-label={topic ? `Topic: ${topic}` : 'Aggiungi topic'}
+          title={topic || 'Click to add a topic'}
+          aria-label={topic ? `Topic: ${topic}` : 'Add topic'}
         >
-          {topic || 'Aggiungi un topic…'}
+          {topic || 'Add a topic…'}
         </span>
       )}
 
       {/* Action buttons */}
       <div className="channel-header__actions" role="toolbar" aria-label="Azioni canale">
         {onSearch && (
-          <button className="channel-header__btn" onClick={onSearch} title="Cerca nel canale" aria-label="Cerca">
+          <button className="channel-header__btn" onClick={onSearch} title="Search in channel" aria-label="Search">
             🔍
           </button>
         )}
@@ -110,8 +110,8 @@ export default function ChannelHeader({
           <button
             className={['channel-header__btn', callActive ? 'channel-header__btn--call-active' : ''].join(' ')}
             onClick={onStartCall}
-            title={callActive ? 'Videochiamate in corso' : 'Avvia videochiamata'}
-            aria-label={callActive ? 'Videochiamate in corso' : 'Avvia videochiamata'}
+            title={callActive ? 'Video call in progress' : 'Start video call'}
+            aria-label={callActive ? 'Video call in progress' : 'Start video call'}
             aria-pressed={callActive}
           >
             📹
@@ -121,8 +121,8 @@ export default function ChannelHeader({
         <button
           className={['channel-header__btn', rightPanelOpen ? 'channel-header__btn--active' : ''].join(' ')}
           onClick={toggleRightPanel}
-          title={rightPanelOpen ? 'Chiudi pannello' : 'Mostra membri'}
-          aria-label={rightPanelOpen ? 'Chiudi pannello laterale' : 'Mostra membri'}
+          title={rightPanelOpen ? 'Close panel' : 'Show members'}
+          aria-label={rightPanelOpen ? 'Close side panel' : 'Show members'}
           aria-pressed={rightPanelOpen}
         >
           👥

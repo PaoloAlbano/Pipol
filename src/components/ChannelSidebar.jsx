@@ -74,8 +74,8 @@ export default function ChannelSidebar({
               e.stopPropagation()
               onInvite()
             }}
-            title="Copia link di invito"
-            aria-label="Copia link di invito"
+            title="Copy invite link"
+            aria-label="Copy invite link"
           >
             🔗
           </button>
@@ -88,13 +88,13 @@ export default function ChannelSidebar({
         <input
           className="sidebar__search-input"
           type="text"
-          placeholder="Cerca canali…"
+          placeholder="Search channels…"
           value={channelSearch}
           onChange={(e) => setChannelSearch(e.target.value)}
-          aria-label="Cerca canali"
+          aria-label="Search channels"
         />
         {channelSearch && (
-          <button className="sidebar__search-clear" onClick={() => setChannelSearch('')} aria-label="Cancella ricerca">
+          <button className="sidebar__search-clear" onClick={() => setChannelSearch('')} aria-label="Clear search">
             ✕
           </button>
         )}
@@ -120,15 +120,15 @@ export default function ChannelSidebar({
             >
               ▾
             </span>
-            <span className="sidebar__section-title">Canali</span>
+            <span className="sidebar__section-title">Channels</span>
             <button
               className="sidebar__section-add"
               onClick={(e) => {
                 e.stopPropagation()
                 onCreateChannel?.()
               }}
-              title="Crea canale"
-              aria-label="Crea canale"
+              title="Create channel"
+              aria-label="Create channel"
             >
               +
             </button>
@@ -163,15 +163,15 @@ export default function ChannelSidebar({
               >
                 ▾
               </span>
-              <span className="sidebar__section-title">Messaggi diretti</span>
+              <span className="sidebar__section-title">Direct Messages</span>
               <button
                 className="sidebar__section-add"
                 onClick={(e) => {
                   e.stopPropagation()
                   onSelectDM?.()
                 }}
-                title="Nuovo messaggio diretto"
-                aria-label="Nuovo messaggio diretto"
+                title="New direct message"
+                aria-label="New direct message"
               >
                 +
               </button>
@@ -254,7 +254,7 @@ function DMItem({ peer, active, onSelect }) {
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onSelect()}
       aria-current={active ? 'page' : undefined}
-      aria-label={`Messaggio diretto con ${peer.username}`}
+      aria-label={`Direct message with ${peer.username}`}
     >
       <span className={`sidebar__presence sidebar__presence--${status}`} aria-label={status} />
       <span className="sidebar__item-name">{peer.username}</span>
@@ -278,18 +278,18 @@ function UserCard({ identity, audioMuted, onToggleMute, onOpenSettings }) {
         className="sidebar__user-card-avatar"
         style={{ background: color }}
         onClick={onOpenSettings}
-        title="Apri profilo"
+        title="Open profile"
         role="button"
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && onOpenSettings?.()}
-        aria-label="Apri impostazioni profilo"
+        aria-label="Open profile settings"
       >
         {initials}
       </div>
 
       <div className="sidebar__user-card-info">
         <div className="sidebar__user-card-name">{identity.username}</div>
-        <div className="sidebar__user-card-status">{audioMuted ? 'Microfono disattivato' : 'Online'}</div>
+        <div className="sidebar__user-card-status">{audioMuted ? 'Microphone muted' : 'Online'}</div>
       </div>
 
       <div className="sidebar__user-card-actions">
@@ -297,20 +297,15 @@ function UserCard({ identity, audioMuted, onToggleMute, onOpenSettings }) {
           <button
             className={['sidebar__user-card-btn', audioMuted ? 'sidebar__user-card-btn--muted' : ''].join(' ')}
             onClick={onToggleMute}
-            title={audioMuted ? 'Attiva microfono' : 'Disattiva microfono'}
-            aria-label={audioMuted ? 'Attiva microfono' : 'Disattiva microfono'}
+            title={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+            aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
             aria-pressed={audioMuted}
           >
             {audioMuted ? '🔇' : '🎙️'}
           </button>
         )}
 
-        <button
-          className="sidebar__user-card-btn"
-          onClick={onOpenSettings}
-          title="Impostazioni"
-          aria-label="Apri impostazioni"
-        >
+        <button className="sidebar__user-card-btn" onClick={onOpenSettings} title="Settings" aria-label="Open settings">
           ⚙
         </button>
       </div>

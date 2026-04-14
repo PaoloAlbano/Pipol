@@ -41,8 +41,8 @@ export default function WorkspaceRail({
 
       <button
         className="workspace-rail__icon-btn"
-        title="Crea o unisciti a un workspace"
-        aria-label="Crea o unisciti a un workspace"
+        title="Create or join a workspace"
+        aria-label="Create or join a workspace"
         onClick={onCreateWorkspace}
       >
         <span className="workspace-rail__plus">+</span>
@@ -51,12 +51,7 @@ export default function WorkspaceRail({
       {/* Push settings to the bottom */}
       <div className="workspace-rail__spacer" />
 
-      <button
-        className="workspace-rail__icon-btn"
-        title="Impostazioni"
-        aria-label="Apri impostazioni"
-        onClick={onOpenSettings}
-      >
+      <button className="workspace-rail__icon-btn" title="Settings" aria-label="Open settings" onClick={onOpenSettings}>
         ⚙
       </button>
     </>

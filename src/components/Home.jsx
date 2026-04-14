@@ -16,14 +16,10 @@ export default function Home({
   onCreateWorkspace,
   onJoinInvite,
   onJoinDirectRoom,
-  onUsernameChange,
+  onUsernameChange: _onUsernameChange,
   onOpenSettings,
 }) {
   const [tab, setTab] = useState('create') // 'create' | 'join' | 'quick'
-
-  // Create flow
-  const [wsName, setWsName] = useState('')
-  const [wsNameError, setWsNameError] = useState('')
 
   // Join flow
   const [inviteInput, setInviteInput] = useState('')
@@ -58,17 +54,7 @@ export default function Home({
 
   function handleCreate(e) {
     e.preventDefault()
-    const name = wsName.trim()
-    if (!name) {
-      setWsNameError('Inserisci un nome per il workspace.')
-      return
-    }
-    if (name.length > 48) {
-      setWsNameError('Massimo 48 caratteri.')
-      return
-    }
-    setWsNameError('')
-    onCreateWorkspace(name, ['generale', 'random'])
+    onCreateWorkspace() // opens CreateWorkspaceModal in App.jsx
   }
 
   // ── Quick room ──────────────────────────────────────────────────────────
@@ -77,11 +63,11 @@ export default function Home({
     e.preventDefault()
     const code = roomInput.trim().toLowerCase()
     if (!code) {
-      setRoomError('Inserisci un codice stanza.')
+      setRoomError('Please enter a room code.')
       return
     }
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(code)) {
-      setRoomError('Solo lettere, numeri e trattini.')
+      setRoomError('Only letters, numbers and hyphens.')
       return
     }
     onJoinDirectRoom(code)
@@ -106,7 +92,7 @@ export default function Home({
     e.preventDefault()
     const value = inviteInput.trim()
     if (!value) {
-      setInviteError('Incolla un link di invito.')
+      setInviteError('Please paste an invite link.')
       return
     }
     try {
@@ -115,9 +101,9 @@ export default function Home({
       onJoinInvite(workspace)
     } catch (err) {
       if (err.message === 'unsupported-version') {
-        setInviteError("Link di invito creato con una versione più recente dell'app.")
+        setInviteError('Invite link was created with a newer version of the app.')
       } else {
-        setInviteError('Link di invito non valido. Controlla e riprova.')
+        setInviteError('Invalid invite link. Please check and try again.')
       }
     }
   }
@@ -134,56 +120,40 @@ export default function Home({
           Pipol.dev
           <span className="home-beta-badge">beta</span>
         </h1>
-        <p className="home-subtitle">Chat e videochiamate P2P — nessun server, E2E cifrate.</p>
+        <p className="home-subtitle">P2P chat and video calls — no server, E2E encrypted.</p>
 
         {/* Settings */}
-        <button className="home-settings-btn" onClick={onOpenSettings} title="Impostazioni">
-          ⚙️ Impostazioni
+        <button className="home-settings-btn" onClick={onOpenSettings} title="Settings">
+          ⚙️ Settings
         </button>
 
         {/* Identity */}
         <div className="home-identity">
           <span className="home-identity-dot" />
-          Sei connesso come <strong>{identity.username}</strong>
+          Connected as <strong>{identity.username}</strong>
         </div>
 
         {/* Tab switcher */}
         <div className="home-tabs">
           <button className={`home-tab ${tab === 'create' ? 'home-tab--active' : ''}`} onClick={() => setTab('create')}>
-            Crea workspace
+            Create workspace
           </button>
           <button className={`home-tab ${tab === 'join' ? 'home-tab--active' : ''}`} onClick={() => setTab('join')}>
-            Unisciti
+            Join
           </button>
           <button className={`home-tab ${tab === 'quick' ? 'home-tab--active' : ''}`} onClick={() => setTab('quick')}>
-            Stanza veloce
+            Quick room
           </button>
         </div>
 
         {/* Create workspace */}
         {tab === 'create' && (
           <form className="home-form" onSubmit={handleCreate}>
-            <label className="home-label">Nome del workspace</label>
-            <input
-              className="home-input"
-              type="text"
-              placeholder="es. Acme Corp, Team Design…"
-              value={wsName}
-              onChange={(e) => {
-                setWsName(e.target.value)
-                setWsNameError('')
-              }}
-              maxLength={48}
-              autoFocus
-              autoComplete="off"
-            />
-            {wsNameError && <p className="home-error">{wsNameError}</p>}
             <p className="home-hint">
-              Verranno creati i canali <strong>#generale</strong> e <strong>#random</strong>. Potrai aggiungerne altri
-              dopo.
+              Set up a private workspace with channels. You&apos;ll get an invite link to share with your team.
             </p>
-            <button className="btn btn-primary" type="submit" style={{ width: '100%' }}>
-              Crea workspace
+            <button className="btn btn-primary" type="submit" style={{ width: '100%' }} autoFocus>
+              Create workspace →
             </button>
           </form>
         )}
@@ -191,11 +161,11 @@ export default function Home({
         {/* Join workspace */}
         {tab === 'join' && (
           <form className="home-form" onSubmit={handleJoin}>
-            <label className="home-label">Link di invito</label>
+            <label className="home-label">Invite link</label>
             <input
               className="home-input"
               type="text"
-              placeholder="Incolla il link di invito…"
+              placeholder="Paste the invite link…"
               value={inviteInput}
               onChange={(e) => handleInviteChange(e.target.value)}
               autoFocus
@@ -215,7 +185,7 @@ export default function Home({
             )}
 
             <button className="btn btn-primary" type="submit" style={{ width: '100%' }}>
-              Entra nel workspace
+              Join workspace
             </button>
           </form>
         )}
@@ -223,11 +193,11 @@ export default function Home({
         {/* Quick room */}
         {tab === 'quick' && (
           <form className="home-form" onSubmit={handleQuickJoin}>
-            <label className="home-label">Codice stanza</label>
+            <label className="home-label">Room code</label>
             <input
               className="home-input"
               type="text"
-              placeholder="es. cloud-river-stone"
+              placeholder="e.g. cloud-river-stone"
               value={roomInput}
               onChange={(e) => {
                 setRoomInput(e.target.value)
@@ -239,8 +209,7 @@ export default function Home({
             />
             {roomError && <p className="home-error">{roomError}</p>}
             <p className="home-hint">
-              Entra direttamente in una stanza senza creare un workspace. Chiunque abbia lo stesso codice si unisce alla
-              stessa stanza.
+              Join a room directly without creating a workspace. Anyone with the same code joins the same room.
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
@@ -249,20 +218,20 @@ export default function Home({
                 style={{ flex: 1 }}
                 onClick={() => setRoomInput(generateRoomCode())}
               >
-                Genera codice
+                Generate code
               </button>
               <button className="btn btn-primary" type="submit" style={{ flex: 1 }}>
-                Entra
+                Join
               </button>
             </div>
           </form>
         )}
 
-        <p className="home-footer">Tutti i dati restano sui tuoi dispositivi. Connessioni E2E cifrate.</p>
+        <p className="home-footer">All data stays on your devices. E2E encrypted connections.</p>
 
         {installPrompt && (
           <button className="home-install-btn" onClick={handleInstall}>
-            ⬇ Installa app
+            ⬇ Install app
           </button>
         )}
 
