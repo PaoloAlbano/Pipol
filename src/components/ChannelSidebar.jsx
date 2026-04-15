@@ -193,17 +193,6 @@ export default function ChannelSidebar({
                 ▾
               </span>
               <span className="sidebar__section-title">Direct Messages</span>
-              <button
-                className="sidebar__section-add"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onSelectDM?.()
-                }}
-                title="New direct message"
-                aria-label="New direct message"
-              >
-                +
-              </button>
             </div>
 
             {!dmsCollapsed &&
