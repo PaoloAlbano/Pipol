@@ -64,6 +64,7 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
 
   useEffect(() => {
     if (!workspace?.secret) return
+    if (!identity) return
 
     const topic = deriveSwarmTopic(workspace.secret)
     const { relayUrl } = getEffectiveConfig(workspace.config)
@@ -193,7 +194,7 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
       swarm.leave()
       swarmRef.current = null
     }
-  }, [workspace?.id, workspace?.secret]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workspace?.id, workspace?.secret, identity]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const broadcastChannels = useCallback((channels) => {
     swarmRef.current?.sendToAll({ type: 'WORKSPACE_META', channels })
