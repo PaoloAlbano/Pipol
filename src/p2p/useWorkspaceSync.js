@@ -3,18 +3,25 @@
  *
  * Joins a dedicated swarm room derived from the workspace secret (meta topic).
  *
+ * Discovery strategy (two-layer):
+ *   1. WebSocket relay (always):  MEMBER_HELLO / WORKSPACE_META / PRESENCE_UPDATE
+ *      are broadcast via the relay WS immediately on join and on relay-peer-joined.
+ *      This guarantees discovery works even when WebRTC ICE fails (symmetric NAT, mobile).
+ *   2. WebRTC DataChannel (when ICE succeeds): same messages sent again as belt-and-
+ *      suspenders. Also used for per-channel chat (Room component).
+ *
  * Messages:
- *   WORKSPACE_META  { channels[] }                  — channel list sync (append-only)
- *   MEMBER_HELLO    { pubkey, username, status }     — sent on join / to new peers
- *   PRESENCE_UPDATE { pubkey, status }               — sent on visibilitychange
- *   CHANNEL_NOTIFY  { channelName }                  — increment unread for inactive channel
- *   DM_INVITE       { from, to }                     — open DM with sender if we are 'to'
+ *   WORKSPACE_META  { channels[] }              — channel list sync (append-only)
+ *   MEMBER_HELLO    { pubkey, username, status } — sent on join / to new peers
+ *   PRESENCE_UPDATE { pubkey, status }           — sent on visibilitychange
+ *   CHANNEL_NOTIFY  { channelName }              — increment unread for inactive channel
+ *   DM_INVITE       { from, to }                 — open DM with sender if we are 'to'
  *
  * Returns:
- *   broadcastChannels(channels)       — push channel list to all peers immediately
- *   members                           — Map<pubkey, { pubkey, username, status, lastSeen }>
- *   notifyChannel(name)               — broadcast channel activity (unread bump)
- *   sendDMInvite(targetPubkey)        — notify a peer that we want to DM them
+ *   broadcastChannels(channels)    — push channel list to all peers immediately
+ *   members                        — Map<pubkey, { pubkey, username, status, lastSeen }>
+ *   notifyChannel(name)            — broadcast channel activity (unread bump)
+ *   sendDMInvite(targetPubkey)     — notify a peer that we want to DM them
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react'

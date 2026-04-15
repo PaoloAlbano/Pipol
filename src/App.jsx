@@ -204,6 +204,10 @@ export default function App() {
       window.history.replaceState({}, '', `?room=${encodeURIComponent(code)}`)
       setDirectRoomCode(code)
       setView('room')
+    } else {
+      // Reset view so the identity useEffect can determine the correct view.
+      // Without this, view stays 'callback' after OIDC redirect and the app shows a blank screen.
+      setView(null)
     }
   }
 
