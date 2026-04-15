@@ -180,7 +180,15 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
       })
       .catch((err) => console.warn('[workspace-sync] join failed', err))
 
+    // Periodic re-announce: re-sends MEMBER_HELLO every 30s to catch peers
+    // that joined while our DataChannel was still negotiating.
+    const reannounceTimer = setInterval(() => {
+      const hello = myHello()
+      if (hello) swarm.sendToAll(hello)
+    }, 30_000)
+
     return () => {
+      clearInterval(reannounceTimer)
       swarm.removeEventListener('peer-joined', onPeerJoined)
       swarm.removeEventListener('peer-left', onPeerLeft)
       swarm.removeEventListener('workspace-meta', onWorkspaceMeta)
