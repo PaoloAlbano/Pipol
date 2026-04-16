@@ -251,17 +251,11 @@ function ChannelItem({ channel, active, onSelect }) {
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onSelect()}
       aria-current={active ? 'page' : undefined}
-      aria-label={`Canale ${name}${unread > 0 ? `, ${unread} non letti` : ''}`}
+      aria-label={`Canale ${name}${unread > 0 ? ', messaggi non letti' : ''}`}
     >
       <span className="sidebar__item-prefix">›</span>
       <span className="sidebar__item-name">{name}</span>
-      {unread > 0 &&
-        !active &&
-        (unread > 9 ? (
-          <span className="sidebar__item-badge">9+</span>
-        ) : (
-          <span className="sidebar__item-dot" aria-hidden="true" />
-        ))}
+      {unread > 0 && !active && <span className="sidebar__item-dot" aria-hidden="true" />}
     </div>
   )
 }
@@ -289,9 +283,7 @@ function DMItem({ peer, active, onSelect }) {
     >
       <span className={`sidebar__presence sidebar__presence--${status}`} aria-label={status} />
       <span className="sidebar__item-name">{peer.username}</span>
-      {peer.unread > 0 && !active && (
-        <span className="sidebar__item-badge">{peer.unread > 9 ? '9+' : peer.unread}</span>
-      )}
+      {peer.unread > 0 && !active && <span className="sidebar__item-dot" aria-hidden="true" />}
     </div>
   )
 }

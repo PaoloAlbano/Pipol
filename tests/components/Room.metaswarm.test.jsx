@@ -398,6 +398,80 @@ describe('Room (meta swarm) — history request filtering', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('Room (meta swarm) — typing indicator channel scoping', () => {
+  it('shows typing indicator when the event matches the active channel', async () => {
+    const swarm = makeTrackingSwarm()
+    const { container } = await mountRoom(channelProps('generale', swarm))
+
+    await act(async () => {
+      swarm.emit('typing', { peerId: 'peer-1', username: 'bob', stopped: false, channelName: 'generale' })
+    })
+
+    await waitFor(() => {
+      expect(container.querySelector('.typing-indicator')).toBeInTheDocument()
+    })
+  })
+
+  it('does NOT show typing indicator when the event is for a different channel', async () => {
+    const swarm = makeTrackingSwarm()
+    const { container } = await mountRoom(channelProps('generale', swarm))
+
+    await act(async () => {
+      swarm.emit('typing', { peerId: 'peer-1', username: 'bob', stopped: false, channelName: 'random' })
+    })
+
+    expect(container.querySelector('.typing-indicator')).toBeNull()
+  })
+
+  it('clears the typing indicator when stopped:true is received', async () => {
+    const swarm = makeTrackingSwarm()
+    const { container } = await mountRoom(channelProps('generale', swarm))
+
+    await act(async () => {
+      swarm.emit('typing', { peerId: 'peer-1', username: 'bob', stopped: false, channelName: 'generale' })
+    })
+    await act(async () => {
+      swarm.emit('typing', { peerId: 'peer-1', username: 'bob', stopped: true, channelName: 'generale' })
+    })
+
+    expect(container.querySelector('.typing-indicator')).toBeNull()
+  })
+
+  it('typing events from two different channels are independently filtered', async () => {
+    const swarm = makeTrackingSwarm()
+    const { container } = await mountRoom(channelProps('generale', swarm))
+
+    await act(async () => {
+      // One event for our channel, one for another
+      swarm.emit('typing', { peerId: 'peer-a', username: 'alice', stopped: false, channelName: 'random' })
+      swarm.emit('typing', { peerId: 'peer-b', username: 'bob', stopped: false, channelName: 'generale' })
+    })
+
+    await waitFor(() => {
+      const indicator = container.querySelector('.typing-indicator')
+      expect(indicator).toBeInTheDocument()
+      // Only bob (generale) should appear, not alice (random)
+      expect(indicator.textContent).toContain('bob')
+      expect(indicator.textContent).not.toContain('alice')
+    })
+  })
+
+  it('shows typing indicator in a DM room for events with channelName: null', async () => {
+    const swarm = makeTrackingSwarm()
+    const { container } = await mountRoom(dmProps(swarm))
+
+    await act(async () => {
+      swarm.emit('typing', { peerId: peerPubkeyHex, username: 'bob', stopped: false, channelName: null })
+    })
+
+    await waitFor(() => {
+      expect(container.querySelector('.typing-indicator')).toBeInTheDocument()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe('Room (meta swarm) — DM message handling', () => {
   it('decrypts and stores a dm-message from the correct peer', async () => {
     const { MessageStore } = await import('../../src/p2p/autobase.js')

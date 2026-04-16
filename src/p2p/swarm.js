@@ -426,7 +426,12 @@ export class RoomSwarm extends EventTarget {
       case 'TYPING':
         this.dispatchEvent(
           new CustomEvent('typing', {
-            detail: { peerId: remoteId, username: msg.username ?? remoteId.slice(0, 8), stopped: msg.stopped ?? false },
+            detail: {
+              peerId: remoteId,
+              username: msg.username ?? remoteId.slice(0, 8),
+              stopped: msg.stopped ?? false,
+              channelName: msg.channelName ?? null,
+            },
           })
         )
         break

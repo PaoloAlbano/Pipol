@@ -89,11 +89,14 @@ export default function App() {
     bumpUnread((v) => v + 1)
   }, [])
 
-  // When a DM arrives for us, auto-open the DM room with that sender
+  // When a DM arrives for us, increment unread indicator (do NOT auto-switch)
   const onDMOpen = useCallback((fromPubkey) => {
-    // Don't interrupt if already in that DM
+    const wsId = activeWorkspaceIdRef.current
+    if (!wsId) return
+    // Already open in this DM — no badge needed
     if (activeChannelNameRef.current === `dm:${fromPubkey}`) return
-    setActiveChannelName(`dm:${fromPubkey}`)
+    incrementUnread(wsId, `dm:${fromPubkey}`)
+    bumpUnread((v) => v + 1)
   }, [])
 
   // Workspace channel + presence sync (P2P)
@@ -250,10 +253,13 @@ export default function App() {
 
   function handleSelectChannel(channelName) {
     clearUnread(activeWorkspaceId, channelName)
+    bumpUnread((v) => v + 1)
     setActiveChannelName(channelName)
   }
 
   function handleSelectDM(pubkey) {
+    clearUnread(activeWorkspaceId, `dm:${pubkey}`)
+    bumpUnread((v) => v + 1)
     setActiveChannelName(`dm:${pubkey}`)
     // The DM room will be opened; no DM_INVITE needed — the first DM message
     // triggers onDMOpen on the recipient's side automatically.
@@ -417,7 +423,7 @@ export default function App() {
     pubkey: m.pubkey,
     username: m.username,
     online: m.status === 'online',
-    unread: 0,
+    unread: unreadCounts[`dm:${m.pubkey}`] || 0,
   }))
 
   // ── Render ─────────────────────────────────────────────────────────────────

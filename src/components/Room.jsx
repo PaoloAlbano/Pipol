@@ -215,7 +215,9 @@ export default function Room({
       setStatus('⚠ swarm error — check console')
     }
     function onTyping(e) {
-      const { peerId, username, stopped } = e.detail
+      const { peerId, username, stopped, channelName: typingChannel } = e.detail
+      // For channel rooms: ignore typing events from other channels
+      if (!isDM && channelName && typingChannel !== channelName) return
       const existing = typingPeersRef.current.get(peerId)
       if (existing?.timer) clearTimeout(existing.timer)
       if (stopped) {
@@ -745,11 +747,15 @@ export default function Room({
 
   const handleTypingNotification = useCallback(() => {
     if (typingThrottleRef.current) return // already sent recently
-    swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown' })
+    swarmRef.current?.sendToAll({
+      type: 'TYPING',
+      username: identity?.username ?? 'unknown',
+      channelName: isDM ? null : (channelName ?? roomCode),
+    })
     typingThrottleRef.current = setTimeout(() => {
       typingThrottleRef.current = null
     }, 2000)
-  }, [identity?.username])
+  }, [identity?.username, isDM, channelName, roomCode])
 
   async function handleStartCall() {
     try {
