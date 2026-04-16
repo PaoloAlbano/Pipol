@@ -92,6 +92,7 @@ function resetSwarmMock() {
     addEventListener: vi.fn((evt, cb) => {
       swarmListeners[evt] = cb
     }),
+    removeEventListener: vi.fn(),
     sendToAll: vi.fn(),
     sendToPeer: vi.fn(),
     getPeers: vi.fn().mockReturnValue([]),

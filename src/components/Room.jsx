@@ -83,6 +83,7 @@ export default function Room({
   // Persistent refs (not re-rendered on change)
   const swarmRef = useRef(null)
   const msgStoreRef = useRef(null)
+  const swarmDetachRef = useRef(null) // cleanup fn returned by attachSwarmListeners
   const rtcPeersRef = useRef({}) // peerId → WebRTCPeer
   const callActiveRef = useRef(false)
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
@@ -99,12 +100,11 @@ export default function Room({
   }, [callActive])
 
   // ── Attach swarm event listeners (reusable on reconnect) ──────────────────
+  // Returns a detach function that removes every listener — MUST be called on unmount.
   function attachSwarmListeners(swarm, msgStore) {
-    swarm.addEventListener('peer-joined', async (e) => {
+    async function onPeerJoined(e) {
       const { id } = e.detail
-      // Bidirectional delta sync: ask for messages we don't have yet
       const since = await msgStore.getLastTimestamp()
-      // Include channelName so the responder knows which history to return
       swarm.sendToPeer(id, { type: 'HISTORY_REQ', channelName: channelName ?? roomCode, since })
       setPeers(swarm.getPeers())
       setStatus(`${swarm.getPeers().length} peer(s) connected`)
@@ -112,9 +112,9 @@ export default function Room({
         await ensureRTCPeer(id, true)
         swarm.sendToPeer(id, { type: 'CALL_INIT' })
       }
-    })
+    }
 
-    swarm.addEventListener('peer-left', (e) => {
+    function onPeerLeft(e) {
       const { id } = e.detail
       cleanupRTCPeer(id)
       setPeers(swarm.getPeers())
@@ -127,31 +127,25 @@ export default function Room({
       })
       setIncomingCall((prev) => (prev?.peerId === id ? null : prev))
       setSpotlightPeerId((prev) => (prev === id ? null : prev))
-      // Clear typing indicator for departed peer
       if (typingPeersRef.current.has(id)) {
         clearTimeout(typingPeersRef.current.get(id)?.timer)
         typingPeersRef.current.delete(id)
         setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
       }
-    })
+    }
 
-    swarm.addEventListener('call-init', async (e) => {
+    async function onCallInit(e) {
       const { peerId } = e.detail
       const callerName = swarmRef.current?.peers.get(peerId)?.username ?? peerId.slice(0, 8)
-
-      // Track that this peer is in a call
       setCallPeerIds((prev) => new Set([...prev, peerId]))
-
       if (callActiveRef.current) {
-        // Already in the call — connect directly
         await ensureRTCPeer(peerId, false)
       } else {
-        // Show modal only the first time (don't re-show if already dismissed)
         setIncomingCall((prev) => prev ?? { peerId, username: callerName })
       }
-    })
+    }
 
-    swarm.addEventListener('call-end', (e) => {
+    function onCallEnd(e) {
       const { peerId } = e.detail
       cleanupRTCPeer(peerId)
       setCallPeerIds((prev) => {
@@ -160,25 +154,24 @@ export default function Room({
         return next
       })
       setIncomingCall((prev) => (prev?.peerId === peerId ? null : prev))
-    })
+    }
 
-    swarm.addEventListener('video-offer', async (e) => {
+    async function onVideoOffer(e) {
       if (!callActiveRef.current) return
       const peer = await ensureRTCPeer(e.detail.peerId, false)
       await peer.handleOffer(e.detail.sdp)
-    })
-    swarm.addEventListener('video-answer', async (e) => {
+    }
+    async function onVideoAnswer(e) {
       if (!callActiveRef.current) return
       rtcPeersRef.current[e.detail.peerId]?.handleAnswer(e.detail.sdp)
-    })
-    swarm.addEventListener('video-ice', async (e) => {
+    }
+    async function onVideoIce(e) {
       if (!callActiveRef.current) return
       rtcPeersRef.current[e.detail.peerId]?.handleIceCandidate(e.detail.candidate)
-    })
+    }
 
-    swarm.addEventListener('history-req', async (e) => {
+    async function onHistoryReq(e) {
       const { peerId, since, channelName: reqChannel } = e.detail
-      // Only respond if this request is for our channel/room
       const myKey = channelName ?? roomCode
       if (reqChannel && reqChannel !== myKey) return
       const history = await msgStore.getHistory()
@@ -186,53 +179,42 @@ export default function Room({
       if (newer.length > 0) {
         swarmRef.current.sendToPeer(peerId, { type: 'HISTORY_RES', channelName: myKey, messages: newer })
       }
-    })
+    }
 
-    swarm.addEventListener('chat-message', (e) => {
-      // Filter: only accept messages for this channel.
-      // DM rooms use dm-message instead.
+    function onChatMessage(e) {
       if (isDM) return
       if (channelName && e.detail.channelName !== channelName) return
       msgStore.receiveMessage(e.detail.message)
-    })
-
-    // DM rooms: receive encrypted messages addressed to us from the DM peer
-    if (isDM) {
-      swarm.addEventListener('dm-message', (e) => {
-        const { from, to, nonce, ciphertext } = e.detail
-        const myPubkeyHex = identity?.publicKey
-          ? Array.from(identity.publicKey)
-              .map((b) => b.toString(16).padStart(2, '0'))
-              .join('')
-          : null
-        // Accept messages from our DM peer addressed to us (or from us, to show in history)
-        const isFromPeer = from === dmPeerPubkeyHex
-        const isToUs = to === myPubkeyHex
-        if (!isFromPeer || !isToUs) return
-        if (!dmPeerPublicKey || !identity?.secretKey) return
-        const message = decryptDM(nonce, ciphertext, identity.secretKey, dmPeerPublicKey)
-        if (message) msgStore.receiveMessage(message)
-      })
     }
 
-    swarm.addEventListener('screen-share-start', (e) => {
-      const { peerId } = e.detail
-      setSpotlightPeerId(peerId)
+    function onDMMessage(e) {
+      const { from, to, nonce, ciphertext } = e.detail
+      const myPubkeyHex = identity?.publicKey
+        ? Array.from(identity.publicKey)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+        : null
+      const isFromPeer = from === dmPeerPubkeyHex
+      const isToUs = to === myPubkeyHex
+      if (!isFromPeer || !isToUs) return
+      if (!dmPeerPublicKey || !identity?.secretKey) return
+      const message = decryptDM(nonce, ciphertext, identity.secretKey, dmPeerPublicKey)
+      if (message) msgStore.receiveMessage(message)
+    }
+
+    function onScreenShareStart(e) {
+      setSpotlightPeerId(e.detail.peerId)
       setLayout('spotlight')
-    })
-
-    swarm.addEventListener('screen-share-end', (e) => {
-      const { peerId } = e.detail
-      setSpotlightPeerId((prev) => (prev === peerId ? null : prev))
+    }
+    function onScreenShareEnd(e) {
+      setSpotlightPeerId((prev) => (prev === e.detail.peerId ? null : prev))
       setLayout('grid')
-    })
-
-    swarm.addEventListener('error', (e) => {
+    }
+    function onSwarmError(e) {
       console.error('[room] swarm error', e.detail)
       setStatus('⚠ swarm error — check console')
-    })
-
-    swarm.addEventListener('typing', (e) => {
+    }
+    function onTyping(e) {
       const { peerId, username, stopped } = e.detail
       const existing = typingPeersRef.current.get(peerId)
       if (existing?.timer) clearTimeout(existing.timer)
@@ -246,7 +228,39 @@ export default function Room({
         typingPeersRef.current.set(peerId, { username, timer })
       }
       setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
-    })
+    }
+
+    swarm.addEventListener('peer-joined', onPeerJoined)
+    swarm.addEventListener('peer-left', onPeerLeft)
+    swarm.addEventListener('call-init', onCallInit)
+    swarm.addEventListener('call-end', onCallEnd)
+    swarm.addEventListener('video-offer', onVideoOffer)
+    swarm.addEventListener('video-answer', onVideoAnswer)
+    swarm.addEventListener('video-ice', onVideoIce)
+    swarm.addEventListener('history-req', onHistoryReq)
+    swarm.addEventListener('chat-message', onChatMessage)
+    if (isDM) swarm.addEventListener('dm-message', onDMMessage)
+    swarm.addEventListener('screen-share-start', onScreenShareStart)
+    swarm.addEventListener('screen-share-end', onScreenShareEnd)
+    swarm.addEventListener('error', onSwarmError)
+    swarm.addEventListener('typing', onTyping)
+
+    return function detach() {
+      swarm.removeEventListener('peer-joined', onPeerJoined)
+      swarm.removeEventListener('peer-left', onPeerLeft)
+      swarm.removeEventListener('call-init', onCallInit)
+      swarm.removeEventListener('call-end', onCallEnd)
+      swarm.removeEventListener('video-offer', onVideoOffer)
+      swarm.removeEventListener('video-answer', onVideoAnswer)
+      swarm.removeEventListener('video-ice', onVideoIce)
+      swarm.removeEventListener('history-req', onHistoryReq)
+      swarm.removeEventListener('chat-message', onChatMessage)
+      if (isDM) swarm.removeEventListener('dm-message', onDMMessage)
+      swarm.removeEventListener('screen-share-start', onScreenShareStart)
+      swarm.removeEventListener('screen-share-end', onScreenShareEnd)
+      swarm.removeEventListener('error', onSwarmError)
+      swarm.removeEventListener('typing', onTyping)
+    }
   }
 
   // ── Initialise P2P stack on mount ─────────────────────────────────────────
@@ -271,11 +285,18 @@ export default function Room({
         //    otherwise create a per-room swarm (legacy direct rooms).
         if (swarmProp) {
           swarmRef.current = swarmProp
-          attachSwarmListeners(swarmProp, msgStore)
+          swarmDetachRef.current = attachSwarmListeners(swarmProp, msgStore)
           setRelayUnreachable(false)
-          setStatus(
-            swarmProp.getPeers().length > 0 ? `${swarmProp.getPeers().length} peer(s) connected` : 'waiting for peers…'
-          )
+          const connectedPeers = swarmProp.getPeers()
+          setStatus(connectedPeers.length > 0 ? `${connectedPeers.length} peer(s) connected` : 'waiting for peers…')
+          // Catch-up: peers already in the swarm when Room mounts won't fire 'peer-joined',
+          // so we send HISTORY_REQ to them directly.
+          if (connectedPeers.length > 0) {
+            const since = await msgStore.getLastTimestamp()
+            for (const p of connectedPeers) {
+              swarmProp.sendToPeer(p.id, { type: 'HISTORY_REQ', channelName: channelName ?? roomCode, since })
+            }
+          }
           return
         }
 
@@ -292,7 +313,7 @@ export default function Room({
               return
             }
             swarmRef.current = swarm
-            attachSwarmListeners(swarm, msgStore)
+            swarmDetachRef.current = attachSwarmListeners(swarm, msgStore)
             setRelayUnreachable(false)
             setStatus('waiting for peers…')
           } catch (err) {
@@ -368,12 +389,13 @@ export default function Room({
       setStatus('reconnecting…')
       try {
         await swarmRef.current.leave().catch(() => {})
+        swarmDetachRef.current?.()
         const swarm = await createRoomSwarm(roomCode, {
           messageCoreKey: msgStoreRef.current?.getLocalCoreKey(),
           relayUrl,
         })
         swarmRef.current = swarm
-        attachSwarmListeners(swarm, msgStoreRef.current)
+        swarmDetachRef.current = attachSwarmListeners(swarm, msgStoreRef.current)
         setStatus('waiting for peers…')
       } catch (err) {
         console.error('[room] reconnect failed', err)
@@ -676,6 +698,8 @@ export default function Room({
   }
 
   async function teardown() {
+    swarmDetachRef.current?.()
+    swarmDetachRef.current = null
     Object.values(rtcPeersRef.current).forEach((p) => p.close())
     rtcPeersRef.current = {}
     stopLocalStream()
