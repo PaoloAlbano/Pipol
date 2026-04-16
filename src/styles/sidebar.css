@@ -439,3 +439,28 @@
 .sidebar__user-card-btn--muted {
   color: var(--danger);
 }
+
+/* Mobile close button — visible only at < 768px */
+.sidebar__mobile-close {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .sidebar__mobile-close {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 20px;
+    padding: 10px 12px 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .sidebar__mobile-close:hover {
+    color: var(--text);
+  }
+}

@@ -7,6 +7,7 @@ import WorkspaceLayout from './components/WorkspaceLayout.jsx'
 import ChannelSidebar from './components/ChannelSidebar.jsx'
 import ChannelHeader from './components/ChannelHeader.jsx'
 import CreateWorkspaceModal from './components/CreateWorkspaceModal.jsx'
+import MobileNav from './components/MobileNav.jsx'
 
 const Room = lazy(() => import('./components/Room.jsx'))
 
@@ -473,6 +474,7 @@ export default function App() {
         <WorkspaceLayout
           rightPanelOpen={rightPanelOpen}
           onToggleRightPanel={() => setRightPanelOpen((v) => !v)}
+          mobileNav={<MobileNav activeChannelName={activeChannelName} onOpenSettings={() => setSettingsOpen(true)} />}
           sidebar={
             <ChannelSidebar
               workspace={activeWorkspace}

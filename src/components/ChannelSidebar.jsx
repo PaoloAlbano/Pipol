@@ -41,6 +41,8 @@ export default function ChannelSidebar({
   onSelectDM,
   onToggleMute,
   onOpenSettings,
+  // injected by WorkspaceLayout on mobile
+  closeMobileSidebar,
 }) {
   const [channelsCollapsed, setChannelsCollapsed] = useState(false)
   const [dmsCollapsed, setDmsCollapsed] = useState(false)
@@ -66,6 +68,12 @@ export default function ChannelSidebar({
 
   return (
     <div className="sidebar">
+      {/* Mobile-only close button */}
+      {closeMobileSidebar && (
+        <button className="sidebar__mobile-close" onClick={closeMobileSidebar} aria-label="Close sidebar">
+          ✕
+        </button>
+      )}
       {/* Workspace header */}
       <div className="sidebar__workspace-header-wrap" ref={wsMenuRef}>
         <div
@@ -168,7 +176,10 @@ export default function ChannelSidebar({
                 key={ch.name}
                 channel={ch}
                 active={ch.name === activeChannelName}
-                onSelect={() => onSelectChannel?.(ch.name)}
+                onSelect={() => {
+                  onSelectChannel?.(ch.name)
+                  closeMobileSidebar?.()
+                }}
               />
             ))}
         </div>
@@ -200,7 +211,10 @@ export default function ChannelSidebar({
                   key={peer.pubkey}
                   peer={peer}
                   active={activeChannelName === `dm:${peer.pubkey}`}
-                  onSelect={() => onSelectDM?.(peer.pubkey)}
+                  onSelect={() => {
+                    onSelectDM?.(peer.pubkey)
+                    closeMobileSidebar?.()
+                  }}
                 />
               ))}
           </div>
