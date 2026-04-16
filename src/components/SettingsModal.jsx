@@ -32,6 +32,8 @@ export default function SettingsModal({
   onLock,
   activeWorkspace,
   onLeaveWorkspace,
+  workspaces = [],
+  onSelectWorkspace,
 }) {
   const [name, setName] = useState(identity.username)
   const [nameError, setNameError] = useState('')
@@ -261,38 +263,56 @@ export default function SettingsModal({
             </p>
           </div>
 
-          {activeWorkspace && onLeaveWorkspace && (
+          {workspaces.length > 0 && (
             <div className="settings-section">
-              <label className="settings-label">Workspace</label>
-              <p className="settings-hint">
-                You are in <strong>{activeWorkspace.name}</strong>. Leaving removes this workspace from your device. You
-                can rejoin with an invite link.
-              </p>
-              {leaveConfirm ? (
-                <>
-                  <p className="settings-hint settings-hint--warn">
-                    Are you sure? This cannot be undone without an invite link.
-                  </p>
-                  <div className="settings-row">
-                    <button
-                      className="btn btn-lock"
-                      onClick={() => {
-                        onClose()
-                        onLeaveWorkspace()
-                      }}
+              <label className="settings-label">Workspaces</label>
+              <ul className="settings-workspace-list">
+                {workspaces.map((ws) => {
+                  const isActive = ws.id === activeWorkspace?.id
+                  return (
+                    <li
+                      key={ws.id}
+                      className={`settings-workspace-item ${isActive ? 'settings-workspace-item--active' : ''}`}
                     >
-                      Yes, leave
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => setLeaveConfirm(false)}>
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <button className="btn btn-lock" onClick={() => setLeaveConfirm(true)}>
-                  Leave workspace
-                </button>
-              )}
+                      <button
+                        className="settings-workspace-name"
+                        onClick={() => !isActive && onSelectWorkspace?.(ws.id)}
+                        disabled={isActive}
+                      >
+                        {ws.name}
+                        {isActive && <span className="settings-workspace-badge">current</span>}
+                      </button>
+                      {isActive &&
+                        onLeaveWorkspace &&
+                        (leaveConfirm ? (
+                          <span className="settings-workspace-confirm">
+                            <span className="settings-hint--warn">Sure?</span>
+                            <button
+                              className="btn btn-lock btn-xs"
+                              onClick={() => {
+                                onClose()
+                                onLeaveWorkspace()
+                              }}
+                            >
+                              Leave
+                            </button>
+                            <button className="btn btn-secondary btn-xs" onClick={() => setLeaveConfirm(false)}>
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button className="btn btn-lock btn-xs" onClick={() => setLeaveConfirm(true)}>
+                            Leave
+                          </button>
+                        ))}
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="settings-hint">
+                Click a workspace to switch. Leaving removes it from this device — you&apos;ll need an invite link to
+                rejoin.
+              </p>
             </div>
           )}
         </div>

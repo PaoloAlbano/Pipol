@@ -162,18 +162,20 @@ export default function App() {
       }
     }
 
-    // Restore deep-link ?ws + ?ch
+    // Restore deep-link ?ws + ?ch — only apply if the workspace actually exists
     const params = new URLSearchParams(window.location.search)
     const wsId = params.get('ws')
     const chName = params.get('ch')
-    if (wsId) {
+    const ws = getWorkspaces()
+    setWorkspaces(ws)
+    if (wsId && ws.find((w) => w.id === wsId)) {
       setActiveWorkspaceIdState(wsId)
       setActiveWorkspaceId(wsId)
       if (chName) setActiveChannelName(chName)
+    } else if (wsId) {
+      // Unknown workspace in URL — clear the stale param and use the last known one
+      window.history.replaceState({}, '', '/')
     }
-
-    const ws = getWorkspaces()
-    setWorkspaces(ws)
 
     if (ws.length > 0) {
       setView('workspace')
@@ -189,12 +191,12 @@ export default function App() {
   // ── URL sync ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (view !== 'workspace' || !activeWorkspaceId) return
+    if (view !== 'workspace' || !activeWorkspace) return
     const params = new URLSearchParams()
-    params.set('ws', activeWorkspaceId)
+    params.set('ws', activeWorkspace.id)
     if (activeChannelName) params.set('ch', activeChannelName)
     window.history.replaceState({}, '', `?${params}`)
-  }, [view, activeWorkspaceId, activeChannelName])
+  }, [view, activeWorkspace, activeChannelName])
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -237,6 +239,12 @@ export default function App() {
   function handleUsernameChange(name) {
     setUsername(name)
     setIdentity((prev) => ({ ...prev, username: name }))
+  }
+
+  function handleSelectWorkspace(id) {
+    setActiveWorkspaceIdState(id)
+    setActiveWorkspaceId(id)
+    setActiveChannelName(null)
   }
 
   function handleSelectChannel(channelName) {
@@ -533,6 +541,15 @@ export default function App() {
           onLock={handleLock}
           activeWorkspace={view === 'workspace' ? activeWorkspace : null}
           onLeaveWorkspace={view === 'workspace' ? handleLeaveWorkspace : null}
+          workspaces={view === 'workspace' ? workspaces : []}
+          onSelectWorkspace={
+            view === 'workspace'
+              ? (id) => {
+                  handleSelectWorkspace(id)
+                  setSettingsOpen(false)
+                }
+              : null
+          }
         />
       )}
     </>

@@ -245,3 +245,73 @@
   min-width: 80px;
   justify-content: center;
 }
+
+/* ── Workspace list ──────────────────────────────────────────── */
+.settings-workspace-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-workspace-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+}
+
+.settings-workspace-item--active {
+  background: var(--surface-3, rgba(255, 255, 255, 0.07));
+}
+
+.settings-workspace-name {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text, #e2e8f0);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-workspace-name:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.settings-workspace-name:not(:disabled):hover {
+  color: var(--accent, #7c3aed);
+}
+
+.settings-workspace-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, #7c3aed);
+  background: rgba(124, 58, 237, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-workspace-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-xs {
+  padding: 3px 10px;
+  font-size: 12px;
+  min-width: unset;
+}
