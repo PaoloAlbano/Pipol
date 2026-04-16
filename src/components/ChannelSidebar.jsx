@@ -41,7 +41,6 @@ export default function ChannelSidebar({
   onSelectDM,
   onToggleMute,
   onOpenSettings,
-  onWorkspaceHeaderClick,
 }) {
   const [channelsCollapsed, setChannelsCollapsed] = useState(false)
   const [dmsCollapsed, setDmsCollapsed] = useState(false)

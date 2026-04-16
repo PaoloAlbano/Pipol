@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
+import { decryptDM, encryptDM } from '../p2p/dm-crypto.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
 import {
   getLocalStream,
@@ -35,6 +36,12 @@ export default function Room({
   embedded = false,
   relayUrl = null,
   onMessageSent,
+  // Meta-swarm props (workspace rooms). When provided, no per-room swarm is created.
+  swarm: swarmProp = null, // RoomSwarm from useWorkspaceSync
+  channelName = null, // e.g. 'generale' — used to filter messages
+  isDM = false, // true when this Room is a DM conversation
+  dmPeerPublicKey = null, // Buffer: recipient's Ed25519 publicKey (DM only)
+  dmPeerPubkeyHex = null, // hex string of dmPeerPublicKey
 }) {
   const [peers, setPeers] = useState([])
   const [messages, setMessages] = useState([])
@@ -97,7 +104,8 @@ export default function Room({
       const { id } = e.detail
       // Bidirectional delta sync: ask for messages we don't have yet
       const since = await msgStore.getLastTimestamp()
-      swarm.sendToPeer(id, { type: 'HISTORY_REQ', since })
+      // Include channelName so the responder knows which history to return
+      swarm.sendToPeer(id, { type: 'HISTORY_REQ', channelName: channelName ?? roomCode, since })
       setPeers(swarm.getPeers())
       setStatus(`${swarm.getPeers().length} peer(s) connected`)
       if (callActiveRef.current) {
@@ -169,17 +177,43 @@ export default function Room({
     })
 
     swarm.addEventListener('history-req', async (e) => {
-      const { peerId, since } = e.detail
+      const { peerId, since, channelName: reqChannel } = e.detail
+      // Only respond if this request is for our channel/room
+      const myKey = channelName ?? roomCode
+      if (reqChannel && reqChannel !== myKey) return
       const history = await msgStore.getHistory()
       const newer = history.filter((m) => m.timestamp > since)
       if (newer.length > 0) {
-        swarmRef.current.sendToPeer(peerId, { type: 'HISTORY_RES', messages: newer })
+        swarmRef.current.sendToPeer(peerId, { type: 'HISTORY_RES', channelName: myKey, messages: newer })
       }
     })
 
     swarm.addEventListener('chat-message', (e) => {
+      // Filter: only accept messages for this channel.
+      // DM rooms use dm-message instead.
+      if (isDM) return
+      if (channelName && e.detail.channelName !== channelName) return
       msgStore.receiveMessage(e.detail.message)
     })
+
+    // DM rooms: receive encrypted messages addressed to us from the DM peer
+    if (isDM) {
+      swarm.addEventListener('dm-message', (e) => {
+        const { from, to, nonce, ciphertext } = e.detail
+        const myPubkeyHex = identity?.publicKey
+          ? Array.from(identity.publicKey)
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('')
+          : null
+        // Accept messages from our DM peer addressed to us (or from us, to show in history)
+        const isFromPeer = from === dmPeerPubkeyHex
+        const isToUs = to === myPubkeyHex
+        if (!isFromPeer || !isToUs) return
+        if (!dmPeerPublicKey || !identity?.secretKey) return
+        const message = decryptDM(nonce, ciphertext, identity.secretKey, dmPeerPublicKey)
+        if (message) msgStore.receiveMessage(message)
+      })
+    }
 
     swarm.addEventListener('screen-share-start', (e) => {
       const { peerId } = e.detail
@@ -233,7 +267,19 @@ export default function Room({
         const history = await msgStore.getHistory()
         if (!cancelled) setMessages(history)
 
-        // 2. Peer discovery via WebRTC swarm (with auto-retry on relay failure)
+        // 2. Peer discovery — use the meta swarm prop when available (workspace rooms),
+        //    otherwise create a per-room swarm (legacy direct rooms).
+        if (swarmProp) {
+          swarmRef.current = swarmProp
+          attachSwarmListeners(swarmProp, msgStore)
+          setRelayUnreachable(false)
+          setStatus(
+            swarmProp.getPeers().length > 0 ? `${swarmProp.getPeers().length} peer(s) connected` : 'waiting for peers…'
+          )
+          return
+        }
+
+        // 2b. Fallback: create a dedicated swarm (direct room join, no workspace)
         async function connectSwarm() {
           if (cancelled) return
           try {
@@ -277,7 +323,7 @@ export default function Room({
       teardown()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode])
+  }, [roomCode, swarmProp])
 
   // ── Reconnect when app returns to foreground ───────────────────────────────
   useEffect(() => {
@@ -313,6 +359,9 @@ export default function Room({
       }
 
       const ws = swarmRef.current?._ws
+      // If we're using the shared meta swarm (swarmProp), its reconnection is
+      // handled by useWorkspaceSync — don't create a second swarm here.
+      if (swarmProp) return
       if (!ws || ws.readyState === WebSocket.OPEN) return
 
       console.info('[room] app foregrounded, reconnecting swarm…')
@@ -631,7 +680,8 @@ export default function Room({
     rtcPeersRef.current = {}
     stopLocalStream()
     await msgStoreRef.current?.close().catch(() => {})
-    await swarmRef.current?.leave().catch(() => {})
+    // Only leave the swarm if we created it (not the meta swarm managed by useWorkspaceSync)
+    if (!swarmProp) await swarmRef.current?.leave().catch(() => {})
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -644,11 +694,29 @@ export default function Room({
       swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown', stopped: true })
       const msg = await msgStoreRef.current?.addMessage(content)
       if (msg) {
-        swarmRef.current?.sendToAll({ type: 'MSG', message: msg })
+        if (isDM) {
+          // Encrypt and send as DM — only the recipient can decrypt
+          if (dmPeerPublicKey && identity?.secretKey && dmPeerPubkeyHex) {
+            const { nonce, ciphertext } = encryptDM(msg, identity.secretKey, dmPeerPublicKey)
+            swarmRef.current?.sendToAll({ type: 'DM', to: dmPeerPubkeyHex, nonce, ciphertext })
+          }
+        } else {
+          // Channel message — in clear, includes channelName so peers can filter
+          swarmRef.current?.sendToAll({ type: 'MSG', channelName: channelName ?? roomCode, message: msg })
+        }
         onMessageSent?.()
       }
     },
-    [identity?.username, onMessageSent]
+    [
+      identity?.username,
+      identity?.secretKey,
+      isDM,
+      dmPeerPublicKey,
+      dmPeerPubkeyHex,
+      channelName,
+      roomCode,
+      onMessageSent,
+    ]
   )
 
   const handleTypingNotification = useCallback(() => {

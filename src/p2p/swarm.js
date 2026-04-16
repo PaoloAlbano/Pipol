@@ -358,18 +358,34 @@ export class RoomSwarm extends EventTarget {
         )
         break
       case 'MSG':
-        this.dispatchEvent(new CustomEvent('chat-message', { detail: { message: msg.message } }))
+        this.dispatchEvent(
+          new CustomEvent('chat-message', { detail: { message: msg.message, channelName: msg.channelName } })
+        )
+        break
+      case 'DM':
+        // Encrypted direct message — dispatched as-is; decryption happens in the receiver
+        this.dispatchEvent(
+          new CustomEvent('dm-message', {
+            detail: { from: remoteId, to: msg.to, nonce: msg.nonce, ciphertext: msg.ciphertext },
+          })
+        )
         break
       case 'HISTORY':
       case 'HISTORY_RES':
         if (Array.isArray(msg.messages)) {
           for (const m of msg.messages) {
-            this.dispatchEvent(new CustomEvent('chat-message', { detail: { message: m } }))
+            this.dispatchEvent(
+              new CustomEvent('chat-message', { detail: { message: m, channelName: msg.channelName } })
+            )
           }
         }
         break
       case 'HISTORY_REQ':
-        this.dispatchEvent(new CustomEvent('history-req', { detail: { peerId: remoteId, since: msg.since ?? 0 } }))
+        this.dispatchEvent(
+          new CustomEvent('history-req', {
+            detail: { peerId: remoteId, since: msg.since ?? 0, channelName: msg.channelName },
+          })
+        )
         break
       case 'VIDEO_OFFER':
         this.dispatchEvent(new CustomEvent('video-offer', { detail: { peerId: remoteId, sdp: msg.sdp } }))

@@ -2,31 +2,28 @@
  * useWorkspaceSync — keeps channels and member presence in sync across peers.
  *
  * Joins a dedicated swarm room derived from the workspace secret (meta topic).
- *
- * Discovery strategy (two-layer):
- *   1. WebSocket relay (always):  MEMBER_HELLO / WORKSPACE_META / PRESENCE_UPDATE
- *      are broadcast via the relay WS immediately on join and on relay-peer-joined.
- *      This guarantees discovery works even when WebRTC ICE fails (symmetric NAT, mobile).
- *   2. WebRTC DataChannel (when ICE succeeds): same messages sent again as belt-and-
- *      suspenders. Also used for per-channel chat (Room component).
+ * This single swarm carries ALL workspace traffic: presence, channel messages,
+ * and encrypted DMs. Channel swarms and per-DM swarms are no longer used.
  *
  * Messages:
- *   WORKSPACE_META  { channels[] }              — channel list sync (append-only)
- *   MEMBER_HELLO    { pubkey, username, status } — sent on join / to new peers
- *   PRESENCE_UPDATE { pubkey, status }           — sent on visibilitychange
- *   CHANNEL_NOTIFY  { channelName }              — increment unread for inactive channel
- *   DM_INVITE       { from, to }                 — open DM with sender if we are 'to'
+ *   WORKSPACE_META  { channels[] }               — channel list sync (append-only)
+ *   MEMBER_HELLO    { pubkey, username, status }  — sent on join / to new peers
+ *   PRESENCE_UPDATE { pubkey, status }            — sent on visibilitychange
+ *   CHANNEL_NOTIFY  { channelName }               — increment unread for inactive channel
+ *   MSG             { channelName, message }       — channel message (in clear)
+ *   DM              { to, nonce, ciphertext }      — encrypted direct message
  *
  * Returns:
- *   broadcastChannels(channels)    — push channel list to all peers immediately
- *   members                        — Map<pubkey, { pubkey, username, status, lastSeen }>
- *   notifyChannel(name)            — broadcast channel activity (unread bump)
- *   sendDMInvite(targetPubkey)     — notify a peer that we want to DM them
+ *   swarmRef           — ref to the RoomSwarm (passed to Room for text + video signaling)
+ *   broadcastChannels  — push channel list to all peers immediately
+ *   members            — Map<pubkey, { pubkey, username, status, lastSeen }>
+ *   notifyChannel      — broadcast channel activity (unread bump)
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { RoomSwarm } from './swarm.js'
 import { deriveSwarmTopic, mergeChannelList, getWorkspaces, saveWorkspace, getEffectiveConfig } from './workspace.js'
+import { encryptDM } from './dm-crypto.js'
 
 function pubkeyToHex(publicKey) {
   if (!publicKey) return null
@@ -35,16 +32,18 @@ function pubkeyToHex(publicKey) {
     .join('')
 }
 
-export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChannelNotify, onDMInvite) {
+export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChannelNotify, onDMOpen) {
   const swarmRef = useRef(null)
   const channelsRef = useRef(workspace?.channels ?? [])
   const identityRef = useRef(identity)
   const onChannelNotifyRef = useRef(onChannelNotify)
-  const onDMInviteRef = useRef(onDMInvite)
+  const onDMOpenRef = useRef(onDMOpen)
 
   // members: Map<pubkey, { pubkey, username, status, lastSeen }>
   const membersRef = useRef(new Map())
   const [members, setMembers] = useState(() => new Map())
+  // Reactive swarm — null until joined; exposed so Room can depend on it
+  const [swarm, setSwarmState] = useState(null)
 
   useEffect(() => {
     channelsRef.current = workspace?.channels ?? []
@@ -59,8 +58,8 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
   }, [onChannelNotify])
 
   useEffect(() => {
-    onDMInviteRef.current = onDMInvite
-  }, [onDMInvite])
+    onDMOpenRef.current = onDMOpen
+  }, [onDMOpen])
 
   useEffect(() => {
     if (!workspace?.secret) return
@@ -70,7 +69,9 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
     const { relayUrl } = getEffectiveConfig(workspace.config)
     const swarm = new RoomSwarm(topic, { relayUrl: relayUrl || null })
     swarmRef.current = swarm
-
+    // Capture membersRef.current at effect start so the cleanup can safely clear it
+    // even if the ref has been reassigned by a subsequent render.
+    const membersMap = membersRef.current
     // ── helpers ──────────────────────────────────────────────────────────────
 
     function myHello(status = 'online') {
@@ -105,7 +106,7 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
     function onPeerLeft(e) {
       const { id } = e.detail
       // Mark offline but keep in list (we know their pubkey from MEMBER_HELLO)
-      for (const [pubkey, member] of membersRef.current) {
+      for (const [pubkey] of membersRef.current) {
         // Match by peerId which is their pubkey hex
         if (pubkey === id) {
           upsertMember(pubkey, { status: 'offline' })
@@ -145,13 +146,18 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
       if (channelName) onChannelNotifyRef.current?.(channelName)
     }
 
-    function onDMInviteEvent(e) {
+    // Incoming encrypted DM: try to decrypt. If it succeeds, it's for us.
+    // Notify App so it can open the DM room for that sender.
+    // (The actual message content is handled by the DM Room component.)
+    function onDMMessageEvent(e) {
       const { from, to } = e.detail
       const myPubkey = pubkeyToHex(identityRef.current?.publicKey)
-      // Only act if this invite is addressed to us
-      if (from && to && myPubkey && to === myPubkey && from !== myPubkey) {
-        onDMInviteRef.current?.(from)
-      }
+      if (!from || to !== myPubkey) return
+      const senderMember = membersRef.current.get(from)
+      if (!senderMember) return
+      // We don't have the sender's raw public key Buffer here — signal App to open the DM
+      // Room which will do the full decryption once mounted.
+      onDMOpenRef.current?.(from)
     }
 
     function onVisibilityChange() {
@@ -168,13 +174,14 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
     swarm.addEventListener('member-hello', onMemberHello)
     swarm.addEventListener('presence-update', onPresenceUpdate)
     swarm.addEventListener('channel-notify', onChannelNotifyEvent)
-    swarm.addEventListener('dm-invite', onDMInviteEvent)
+    swarm.addEventListener('dm-message', onDMMessageEvent)
     document.addEventListener('visibilitychange', onVisibilityChange)
 
     // Join and announce ourselves
     swarm
       .join()
       .then(() => {
+        setSwarmState(swarm) // expose to consumers (e.g. Room)
         const hello = myHello()
         if (hello) swarm.sendToAll(hello)
       })
@@ -195,10 +202,11 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
       swarm.removeEventListener('member-hello', onMemberHello)
       swarm.removeEventListener('presence-update', onPresenceUpdate)
       swarm.removeEventListener('channel-notify', onChannelNotifyEvent)
-      swarm.removeEventListener('dm-invite', onDMInviteEvent)
+      swarm.removeEventListener('dm-message', onDMMessageEvent)
       document.removeEventListener('visibilitychange', onVisibilityChange)
-      membersRef.current.clear()
+      membersMap.clear()
       setMembers(new Map())
+      setSwarmState(null)
       swarm.leave()
       swarmRef.current = null
     }
@@ -212,11 +220,18 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
     swarmRef.current?.sendToAll({ type: 'CHANNEL_NOTIFY', channelName })
   }, [])
 
-  const sendDMInvite = useCallback((targetPubkey) => {
-    const myPubkey = pubkeyToHex(identityRef.current?.publicKey)
-    if (!myPubkey) return
-    swarmRef.current?.sendToAll({ type: 'DM_INVITE', from: myPubkey, to: targetPubkey })
+  /**
+   * Send an encrypted direct message to a specific peer.
+   * @param {string} toPubkeyHex   Recipient's pubkey as hex string
+   * @param {Buffer} theirPublicKey Recipient's raw Ed25519 public key Buffer
+   * @param {object} message        The message object to encrypt and send
+   */
+  const sendDM = useCallback((toPubkeyHex, theirPublicKey, message) => {
+    const id = identityRef.current
+    if (!id?.secretKey || !theirPublicKey) return
+    const { nonce, ciphertext } = encryptDM(message, id.secretKey, theirPublicKey)
+    swarmRef.current?.sendToAll({ type: 'DM', to: toPubkeyHex, nonce, ciphertext })
   }, [])
 
-  return { broadcastChannels, members, notifyChannel, sendDMInvite }
+  return { swarm, swarmRef, broadcastChannels, members, notifyChannel, sendDM }
 }

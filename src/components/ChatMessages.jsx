@@ -49,7 +49,7 @@ function renderMarkdown(content) {
  * @param {string[]} [typingUsers]   Usernames of peers currently typing
  * @param {object[]} [peers]         Peer list (unused currently, reserved for future)
  */
-export default function ChatMessages({ messages, identity, typingUsers = [], peers = [] }) {
+export default function ChatMessages({ messages, identity, typingUsers = [] }) {
   const bottomRef = useRef(null)
 
   useEffect(() => {

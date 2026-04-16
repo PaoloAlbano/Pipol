@@ -18,14 +18,12 @@ import {
   removeWorkspace,
   getActiveWorkspaceId,
   setActiveWorkspaceId,
-  getActiveWorkspace,
   deriveChannelRoomCode,
   deriveDMRoomCode,
   addChannel,
   parseInviteUrl,
   createWorkspace,
   getInviteParamFromUrl,
-  getEffectiveConfig,
 } from './p2p/workspace.js'
 import { useWorkspaceSync } from './p2p/useWorkspaceSync.js'
 
@@ -90,20 +88,25 @@ export default function App() {
     bumpUnread((v) => v + 1)
   }, [])
 
-  // When a peer sends us a DM_INVITE, auto-open the DM with them
-  const onDMInvite = useCallback((fromPubkey) => {
+  // When a DM arrives for us, auto-open the DM room with that sender
+  const onDMOpen = useCallback((fromPubkey) => {
     // Don't interrupt if already in that DM
     if (activeChannelNameRef.current === `dm:${fromPubkey}`) return
     setActiveChannelName(`dm:${fromPubkey}`)
   }, [])
 
   // Workspace channel + presence sync (P2P)
-  const { broadcastChannels, members, notifyChannel, sendDMInvite } = useWorkspaceSync(
+  const {
+    swarm: metaSwarm,
+    broadcastChannels,
+    members,
+    notifyChannel,
+  } = useWorkspaceSync(
     activeWorkspace,
     identity,
     useCallback(() => setWorkspaces(getWorkspaces()), []),
     onChannelNotify,
-    onDMInvite
+    onDMOpen
   )
 
   // Pending invite (from ?invite= URL param)
@@ -236,12 +239,6 @@ export default function App() {
     setIdentity((prev) => ({ ...prev, username: name }))
   }
 
-  function handleSelectWorkspace(id) {
-    setActiveWorkspaceIdState(id)
-    setActiveWorkspaceId(id)
-    setActiveChannelName(null)
-  }
-
   function handleSelectChannel(channelName) {
     clearUnread(activeWorkspaceId, channelName)
     setActiveChannelName(channelName)
@@ -249,8 +246,8 @@ export default function App() {
 
   function handleSelectDM(pubkey) {
     setActiveChannelName(`dm:${pubkey}`)
-    // Notify the other peer so they join the DM swarm automatically
-    sendDMInvite(pubkey)
+    // The DM room will be opened; no DM_INVITE needed — the first DM message
+    // triggers onDMOpen on the recipient's side automatically.
   }
 
   function handleLeaveChannel() {
@@ -380,7 +377,7 @@ export default function App() {
         .join('')
     : null
 
-  // Derive room code for active channel or DM
+  // Derive room code for active channel or DM (used as MessageStore key)
   const isDM = activeChannelName?.startsWith('dm:')
   const dmPeerPubkey = isDM ? activeChannelName.slice(3) : null
   const activeRoomCode = isDM
@@ -391,13 +388,17 @@ export default function App() {
       ? deriveChannelRoomCode(activeWorkspace.secret, activeChannelName)
       : null
 
+  // Convert DM peer pubkey hex → Uint8Array for NaCl box encryption
+  const dmPeerPublicKey = dmPeerPubkey
+    ? Uint8Array.from({ length: 32 }, (_, i) => parseInt(dmPeerPubkey.slice(i * 2, i * 2 + 2), 16))
+    : null
+
   // Display name for the active view (channel name or DM peer username)
   const activeDisplayName = isDM
     ? (members.get(dmPeerPubkey)?.username ?? dmPeerPubkey?.slice(0, 8) ?? 'DM')
     : activeChannelName
 
   // Effective relay URL for active workspace (null = use global/env default)
-  const { relayUrl: activeRelayUrl } = getEffectiveConfig(activeWorkspace?.config ?? null)
 
   const isWorkspaceAdmin = activeWorkspace?.createdBy && myPubkeyHex ? activeWorkspace.createdBy === myPubkeyHex : false
 
@@ -481,22 +482,33 @@ export default function App() {
             />
           }
         >
-          {activeRoomCode ? (
+          {/* Render Room only when meta swarm is connected (or it's a direct room without swarm) */}
+          {activeRoomCode && metaSwarm ? (
             <>
               <ChannelHeader channelName={activeDisplayName} isPrivate={isDM} />
               <Suspense fallback={null}>
                 <Room
                   key={activeRoomCode}
                   roomCode={activeRoomCode}
+                  channelName={isDM ? null : activeChannelName}
+                  isDM={isDM}
+                  dmPeerPublicKey={dmPeerPublicKey}
+                  dmPeerPubkeyHex={dmPeerPubkey}
+                  swarm={metaSwarm}
                   identity={identity}
                   showStats={showStats}
                   onLeave={handleLeaveChannel}
                   onOpenSettings={() => setSettingsOpen(true)}
-                  relayUrl={activeRelayUrl || null}
                   onMessageSent={() => notifyChannel(activeChannelName)}
                   embedded
                 />
               </Suspense>
+            </>
+          ) : activeRoomCode ? (
+            // Swarm not yet connected — show brief connecting state
+            <>
+              <ChannelHeader channelName={activeDisplayName} isPrivate={isDM} />
+              <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Connecting…</div>
             </>
           ) : (
             <ChannelWelcome
