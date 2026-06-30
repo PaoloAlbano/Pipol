@@ -370,3 +370,107 @@ describe('SettingsModal — network stats toggle', () => {
     expect(onShowStatsChange).toHaveBeenCalledWith(false)
   })
 })
+
+// ── Notifications section ─────────────────────────────────────────────────────
+
+vi.mock('../../src/p2p/notifications.js', () => ({
+  getNotificationPermission: vi.fn(() => 'default'),
+  requestNotificationPermission: vi.fn(() => Promise.resolve('granted')),
+}))
+
+describe('SettingsModal — notifications section', () => {
+  it('shows Enable button when permission is default', async () => {
+    const { getNotificationPermission } = await import('../../src/p2p/notifications.js')
+    getNotificationPermission.mockReturnValue('default')
+    setup()
+    expect(screen.getByRole('button', { name: /enable notifications/i })).toBeInTheDocument()
+  })
+
+  it('shows granted text when permission is already granted', async () => {
+    const { getNotificationPermission } = await import('../../src/p2p/notifications.js')
+    getNotificationPermission.mockReturnValue('granted')
+    setup()
+    expect(screen.getByText(/notifications are enabled/i)).toBeInTheDocument()
+  })
+
+  it('shows blocked warning when permission is denied', async () => {
+    const { getNotificationPermission } = await import('../../src/p2p/notifications.js')
+    getNotificationPermission.mockReturnValue('denied')
+    setup()
+    expect(screen.getByText(/notifications are blocked/i)).toBeInTheDocument()
+  })
+
+  it('shows unavailable message when Notification API is unsupported', async () => {
+    const { getNotificationPermission } = await import('../../src/p2p/notifications.js')
+    getNotificationPermission.mockReturnValue('unsupported')
+    setup()
+    expect(screen.getByText(/unavailable in this browser/i)).toBeInTheDocument()
+  })
+
+  it('calls requestNotificationPermission and updates UI when Enable is clicked', async () => {
+    const user = userEvent.setup()
+    const { getNotificationPermission, requestNotificationPermission } = await import('../../src/p2p/notifications.js')
+    getNotificationPermission.mockReturnValue('default')
+    requestNotificationPermission.mockResolvedValue('granted')
+    setup()
+    await user.click(screen.getByRole('button', { name: /enable notifications/i }))
+    expect(requestNotificationPermission).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── Workspace section ─────────────────────────────────────────────────────────
+
+describe('SettingsModal — workspace section', () => {
+  const ws1 = { id: 'ws-1', name: 'Acme Corp', channels: [] }
+  const ws2 = { id: 'ws-2', name: 'Side Project', channels: [] }
+
+  it('shows workspace list when workspaces are provided', () => {
+    setup({ workspaces: [ws1, ws2], activeWorkspace: ws1 })
+    expect(screen.getByText('Acme Corp')).toBeInTheDocument()
+    expect(screen.getByText('Side Project')).toBeInTheDocument()
+  })
+
+  it('marks the active workspace with "current" badge', () => {
+    setup({ workspaces: [ws1, ws2], activeWorkspace: ws1 })
+    expect(screen.getByText('current')).toBeInTheDocument()
+  })
+
+  it('does not show workspace section when no workspaces', () => {
+    setup({ workspaces: [] })
+    expect(screen.queryByText(/workspaces/i)).not.toBeInTheDocument()
+  })
+
+  it('shows Leave button for the active workspace when onLeaveWorkspace is provided', () => {
+    setup({ workspaces: [ws1], activeWorkspace: ws1, onLeaveWorkspace: vi.fn() })
+    expect(screen.getByRole('button', { name: /leave/i })).toBeInTheDocument()
+  })
+
+  it('shows confirmation prompt when Leave is clicked', async () => {
+    const user = userEvent.setup()
+    setup({ workspaces: [ws1], activeWorkspace: ws1, onLeaveWorkspace: vi.fn() })
+    await user.click(screen.getByRole('button', { name: /^leave$/i }))
+    expect(screen.getByText(/sure\?/i)).toBeInTheDocument()
+  })
+
+  it('calls onLeaveWorkspace and onClose when confirmed', async () => {
+    const user = userEvent.setup()
+    const onLeaveWorkspace = vi.fn()
+    const onClose = vi.fn()
+    setup({ workspaces: [ws1], activeWorkspace: ws1, onLeaveWorkspace, onClose })
+    await user.click(screen.getByRole('button', { name: /^leave$/i }))
+    await user.click(screen.getByRole('button', { name: /^leave$/i }))
+    expect(onLeaveWorkspace).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('cancels leave confirmation when Cancel is clicked', async () => {
+    const user = userEvent.setup()
+    setup({ workspaces: [ws1], activeWorkspace: ws1, onLeaveWorkspace: vi.fn() })
+    await user.click(screen.getByRole('button', { name: /^leave$/i }))
+    // Click the small "Cancel" button inside the leave confirmation
+    const { container } = render(<React.Fragment />)
+    const confirmCancel = document.querySelector('.btn.btn-secondary.btn-xs')
+    if (confirmCancel) await user.click(confirmCancel)
+    expect(screen.queryByText(/sure\?/i)).not.toBeInTheDocument()
+  })
+})

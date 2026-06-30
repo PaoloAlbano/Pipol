@@ -68,6 +68,7 @@ export default function VideoGrid({
               stream={stream}
               label={id === '__local__' ? `${localUsername} (you)` : getLabel(id)}
               muted={id === '__local__'}
+              mirror={id === '__local__'}
               stats={id === '__local__' ? null : getStats(id)}
               sidebar
               onClick={id !== '__local__' ? () => onSpotlightChange(id) : undefined}
@@ -86,7 +87,7 @@ export default function VideoGrid({
       {layoutToggle}
       <div className="video-grid" style={{ '--cols': cols, '--rows': rows }}>
         {count === 0 ? (
-          <VideoTile stream={localStream} label={`${localUsername} (you)`} muted />
+          <VideoTile stream={localStream} label={`${localUsername} (you)`} muted mirror />
         ) : (
           remoteEntries.map(([peerId, stream]) => (
             <VideoTile key={peerId} stream={stream} label={getLabel(peerId)} stats={getStats(peerId)} />
@@ -96,7 +97,7 @@ export default function VideoGrid({
 
       {count > 0 && (
         <div className="video-self-preview">
-          <VideoTile stream={localStream} label="You" muted small />
+          <VideoTile stream={localStream} label="You" muted small mirror />
         </div>
       )}
     </div>
@@ -130,7 +131,7 @@ function formatBytes(n) {
   return `${(n / 1048576).toFixed(1)}MB`
 }
 
-function VideoTile({ stream, label, muted = false, small = false, sidebar = false, stats = null, onClick }) {
+function VideoTile({ stream, label, muted = false, small = false, sidebar = false, stats = null, onClick, mirror = false }) {
   const videoRef = useRef(null)
 
   useEffect(() => {
@@ -151,7 +152,7 @@ function VideoTile({ stream, label, muted = false, small = false, sidebar = fals
       onClick={onClick}
     >
       {stream ? (
-        <video ref={videoRef} className="video-element" autoPlay playsInline muted={muted} />
+        <video ref={videoRef} className={`video-element${mirror ? ' video-element--mirror' : ''}`} autoPlay playsInline muted={muted} />
       ) : (
         <div className="video-placeholder">👤</div>
       )}
