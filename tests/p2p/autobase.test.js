@@ -157,3 +157,67 @@ describe('MessageStore — receiveDelete', () => {
     expect(deleted.timestamp).toBe(12345)
   })
 })
+
+// ── getHistory — _editsMap / _deletedIds applied to all messages ─────────────
+
+describe('MessageStore — getHistory applies _editsMap and _deletedIds', () => {
+  it('applies a pending edit from _editsMap when message has not yet been updated in-place', async () => {
+    const store = await getMessageStore()
+    // Simulate a message arriving via Hypercore (bypass receiveMessage so it
+    // is NOT yet in _channelMessages, but we call receiveEdit first to test order-independence)
+    const id = 'core-msg-1'
+    store._editsMap.set(id, { newContent: 'edited via core', editedAt: 5000 })
+    // Now the message arrives via swarm control channel
+    store._channelMessages.push(makeMsg({ id, content: 'original' }))
+    const msgs = await store.getHistory()
+    const m = msgs.find((x) => x.id === id)
+    expect(m.content).toBe('edited via core')
+    expect(m.edited).toBe(true)
+    expect(m.editedAt).toBe(5000)
+  })
+
+  it('does NOT double-apply an edit to a message already marked edited', async () => {
+    const store = await getMessageStore()
+    const id = 'core-msg-2'
+    store._editsMap.set(id, { newContent: 'second edit', editedAt: 9999 })
+    // Message already has edited: true from receiveEdit in-place update
+    store._channelMessages.push(makeMsg({ id, content: 'first edit', edited: true, editedAt: 1234 }))
+    const msgs = await store.getHistory()
+    const m = msgs.find((x) => x.id === id)
+    // Already edited — map should be skipped
+    expect(m.content).toBe('first edit')
+    expect(m.editedAt).toBe(1234)
+  })
+
+  it('applies a pending delete from _deletedIds when message has not yet been updated in-place', async () => {
+    const store = await getMessageStore()
+    const id = 'core-del-1'
+    store._deletedIds.add(id)
+    store._channelMessages.push(makeMsg({ id, content: 'should be gone' }))
+    const msgs = await store.getHistory()
+    const m = msgs.find((x) => x.id === id)
+    expect(m.deleted).toBe(true)
+    expect(m.content).toBe('')
+  })
+
+  it('does NOT double-apply a delete to a message already marked deleted', async () => {
+    const store = await getMessageStore()
+    const id = 'core-del-2'
+    store._deletedIds.add(id)
+    store._channelMessages.push(makeMsg({ id, content: '', deleted: true }))
+    const msgs = await store.getHistory()
+    const m = msgs.find((x) => x.id === id)
+    expect(m.deleted).toBe(true)
+  })
+
+  it('messages without a matching edit/delete are untouched', async () => {
+    const store = await getMessageStore()
+    const id = 'untouched-1'
+    store._channelMessages.push(makeMsg({ id, content: 'original content' }))
+    const msgs = await store.getHistory()
+    const m = msgs.find((x) => x.id === id)
+    expect(m.content).toBe('original content')
+    expect(m.edited).toBeUndefined()
+    expect(m.deleted).toBeUndefined()
+  })
+})

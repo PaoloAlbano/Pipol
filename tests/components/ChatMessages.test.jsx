@@ -228,3 +228,53 @@ describe('ChatMessages — inline edit flow', () => {
     }
   })
 })
+
+// ── ReactionPicker ────────────────────────────────────────────────────────────
+
+describe('ChatMessages — ReactionPicker', () => {
+  it('opens reaction picker when 😊 trigger is clicked', async () => {
+    const user = userEvent.setup()
+    const msg = makeMsg({ id: 'r1' })
+    const onReact = vi.fn()
+    render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={onReact} />)
+    const trigger = screen.getByRole('button', { name: /add reaction/i })
+    await user.click(trigger)
+    expect(screen.getByRole('listbox', { name: /pick a reaction/i })).toBeInTheDocument()
+  })
+
+  it('calls onReact with messageId and emoji when emoji is clicked', async () => {
+    const user = userEvent.setup()
+    const msg = makeMsg({ id: 'r2' })
+    const onReact = vi.fn()
+    render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={onReact} />)
+    await user.click(screen.getByRole('button', { name: /add reaction/i }))
+    await user.click(screen.getByRole('button', { name: '👍' }))
+    expect(onReact).toHaveBeenCalledWith('r2', '👍')
+  })
+
+  it('closes the picker after an emoji is selected', async () => {
+    const user = userEvent.setup()
+    const msg = makeMsg({ id: 'r3' })
+    render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: /add reaction/i }))
+    await user.click(screen.getByRole('button', { name: '👍' }))
+    expect(screen.queryByRole('listbox', { name: /pick a reaction/i })).not.toBeInTheDocument()
+  })
+
+  it('does not render ReactionPicker when onReact is not provided', () => {
+    const msg = makeMsg({ id: 'r4' })
+    render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(screen.queryByRole('button', { name: /add reaction/i })).not.toBeInTheDocument()
+  })
+})
+
+// ── formatTimestamp ───────────────────────────────────────────────────────────
+
+describe('ChatMessages — timestamp display', () => {
+  it('shows a timestamp on each message', () => {
+    const msg = makeMsg({ id: 'ts1', timestamp: new Date('2024-01-15T14:30:00').getTime() })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    // Some time element should be rendered
+    expect(container.querySelector('.message-time')).not.toBeNull()
+  })
+})

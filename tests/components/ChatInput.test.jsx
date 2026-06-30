@@ -442,3 +442,70 @@ describe('ChatInput — doSend edge cases', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 })
+
+// ── file attach / drag-drop ───────────────────────────────────────────────────
+
+describe('ChatInput — file attach button', () => {
+  it('renders the attach button when onSendFile is provided', () => {
+    render(<ChatInput onSend={vi.fn()} onSendFile={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /attach image/i })).toBeInTheDocument()
+  })
+
+  it('does not render the attach button when onSendFile is not provided', () => {
+    render(<ChatInput onSend={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /attach image/i })).not.toBeInTheDocument()
+  })
+
+  it('calls onSendFile with the selected file when input changes', () => {
+    const onSendFile = vi.fn()
+    render(<ChatInput onSend={vi.fn()} onSendFile={onSendFile} />)
+    const fileInput = document.querySelector('input[type="file"]')
+    const file = new File(['data'], 'photo.jpg', { type: 'image/jpeg' })
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true })
+    fireEvent.change(fileInput)
+    expect(onSendFile).toHaveBeenCalledWith(file)
+  })
+
+  it('does nothing when file input changes with no files', () => {
+    const onSendFile = vi.fn()
+    render(<ChatInput onSend={vi.fn()} onSendFile={onSendFile} />)
+    const fileInput = document.querySelector('input[type="file"]')
+    Object.defineProperty(fileInput, 'files', { value: [], configurable: true })
+    fireEvent.change(fileInput)
+    expect(onSendFile).not.toHaveBeenCalled()
+  })
+})
+
+describe('ChatInput — drag and drop', () => {
+  it('calls onSendFile with the dropped file', () => {
+    const onSendFile = vi.fn()
+    render(<ChatInput onSend={vi.fn()} onSendFile={onSendFile} />)
+    const form = document.querySelector('form')
+    const file = new File(['img'], 'photo.png', { type: 'image/png' })
+    fireEvent.drop(form, { dataTransfer: { files: [file] } })
+    expect(onSendFile).toHaveBeenCalledWith(file)
+  })
+
+  it('does nothing on drop with no files', () => {
+    const onSendFile = vi.fn()
+    render(<ChatInput onSend={vi.fn()} onSendFile={onSendFile} />)
+    const form = document.querySelector('form')
+    fireEvent.drop(form, { dataTransfer: { files: [] } })
+    expect(onSendFile).not.toHaveBeenCalled()
+  })
+
+  it('adds dragover class when dragging over', () => {
+    render(<ChatInput onSend={vi.fn()} onSendFile={vi.fn()} />)
+    const form = document.querySelector('form')
+    fireEvent.dragOver(form)
+    expect(form.className).toContain('chat-input-form--dragover')
+  })
+
+  it('removes dragover class on drag leave', () => {
+    render(<ChatInput onSend={vi.fn()} onSendFile={vi.fn()} />)
+    const form = document.querySelector('form')
+    fireEvent.dragOver(form)
+    fireEvent.dragLeave(form)
+    expect(form.className).not.toContain('chat-input-form--dragover')
+  })
+})
