@@ -275,20 +275,47 @@ const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', 
 
 function ReactionPicker({ messageId, onReact }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [pickerStyle, setPickerStyle] = useState({})
+  const triggerRef = useRef(null)
+  const pickerRef = useRef(null)
 
+  // Close on outside click
   useEffect(() => {
     if (!open) return
     function onOutside(e) {
-      if (!ref.current?.contains(e.target)) setOpen(false)
+      if (!triggerRef.current?.contains(e.target) && !pickerRef.current?.contains(e.target)) {
+        setOpen(false)
+      }
     }
     document.addEventListener('mousedown', onOutside)
     return () => document.removeEventListener('mousedown', onOutside)
   }, [open])
 
+  // Reposition picker so it never overflows the viewport
+  useEffect(() => {
+    if (!open || !triggerRef.current) return
+    const PICKER_WIDTH = 280 // approximate max width of 8 emoji buttons
+    const PICKER_HEIGHT = 44
+    const GAP = 6
+    const rect = triggerRef.current.getBoundingClientRect()
+    const vw = window.innerWidth
+
+    // Vertical: try above the trigger, fall back to below
+    let top = rect.top - PICKER_HEIGHT - GAP
+    if (top < 4) top = rect.bottom + GAP
+
+    // Horizontal: centre on trigger, clamp to viewport edges with 8px margin
+    let left = rect.left + rect.width / 2 - PICKER_WIDTH / 2
+    if (left < 8) left = 8
+    if (left + PICKER_WIDTH > vw - 8) left = vw - PICKER_WIDTH - 8
+
+    setPickerStyle({ top: Math.round(top), left: Math.round(left) })
+  }, [open])
+
   return (
-    <div className="reaction-picker-wrap" ref={ref}>
+    <div className="reaction-picker-wrap">
       <button
+        ref={triggerRef}
         className="reaction-picker-trigger"
         onClick={() => setOpen((v) => !v)}
         aria-label="Add reaction"
@@ -297,7 +324,13 @@ function ReactionPicker({ messageId, onReact }) {
         😊
       </button>
       {open && (
-        <div className="reaction-picker" role="listbox" aria-label="Pick a reaction">
+        <div
+          ref={pickerRef}
+          className="reaction-picker reaction-picker--fixed"
+          role="listbox"
+          aria-label="Pick a reaction"
+          style={pickerStyle}
+        >
           {QUICK_EMOJIS.map((emoji) => (
             <button
               key={emoji}
