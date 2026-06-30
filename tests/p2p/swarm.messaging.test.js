@@ -635,3 +635,134 @@ describe('RoomSwarm two-peer — REACTION', () => {
     expect(received[0].peerId).toBe(PEER_A)
   })
 })
+
+// ── MSG_EDIT dispatch ──────────────────────────────────────────────────────
+
+describe('RoomSwarm two-peer — MSG_EDIT', () => {
+  let swarmA, swarmB
+
+  beforeEach(() => {
+    ;({ swarmA, swarmB } = makeConnectedPair())
+  })
+
+  it('MSG_EDIT from A dispatches msg-edit event on B with correct detail', () => {
+    const received = collect(swarmB, 'msg-edit')
+    swarmA.sendToAll({
+      type: 'MSG_EDIT',
+      originalId: 'msg-1',
+      newContent: 'updated content',
+      editedAt: 1234567890,
+      channelName: 'generale',
+    })
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({
+      originalId: 'msg-1',
+      newContent: 'updated content',
+      editedAt: 1234567890,
+      channelName: 'generale',
+    })
+  })
+
+  it('MSG_EDIT includes peerId of the sender', () => {
+    const received = collect(swarmB, 'msg-edit')
+    swarmA.sendToAll({
+      type: 'MSG_EDIT',
+      originalId: 'msg-2',
+      newContent: 'hello',
+      editedAt: 1000,
+      channelName: 'generale',
+    })
+    expect(received[0].peerId).toBe(PEER_A)
+  })
+
+  it('MSG_EDIT without channelName defaults to null', () => {
+    const received = collect(swarmB, 'msg-edit')
+    swarmA.sendToAll({
+      type: 'MSG_EDIT',
+      originalId: 'msg-3',
+      newContent: 'dm edit',
+    })
+    expect(received[0].channelName).toBeNull()
+  })
+})
+
+// ── MSG_DELETE dispatch ────────────────────────────────────────────────────
+
+describe('RoomSwarm two-peer — MSG_DELETE', () => {
+  let swarmA, swarmB
+
+  beforeEach(() => {
+    ;({ swarmA, swarmB } = makeConnectedPair())
+  })
+
+  it('MSG_DELETE from A dispatches msg-delete event on B with correct detail', () => {
+    const received = collect(swarmB, 'msg-delete')
+    swarmA.sendToAll({
+      type: 'MSG_DELETE',
+      originalId: 'msg-del-1',
+      channelName: 'generale',
+    })
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({
+      originalId: 'msg-del-1',
+      channelName: 'generale',
+    })
+  })
+
+  it('MSG_DELETE includes peerId of the sender', () => {
+    const received = collect(swarmB, 'msg-delete')
+    swarmA.sendToAll({ type: 'MSG_DELETE', originalId: 'msg-del-2', channelName: 'x' })
+    expect(received[0].peerId).toBe(PEER_A)
+  })
+
+  it('MSG_DELETE without channelName defaults to null', () => {
+    const received = collect(swarmB, 'msg-delete')
+    swarmA.sendToAll({ type: 'MSG_DELETE', originalId: 'msg-del-3' })
+    expect(received[0].channelName).toBeNull()
+  })
+})
+
+// ── FILE_META + FILE_CHUNK dispatch ───────────────────────────────────────
+
+describe('RoomSwarm two-peer — FILE_META + FILE_CHUNK', () => {
+  let swarmA, swarmB
+
+  beforeEach(() => {
+    ;({ swarmA, swarmB } = makeConnectedPair())
+  })
+
+  it('FILE_META from A dispatches file-meta event on B with correct detail', () => {
+    const received = collect(swarmB, 'file-meta')
+    swarmA.sendToAll({
+      type: 'FILE_META',
+      fileId: 'f1',
+      name: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      size: 12345,
+      totalChunks: 2,
+      channelName: 'generale',
+    })
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({
+      fileId: 'f1',
+      name: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      size: 12345,
+      totalChunks: 2,
+      channelName: 'generale',
+    })
+  })
+
+  it('FILE_CHUNK from A dispatches file-chunk event on B with correct detail', () => {
+    const received = collect(swarmB, 'file-chunk')
+    swarmA.sendToAll({ type: 'FILE_CHUNK', fileId: 'f1', index: 0, data: 'abc123' })
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({ fileId: 'f1', index: 0, data: 'abc123' })
+  })
+
+  it('FILE_META peerId is set correctly', () => {
+    const received = collect(swarmB, 'file-meta')
+    swarmA.sendToAll({ type: 'FILE_META', fileId: 'f2', name: 'x.png', mimeType: 'image/png', size: 1, totalChunks: 1 })
+    expect(received[0].peerId).toBe(PEER_A)
+  })
+})

@@ -53,7 +53,15 @@ function renderMarkdown(content) {
  * @param {function} [onEdit]        (messageId, newContent) => void
  * @param {function} [onDelete]      (messageId) => void
  */
-export default function ChatMessages({ messages, identity, typingUsers = [], reactions = new Map(), onReact, onEdit, onDelete }) {
+export default function ChatMessages({
+  messages,
+  identity,
+  typingUsers = [],
+  reactions = new Map(),
+  onReact,
+  onEdit,
+  onDelete,
+}) {
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -190,19 +198,22 @@ function MessageRow({ msg, isOwn, displayName, msgReactions, myPubkey, onReact, 
               rows={Math.min(6, draft.split('\n').length + 1)}
             />
             <div className="message-edit-actions">
-              <span className="message-edit-hint">Esc to <button className="message-edit-link" onClick={cancelEdit}>cancel</button> · Enter to save</span>
-              <button className="message-edit-save" onClick={confirmEdit}>Save</button>
+              <span className="message-edit-hint">
+                Esc to{' '}
+                <button className="message-edit-link" onClick={cancelEdit}>
+                  cancel
+                </button>{' '}
+                · Enter to save
+              </span>
+              <button className="message-edit-save" onClick={confirmEdit}>
+                Save
+              </button>
             </div>
           </div>
         ) : msg.type === 'image' ? (
           <div className="message-bubble__body">
             <div className="message-image-wrap">
-              <img
-                src={msg.imageData}
-                alt={msg.fileName ?? 'image'}
-                className="message-image"
-                loading="lazy"
-              />
+              <img src={msg.imageData} alt={msg.fileName ?? 'image'} className="message-image" loading="lazy" />
               <span className="message-image-name">{msg.fileName}</span>
             </div>
             {onReact && <ReactionPicker messageId={msg.id} onReact={onReact} myPubkey={myPubkey} />}
@@ -239,12 +250,7 @@ function MessageRow({ msg, isOwn, displayName, msgReactions, myPubkey, onReact, 
         {isOwn && !editing && (onEdit || onDelete) && (
           <div className="message-actions" aria-label="Message actions">
             {onEdit && (
-              <button
-                className="message-action-btn"
-                onClick={startEdit}
-                title="Edit message"
-                aria-label="Edit message"
-              >
+              <button className="message-action-btn" onClick={startEdit} title="Edit message" aria-label="Edit message">
                 ✏️
               </button>
             )}
@@ -296,7 +302,10 @@ function ReactionPicker({ messageId, onReact }) {
             <button
               key={emoji}
               className="reaction-picker__emoji"
-              onClick={() => { onReact(messageId, emoji); setOpen(false) }}
+              onClick={() => {
+                onReact(messageId, emoji)
+                setOpen(false)
+              }}
               aria-label={emoji}
             >
               {emoji}

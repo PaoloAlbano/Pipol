@@ -152,7 +152,7 @@ function buildImageMessage(fileId, dataUrl, name, size, identity) {
       ? Array.from(identity.publicKey)
           .map((b) => b.toString(16).padStart(2, '0'))
           .join('')
-      : identity?.publicKey ?? ''
+      : (identity?.publicKey ?? '')
 
   return {
     id: fileId,

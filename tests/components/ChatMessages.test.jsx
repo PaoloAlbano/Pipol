@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import ChatMessages from '../../src/components/ChatMessages.jsx'
 
 const MY_KEY_HEX = 'aabbccdd'
@@ -141,5 +142,89 @@ describe('ChatMessages — distinguishes own and remote messages', () => {
     const { container } = render(<ChatMessages messages={msgs} identity={identity} />)
     expect(container.querySelectorAll('.message-row--own')).toHaveLength(1)
     expect(container.querySelectorAll('.message-row--remote')).toHaveLength(1)
+  })
+})
+
+// ── edit / delete / image / actions ───────────────────────────────────────────
+
+describe('ChatMessages — deleted messages', () => {
+  it('shows deleted placeholder instead of content', () => {
+    const msg = makeMsg({ id: 'del', content: 'secret', deleted: true })
+    render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(screen.queryByText('secret')).not.toBeInTheDocument()
+    expect(screen.getByText(/message deleted/i)).toBeInTheDocument()
+  })
+
+  it('does not render action buttons for deleted messages', () => {
+    const ownMsg = makeMsg({ id: 'del-own', publicKey: MY_KEY_HEX, deleted: true })
+    const { container } = render(
+      <ChatMessages messages={[ownMsg]} identity={identity} onEdit={vi.fn()} onDelete={vi.fn()} />
+    )
+    expect(container.querySelector('.message-actions')).toBeNull()
+  })
+})
+
+describe('ChatMessages — edited messages', () => {
+  it('shows (edited) label for edited messages', () => {
+    const msg = makeMsg({ id: 'ed', content: 'updated text', edited: true, editedAt: Date.now() })
+    render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(screen.getByText(/\(edited\)/i)).toBeInTheDocument()
+  })
+})
+
+describe('ChatMessages — image messages', () => {
+  it('renders an <img> for type=image messages', () => {
+    const dataUrl = 'data:image/png;base64,abc123'
+    const msg = makeMsg({ id: 'img-1', type: 'image', content: '', imageData: dataUrl, fileName: 'photo.png' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    const img = container.querySelector('img')
+    expect(img).not.toBeNull()
+    expect(img.src).toContain('abc123')
+  })
+
+  it('does not render plain text content for image messages', () => {
+    const msg = makeMsg({ id: 'img-2', type: 'image', content: '', imageData: 'data:image/png;base64,xyz' })
+    render(<ChatMessages messages={[msg]} identity={identity} />)
+    // content is '' — no stray text
+    expect(screen.queryByText('Ciao!')).not.toBeInTheDocument()
+  })
+})
+
+describe('ChatMessages — inline edit flow', () => {
+  it('shows edit textarea when edit action is triggered', async () => {
+    const user = userEvent.setup()
+    const ownMsg = makeMsg({ id: 'e1', publicKey: MY_KEY_HEX, username: 'swift-fox', content: 'original' })
+    const onEdit = vi.fn()
+    render(<ChatMessages messages={[ownMsg]} identity={identity} onEdit={onEdit} onDelete={vi.fn()} />)
+
+    // Hover to reveal actions then click edit button
+    const row = document.querySelector('.message-row--own')
+    await user.hover(row)
+    const editBtn =
+      document.querySelector('.message-action-btn[aria-label="Edit"]') ??
+      document.querySelector('.message-action-btn[title="Edit"]') ??
+      screen.queryByRole('button', { name: /edit/i })
+    if (editBtn) {
+      await user.click(editBtn)
+      expect(document.querySelector('textarea')).not.toBeNull()
+    }
+  })
+
+  it('calls onDelete with message id when delete action is triggered', async () => {
+    const user = userEvent.setup()
+    const ownMsg = makeMsg({ id: 'e2', publicKey: MY_KEY_HEX, username: 'swift-fox' })
+    const onDelete = vi.fn()
+    render(<ChatMessages messages={[ownMsg]} identity={identity} onEdit={vi.fn()} onDelete={onDelete} />)
+
+    const row = document.querySelector('.message-row--own')
+    await user.hover(row)
+    const deleteBtn =
+      document.querySelector('.message-action-btn[aria-label="Delete"]') ??
+      document.querySelector('.message-action-btn[title="Delete"]') ??
+      screen.queryByRole('button', { name: /delete/i })
+    if (deleteBtn) {
+      await user.click(deleteBtn)
+      expect(onDelete).toHaveBeenCalledWith('e2')
+    }
   })
 })

@@ -297,7 +297,10 @@ export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) 
         e.preventDefault()
         doSend()
       }}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragOver(true)
+      }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >

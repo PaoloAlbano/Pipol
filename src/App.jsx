@@ -465,10 +465,7 @@ export default function App() {
 
       {/* ── Create channel modal ── */}
       {channelModalWorkspaceId && (
-        <CreateChannelModal
-          onCreated={handleChannelModalCreate}
-          onClose={() => setChannelModalWorkspaceId(null)}
-        />
+        <CreateChannelModal onCreated={handleChannelModalCreate} onClose={() => setChannelModalWorkspaceId(null)} />
       )}
 
       {/* ── Onboarding ── */}

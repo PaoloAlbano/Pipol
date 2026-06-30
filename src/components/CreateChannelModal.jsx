@@ -48,9 +48,7 @@ export default function CreateChannelModal({ onCreated, onClose }) {
           </button>
         </header>
 
-        <p className="ccm__hint">
-          Channels are where conversations happen. Use a name that&apos;s easy to find.
-        </p>
+        <p className="ccm__hint">Channels are where conversations happen. Use a name that&apos;s easy to find.</p>
 
         <form onSubmit={handleSubmit} className="ccm__form">
           <label className="ccm__label" htmlFor="ch-name-input">
@@ -72,7 +70,9 @@ export default function CreateChannelModal({ onCreated, onClose }) {
             />
           </div>
           {normalized && name !== normalized && (
-            <p className="ccm__normalized">Will be created as: <strong>#{normalized}</strong></p>
+            <p className="ccm__normalized">
+              Will be created as: <strong>#{normalized}</strong>
+            </p>
           )}
 
           <div className="ccm__actions">

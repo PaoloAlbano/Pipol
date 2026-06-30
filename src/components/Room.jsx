@@ -812,12 +812,7 @@ export default function Room({
   const handleSendFile = useCallback(
     async (file) => {
       try {
-        const msg = await sendImageFile(
-          swarmRef.current,
-          file,
-          isDM ? null : (channelName ?? roomCode),
-          identity
-        )
+        const msg = await sendImageFile(swarmRef.current, file, isDM ? null : (channelName ?? roomCode), identity)
         // Add locally (sender doesn't receive own FILE_META/CHUNK)
         msgStoreRef.current?.receiveMessage(msg)
         onMessageSent?.()
@@ -1246,7 +1241,12 @@ export default function Room({
               onEdit={handleEditMessage}
               onDelete={handleDeleteMessage}
             />
-            <ChatInput onSend={handleSendMessage} onTyping={handleTypingNotification} peers={peers} onSendFile={handleSendFile} />
+            <ChatInput
+              onSend={handleSendMessage}
+              onTyping={handleTypingNotification}
+              peers={peers}
+              onSendFile={handleSendFile}
+            />
           </>
         )}
       </section>

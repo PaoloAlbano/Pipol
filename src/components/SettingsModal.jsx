@@ -15,10 +15,7 @@ import {
   setupBiometricUnlock,
   removeBiometricUnlock,
 } from '../p2p/webauthn.js'
-import {
-  getNotificationPermission,
-  requestNotificationPermission,
-} from '../p2p/notifications.js'
+import { getNotificationPermission, requestNotificationPermission } from '../p2p/notifications.js'
 import '../styles/settings.css'
 
 const QUALITIES = [
@@ -167,12 +164,18 @@ export default function SettingsModal({
             {notifPerm === 'unsupported' ? (
               <p className="settings-hint">Desktop notifications are unavailable in this browser.</p>
             ) : notifPerm === 'granted' ? (
-              <p className="settings-hint">Notifications are enabled. You&apos;ll be notified of new messages when the tab is in the background.</p>
+              <p className="settings-hint">
+                Notifications are enabled. You&apos;ll be notified of new messages when the tab is in the background.
+              </p>
             ) : notifPerm === 'denied' ? (
-              <p className="settings-hint settings-hint--warn">Notifications are blocked. Allow them in your browser settings to receive alerts.</p>
+              <p className="settings-hint settings-hint--warn">
+                Notifications are blocked. Allow them in your browser settings to receive alerts.
+              </p>
             ) : (
               <>
-                <p className="settings-hint">Get desktop notifications for new messages when the tab is in the background.</p>
+                <p className="settings-hint">
+                  Get desktop notifications for new messages when the tab is in the background.
+                </p>
                 <button
                   className="btn btn-secondary"
                   onClick={async () => {

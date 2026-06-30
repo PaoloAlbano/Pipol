@@ -498,7 +498,9 @@ mark.mention {
   padding: 2px 4px;
   border-radius: 8px;
   line-height: 1;
-  transition: transform 0.1s, background 0.1s;
+  transition:
+    transform 0.1s,
+    background 0.1s;
 }
 
 .reaction-picker__emoji:hover {
@@ -524,7 +526,9 @@ mark.mention {
   padding: 2px 8px;
   font-size: 14px;
   cursor: pointer;
-  transition: background 0.1s, border-color 0.1s;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
   line-height: 1.4;
 }
 

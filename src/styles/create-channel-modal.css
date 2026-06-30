@@ -35,7 +35,9 @@
   padding: 4px;
   line-height: 1;
   border-radius: var(--radius-sm);
-  transition: color 0.1s, background 0.1s;
+  transition:
+    color 0.1s,
+    background 0.1s;
 }
 .ccm__close:hover {
   color: var(--text);
@@ -119,7 +121,9 @@
   font-weight: 600;
   cursor: pointer;
   border: none;
-  transition: background 0.1s, opacity 0.1s;
+  transition:
+    background 0.1s,
+    opacity 0.1s;
 }
 
 .ccm__btn--cancel {
