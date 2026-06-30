@@ -178,8 +178,17 @@ export default function App() {
       }
     }
 
-    // Restore deep-link ?ws + ?ch — only apply if the workspace actually exists
+    // Deep-link ?room= — enter quick room directly, even if workspaces exist
     const params = new URLSearchParams(window.location.search)
+    const roomParam = params.get('room')
+    if (roomParam) {
+      const code = roomParam.trim().toLowerCase()
+      setDirectRoomCode(code)
+      setView('room')
+      return
+    }
+
+    // Restore deep-link ?ws + ?ch — only apply if the workspace actually exists
     const wsId = params.get('ws')
     const chName = params.get('ch')
     const ws = getWorkspaces()
