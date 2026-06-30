@@ -2,7 +2,7 @@
  * notifications.js
  * Browser Notification API + App Badge helpers.
  *
- * - Notifications are only shown when the document is hidden (tab in background).
+ * - Notifications fire whenever permission is granted and the message is for a non-active channel.
  * - Badge count reflects the total number of unread messages across all channels.
  * - Both APIs degrade gracefully when unsupported or when permission is denied.
  */
@@ -31,14 +31,14 @@ export async function requestNotificationPermission() {
 // ── Show notification ─────────────────────────────────────────────────────────
 
 /**
- * Show a desktop notification — only if permission is granted AND the tab is hidden.
+ * Show a desktop notification — only if permission is granted.
+ * (The caller is responsible for not notifying the currently active channel.)
  * @param {string} title
  * @param {string} body
  */
 export function showNotification(title, body) {
   if (typeof Notification === 'undefined') return
   if (Notification.permission !== 'granted') return
-  if (typeof document !== 'undefined' && !document.hidden) return
   try {
     const n = new Notification(title, { body, icon: ICON, silent: false })
     setTimeout(() => n.close(), 6000)

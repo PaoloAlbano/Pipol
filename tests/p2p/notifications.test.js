@@ -118,18 +118,19 @@ describe('showNotification', () => {
     const mock = stubNotification('default')
     vi.resetModules()
     const { showNotification } = await import('../../src/p2p/notifications.js')
-    setDocumentHidden(true)
     showNotification('title', 'body')
     expect(mock).not.toHaveBeenCalled()
   })
 
-  it('does nothing when the tab is visible (document.hidden = false)', async () => {
+  it('creates a Notification when permission granted (tab visible)', async () => {
+    vi.useFakeTimers()
     const mock = stubNotification('granted')
     vi.resetModules()
     const { showNotification } = await import('../../src/p2p/notifications.js')
     setDocumentHidden(false)
-    showNotification('title', 'body')
-    expect(mock).not.toHaveBeenCalled()
+    showNotification('Hello', 'World')
+    expect(mock).toHaveBeenCalledWith('Hello', expect.objectContaining({ body: 'World' }))
+    vi.useRealTimers()
   })
 
   it('creates a Notification when permission granted and tab is hidden', async () => {
@@ -153,7 +154,6 @@ describe('showNotification', () => {
     })
     vi.resetModules()
     const { showNotification } = await import('../../src/p2p/notifications.js')
-    setDocumentHidden(true)
     showNotification('A', 'B')
     vi.advanceTimersByTime(6000)
     expect(closeFn).toHaveBeenCalledTimes(1)

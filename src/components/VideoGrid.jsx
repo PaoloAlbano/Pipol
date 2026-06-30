@@ -131,7 +131,16 @@ function formatBytes(n) {
   return `${(n / 1048576).toFixed(1)}MB`
 }
 
-function VideoTile({ stream, label, muted = false, small = false, sidebar = false, stats = null, onClick, mirror = false }) {
+function VideoTile({
+  stream,
+  label,
+  muted = false,
+  small = false,
+  sidebar = false,
+  stats = null,
+  onClick,
+  mirror = false,
+}) {
   const videoRef = useRef(null)
 
   useEffect(() => {
@@ -152,7 +161,13 @@ function VideoTile({ stream, label, muted = false, small = false, sidebar = fals
       onClick={onClick}
     >
       {stream ? (
-        <video ref={videoRef} className={`video-element${mirror ? ' video-element--mirror' : ''}`} autoPlay playsInline muted={muted} />
+        <video
+          ref={videoRef}
+          className={`video-element${mirror ? ' video-element--mirror' : ''}`}
+          autoPlay
+          playsInline
+          muted={muted}
+        />
       ) : (
         <div className="video-placeholder">👤</div>
       )}

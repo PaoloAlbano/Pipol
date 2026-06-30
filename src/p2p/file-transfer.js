@@ -66,9 +66,11 @@ export async function sendImageFile(swarm, file, channelName, identity) {
     channelName: channelName ?? null,
     senderUsername: identity?.username ?? null,
     senderPublicKey: identity?.publicKey
-      ? (identity.publicKey instanceof Uint8Array
-          ? Array.from(identity.publicKey).map((b) => b.toString(16).padStart(2, '0')).join('')
-          : identity.publicKey)
+      ? identity.publicKey instanceof Uint8Array
+        ? Array.from(identity.publicKey)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+        : identity.publicKey
       : null,
   })
 
@@ -107,11 +109,24 @@ export class FileReceiver {
   }
 
   /** Register incoming file metadata. */
-  onMeta({ fileId, name, mimeType, size, totalChunks, channelName, peerId, identity, senderUsername, senderPublicKey }) {
+  onMeta({
+    fileId,
+    name,
+    mimeType,
+    size,
+    totalChunks,
+    channelName,
+    peerId,
+    identity,
+    senderUsername,
+    senderPublicKey,
+  }) {
     // Build identity from either the legacy `identity` field or the new flat fields
-    const resolvedIdentity = identity ?? (senderUsername || senderPublicKey
-      ? { username: senderUsername ?? 'unknown', publicKey: senderPublicKey ?? peerId }
-      : null)
+    const resolvedIdentity =
+      identity ??
+      (senderUsername || senderPublicKey
+        ? { username: senderUsername ?? 'unknown', publicKey: senderPublicKey ?? peerId }
+        : null)
     this._transfers.set(fileId, {
       meta: { fileId, name, mimeType, size, totalChunks, channelName, peerId, identity: resolvedIdentity },
       chunks: new Array(totalChunks).fill(null),

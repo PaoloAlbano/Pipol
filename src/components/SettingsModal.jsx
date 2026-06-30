@@ -165,7 +165,8 @@ export default function SettingsModal({
               <p className="settings-hint">Desktop notifications are unavailable in this browser.</p>
             ) : notifPerm === 'granted' ? (
               <p className="settings-hint">
-                Notifications are enabled. You&apos;ll be notified of new messages when the tab is in the background.
+                Notifications are enabled. You&apos;ll be notified of new messages in channels you&apos;re not currently
+                viewing.
               </p>
             ) : notifPerm === 'denied' ? (
               <p className="settings-hint settings-hint--warn">
@@ -174,7 +175,7 @@ export default function SettingsModal({
             ) : (
               <>
                 <p className="settings-hint">
-                  Get desktop notifications for new messages when the tab is in the background.
+                  Get desktop notifications for new messages in channels you’re not currently viewing.
                 </p>
                 <button
                   className="btn btn-secondary"
