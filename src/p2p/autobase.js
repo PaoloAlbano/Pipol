@@ -73,8 +73,9 @@ export class MessageStore {
     if (!msg?.id) return
     if (this._channelMessages.some((m) => m.id === msg.id)) return
     // Validate message length — truncate if too long (malicious or buggy peer)
+    // Image messages carry a data URL in imageData and have empty content — skip the limit.
     const MAX_MESSAGE_LENGTH = 10000
-    if (msg.content?.length > MAX_MESSAGE_LENGTH) {
+    if (msg.type !== 'image' && msg.content?.length > MAX_MESSAGE_LENGTH) {
       console.warn('[autobase] Message too long, truncating:', msg.content.length, '→', MAX_MESSAGE_LENGTH)
       msg.content = msg.content.slice(0, MAX_MESSAGE_LENGTH)
     }
@@ -193,6 +194,36 @@ export class MessageStore {
         console.warn('[autobase] failed to read block', i, err)
       }
     }
+  }
+
+  /**
+   * Apply an edit received from a peer (or locally triggered).
+   * Updates the in-memory message and persists the change to IndexedDB.
+   * @param {string} originalId  id of the message being edited
+   * @param {string} newContent  new text content
+   * @param {number} editedAt    timestamp of the edit
+   */
+  receiveEdit(originalId, newContent, editedAt) {
+    const idx = this._channelMessages.findIndex((m) => m.id === originalId)
+    if (idx === -1) return
+    const updated = { ...this._channelMessages[idx], content: newContent, edited: true, editedAt }
+    this._channelMessages[idx] = updated
+    persistMessage(this.roomCode, updated).catch(() => {})
+    this._emit('messages')
+  }
+
+  /**
+   * Apply a deletion received from a peer (or locally triggered).
+   * Marks the message as deleted — content is blanked, flag set.
+   * @param {string} originalId  id of the message being deleted
+   */
+  receiveDelete(originalId) {
+    const idx = this._channelMessages.findIndex((m) => m.id === originalId)
+    if (idx === -1) return
+    const updated = { ...this._channelMessages[idx], deleted: true, content: '' }
+    this._channelMessages[idx] = updated
+    persistMessage(this.roomCode, updated).catch(() => {})
+    this._emit('messages')
   }
 
   on(event, listener) {

@@ -7,6 +7,7 @@ import WorkspaceLayout from './components/WorkspaceLayout.jsx'
 import ChannelSidebar from './components/ChannelSidebar.jsx'
 import ChannelHeader from './components/ChannelHeader.jsx'
 import CreateWorkspaceModal from './components/CreateWorkspaceModal.jsx'
+import CreateChannelModal from './components/CreateChannelModal.jsx'
 import MobileNav from './components/MobileNav.jsx'
 
 const Room = lazy(() => import('./components/Room.jsx'))
@@ -27,6 +28,7 @@ import {
   getInviteParamFromUrl,
 } from './p2p/workspace.js'
 import { useWorkspaceSync } from './p2p/useWorkspaceSync.js'
+import { showNotification, updateAppBadge } from './p2p/notifications.js'
 
 // ── Unread count helpers (localStorage) ──────────────────────────────────────
 
@@ -87,6 +89,10 @@ export default function App() {
     if (!wsId || channelName === active) return
     incrementUnread(wsId, channelName)
     bumpUnread((v) => v + 1)
+    showNotification(`#${channelName}`, 'New message')
+    // Badge = sum of all unread counts for this workspace
+    const counts = getUnreadCounts(wsId)
+    updateAppBadge(Object.values(counts).reduce((s, n) => s + n, 0))
   }, [])
 
   // When a DM arrives for us, increment unread indicator (do NOT auto-switch)
@@ -97,6 +103,9 @@ export default function App() {
     if (activeChannelNameRef.current === `dm:${fromPubkey}`) return
     incrementUnread(wsId, `dm:${fromPubkey}`)
     bumpUnread((v) => v + 1)
+    showNotification('New direct message', 'You have a new DM')
+    const counts = getUnreadCounts(wsId)
+    updateAppBadge(Object.values(counts).reduce((s, n) => s + n, 0))
   }, [])
 
   // Workspace channel + presence sync (P2P)
@@ -120,6 +129,9 @@ export default function App() {
   const [workspaceModal, setWorkspaceModal] = useState(null)
   // Ref to the modal's setCreatedWorkspace setter — set after workspace is created
   const [modalCreatedWorkspace, setModalCreatedWorkspace] = useState(null)
+
+  // CreateChannelModal
+  const [channelModalWorkspaceId, setChannelModalWorkspaceId] = useState(null)
 
   // Direct room join (no workspace)
   const [directRoomCode, setDirectRoomCode] = useState(null)
@@ -255,12 +267,17 @@ export default function App() {
     clearUnread(activeWorkspaceId, channelName)
     bumpUnread((v) => v + 1)
     setActiveChannelName(channelName)
+    // Recalculate badge after clearing
+    const counts = getUnreadCounts(activeWorkspaceId)
+    updateAppBadge(Object.values(counts).reduce((s, n) => s + n, 0))
   }
 
   function handleSelectDM(pubkey) {
     clearUnread(activeWorkspaceId, `dm:${pubkey}`)
     bumpUnread((v) => v + 1)
     setActiveChannelName(`dm:${pubkey}`)
+    const counts = getUnreadCounts(activeWorkspaceId)
+    updateAppBadge(Object.values(counts).reduce((s, n) => s + n, 0))
     // The DM room will be opened; no DM_INVITE needed — the first DM message
     // triggers onDMOpen on the recipient's side automatically.
   }
@@ -270,27 +287,24 @@ export default function App() {
   }
 
   function handleCreateChannel(workspaceId) {
-    const name = window.prompt('Channel name (letters, numbers, hyphens only):')
-    if (!name) return
-    const clean = name
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9-]/g, '-')
-    if (!clean) return
+    setChannelModalWorkspaceId(workspaceId)
+  }
+
+  function handleChannelModalCreate(name) {
     const updated = addChannel(
-      workspaceId,
-      clean,
+      channelModalWorkspaceId,
+      name,
       identity?.publicKey
         ? Array.from(identity.publicKey)
             .map((b) => b.toString(16).padStart(2, '0'))
             .join('')
         : null
     )
+    setChannelModalWorkspaceId(null)
     if (updated) {
       const fresh = getWorkspaces()
       setWorkspaces(fresh)
-      // Push new channel list to connected peers immediately
-      const ws = fresh.find((w) => w.id === workspaceId)
+      const ws = fresh.find((w) => w.id === channelModalWorkspaceId)
       if (ws) broadcastChannels(ws.channels)
     }
   }
@@ -446,6 +460,14 @@ export default function App() {
           workspace={pendingInvite}
           onConfirm={() => handleJoinInvite(pendingInvite)}
           onDismiss={() => setPendingInvite(null)}
+        />
+      )}
+
+      {/* ── Create channel modal ── */}
+      {channelModalWorkspaceId && (
+        <CreateChannelModal
+          onCreated={handleChannelModalCreate}
+          onClose={() => setChannelModalWorkspaceId(null)}
         />
       )}
 

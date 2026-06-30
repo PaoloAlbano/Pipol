@@ -99,13 +99,15 @@ function getMentionQuery(editor) {
   return m ? m[1] : null
 }
 
-export default function ChatInput({ onSend, onTyping, peers = [] }) {
+export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) {
   const [hasContent, setHasContent] = useState(false)
   const [activeFormats, setActiveFormats] = useState(new Set())
   const [mentionQuery, setMentionQuery] = useState(null) // string | null
   const [mentionIdx, setMentionIdx] = useState(0)
+  const [dragOver, setDragOver] = useState(false)
   const editorRef = useRef(null)
   const dropdownRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   const mentionMatches =
     mentionQuery !== null ? peers.filter((p) => p.username?.toLowerCase().startsWith(mentionQuery.toLowerCase())) : []
@@ -231,6 +233,21 @@ export default function ChatInput({ onSend, onTyping, peers = [] }) {
     setActiveFormats(new Set())
   }
 
+  function handleFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = '' // allow re-selecting same file
+    onSendFile?.(file)
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    onSendFile?.(file)
+  }
+
   function handleToolbarClick(e, btn) {
     e.preventDefault()
     const editor = editorRef.current
@@ -275,11 +292,14 @@ export default function ChatInput({ onSend, onTyping, peers = [] }) {
 
   return (
     <form
-      className="chat-input-form"
+      className={`chat-input-form${dragOver ? ' chat-input-form--dragover' : ''}`}
       onSubmit={(e) => {
         e.preventDefault()
         doSend()
       }}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
     >
       {/* @mention autocomplete dropdown */}
       {mentionMatches.length > 0 && (
@@ -302,6 +322,19 @@ export default function ChatInput({ onSend, onTyping, peers = [] }) {
       )}
 
       <div className="chat-input-wrapper">
+        {/* Hidden file input — triggered by the attach button */}
+        {onSendFile && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="chat-file-input-hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={handleFileChange}
+          />
+        )}
+
         <div className="chat-input-toolbar" role="toolbar" aria-label="Formatting">
           {TOOLBAR.map((btn) => {
             const active = activeFormats.has(btn.command ?? btn.tag)
@@ -339,6 +372,17 @@ export default function ChatInput({ onSend, onTyping, peers = [] }) {
           <button className="chat-send-btn" type="submit" disabled={!hasContent} title="Send message" aria-label="Send">
             ↑
           </button>
+          {onSendFile && (
+            <button
+              type="button"
+              className="chat-attach-btn"
+              title="Attach image (max 5 MB)"
+              aria-label="Attach image"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              📎
+            </button>
+          )}
         </div>
       </div>
     </form>

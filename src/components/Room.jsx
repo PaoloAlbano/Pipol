@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
 import { decryptDM, encryptDM } from '../p2p/dm-crypto.js'
+import { sendImageFile, FileReceiver } from '../p2p/file-transfer.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
 import {
   getLocalStream,
@@ -53,6 +54,16 @@ export default function Room({
   const [typingUsers, setTypingUsers] = useState([]) // usernames currently typing
   const typingThrottleRef = useRef(null) // throttle our own TYPING broadcasts
 
+  // Reactions: messageId → { emoji → Set<userPubkeyHex> }
+  const [reactions, setReactions] = useState(() => new Map())
+  const myPubkeyHexRef = useRef(
+    identity?.publicKey
+      ? Array.from(identity.publicKey)
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('')
+      : null
+  )
+
   // Panel collapse state (auto-reset on mobile)
   const isMobile = () => window.innerWidth <= 560
   const [mobileView, setMobileView] = useState(() => isMobile())
@@ -88,6 +99,7 @@ export default function Room({
   const callActiveRef = useRef(false)
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
   const retryTimerRef = useRef(null)
+  const fileReceiverRef = useRef(new FileReceiver()) // receives chunked file transfers
   const pipWindowRef = useRef(null) // Document PiP window
   const pipBtnsRef = useRef(null) // { aBtn, vBtn } for label sync
   const pipHandlersRef = useRef(null) // always-fresh toggle handlers
@@ -214,6 +226,37 @@ export default function Room({
       console.error('[room] swarm error', e.detail)
       setStatus('⚠ swarm error — check console')
     }
+    function onReaction(e) {
+      const { messageId, emoji, userPubkey, channelName: rxChannel, removed } = e.detail
+      // Filter by channel (same logic as chat-message)
+      if (!isDM && channelName && rxChannel !== channelName) return
+      setReactions((prev) => {
+        const next = new Map(prev)
+        if (!next.has(messageId)) next.set(messageId, new Map())
+        const emojiMap = new Map(next.get(messageId))
+        const users = new Set(emojiMap.get(emoji) ?? [])
+        if (removed) {
+          users.delete(userPubkey)
+          if (users.size === 0) emojiMap.delete(emoji)
+          else emojiMap.set(emoji, users)
+        } else {
+          users.add(userPubkey)
+          emojiMap.set(emoji, users)
+        }
+        next.set(messageId, emojiMap)
+        return next
+      })
+    }
+    function onMsgEdit(e) {
+      const { originalId, newContent, editedAt, channelName: rxChannel } = e.detail
+      if (!isDM && channelName && rxChannel !== channelName) return
+      msgStore.receiveEdit(originalId, newContent, editedAt)
+    }
+    function onMsgDelete(e) {
+      const { originalId, channelName: rxChannel } = e.detail
+      if (!isDM && channelName && rxChannel !== channelName) return
+      msgStore.receiveDelete(originalId)
+    }
     function onTyping(e) {
       const { peerId, username, stopped, channelName: typingChannel } = e.detail
       // For channel rooms: ignore typing events from other channels
@@ -232,6 +275,17 @@ export default function Room({
       setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
     }
 
+    function onFileMeta(e) {
+      const { channelName: rxChannel } = e.detail
+      if (!isDM && channelName && rxChannel !== channelName) return
+      fileReceiverRef.current.onMeta({ ...e.detail, identity: null })
+    }
+
+    function onFileChunk(e) {
+      const msg = fileReceiverRef.current.onChunk(e.detail)
+      if (msg) msgStore.receiveMessage(msg)
+    }
+
     swarm.addEventListener('peer-joined', onPeerJoined)
     swarm.addEventListener('peer-left', onPeerLeft)
     swarm.addEventListener('call-init', onCallInit)
@@ -246,6 +300,11 @@ export default function Room({
     swarm.addEventListener('screen-share-end', onScreenShareEnd)
     swarm.addEventListener('error', onSwarmError)
     swarm.addEventListener('typing', onTyping)
+    swarm.addEventListener('reaction', onReaction)
+    swarm.addEventListener('msg-edit', onMsgEdit)
+    swarm.addEventListener('msg-delete', onMsgDelete)
+    swarm.addEventListener('file-meta', onFileMeta)
+    swarm.addEventListener('file-chunk', onFileChunk)
 
     return function detach() {
       swarm.removeEventListener('peer-joined', onPeerJoined)
@@ -262,6 +321,11 @@ export default function Room({
       swarm.removeEventListener('screen-share-end', onScreenShareEnd)
       swarm.removeEventListener('error', onSwarmError)
       swarm.removeEventListener('typing', onTyping)
+      swarm.removeEventListener('reaction', onReaction)
+      swarm.removeEventListener('msg-edit', onMsgEdit)
+      swarm.removeEventListener('msg-delete', onMsgDelete)
+      swarm.removeEventListener('file-meta', onFileMeta)
+      swarm.removeEventListener('file-chunk', onFileChunk)
     }
   }
 
@@ -745,6 +809,95 @@ export default function Room({
     ]
   )
 
+  const handleSendFile = useCallback(
+    async (file) => {
+      try {
+        const msg = await sendImageFile(
+          swarmRef.current,
+          file,
+          isDM ? null : (channelName ?? roomCode),
+          identity
+        )
+        // Add locally (sender doesn't receive own FILE_META/CHUNK)
+        msgStoreRef.current?.receiveMessage(msg)
+        onMessageSent?.()
+      } catch (err) {
+        console.error('[room] file send error', err)
+        alert(err.message)
+      }
+    },
+    [identity, isDM, channelName, roomCode, onMessageSent]
+  )
+
+  const handleEditMessage = useCallback(
+    async (originalId, newContent) => {
+      const myPubkey = myPubkeyHexRef.current
+      if (!myPubkey) return
+      const editedAt = Date.now()
+      // Optimistic local update
+      msgStoreRef.current?.receiveEdit(originalId, newContent, editedAt)
+      swarmRef.current?.sendToAll({
+        type: 'MSG_EDIT',
+        originalId,
+        newContent,
+        editedAt,
+        channelName: isDM ? null : (channelName ?? roomCode),
+      })
+    },
+    [isDM, channelName, roomCode]
+  )
+
+  const handleDeleteMessage = useCallback(
+    (originalId) => {
+      const myPubkey = myPubkeyHexRef.current
+      if (!myPubkey) return
+      // Optimistic local update
+      msgStoreRef.current?.receiveDelete(originalId)
+      swarmRef.current?.sendToAll({
+        type: 'MSG_DELETE',
+        originalId,
+        channelName: isDM ? null : (channelName ?? roomCode),
+      })
+    },
+    [isDM, channelName, roomCode]
+  )
+
+  const handleReaction = useCallback(
+    (messageId, emoji) => {
+      const myPubkey = myPubkeyHexRef.current
+      if (!myPubkey) return
+      // Toggle: if already reacted, remove; otherwise add
+      const alreadyReacted = reactions.get(messageId)?.get(emoji)?.has(myPubkey) ?? false
+      const removed = alreadyReacted
+      // Optimistic local update
+      setReactions((prev) => {
+        const next = new Map(prev)
+        if (!next.has(messageId)) next.set(messageId, new Map())
+        const emojiMap = new Map(next.get(messageId))
+        const users = new Set(emojiMap.get(emoji) ?? [])
+        if (removed) {
+          users.delete(myPubkey)
+          if (users.size === 0) emojiMap.delete(emoji)
+          else emojiMap.set(emoji, users)
+        } else {
+          users.add(myPubkey)
+          emojiMap.set(emoji, users)
+        }
+        next.set(messageId, emojiMap)
+        return next
+      })
+      swarmRef.current?.sendToAll({
+        type: 'REACTION',
+        messageId,
+        emoji,
+        userPubkey: myPubkey,
+        channelName: isDM ? null : (channelName ?? roomCode),
+        removed,
+      })
+    },
+    [reactions, isDM, channelName, roomCode]
+  )
+
   const handleTypingNotification = useCallback(() => {
     if (typingThrottleRef.current) return // already sent recently
     swarmRef.current?.sendToAll({
@@ -1083,8 +1236,17 @@ export default function Room({
         )}
         {chatOpen && (
           <>
-            <ChatMessages messages={messages} identity={identity} typingUsers={typingUsers} peers={peers} />
-            <ChatInput onSend={handleSendMessage} onTyping={handleTypingNotification} peers={peers} />
+            <ChatMessages
+              messages={messages}
+              identity={identity}
+              typingUsers={typingUsers}
+              peers={peers}
+              reactions={reactions}
+              onReact={handleReaction}
+              onEdit={handleEditMessage}
+              onDelete={handleDeleteMessage}
+            />
+            <ChatInput onSend={handleSendMessage} onTyping={handleTypingNotification} peers={peers} onSendFile={handleSendFile} />
           </>
         )}
       </section>

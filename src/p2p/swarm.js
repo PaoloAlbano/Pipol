@@ -440,6 +440,71 @@ export class RoomSwarm extends EventTarget {
           new CustomEvent('channel-notify', { detail: { peerId: remoteId, channelName: msg.channelName } })
         )
         break
+      case 'REACTION':
+        this.dispatchEvent(
+          new CustomEvent('reaction', {
+            detail: {
+              peerId: remoteId,
+              messageId: msg.messageId,
+              emoji: msg.emoji,
+              userPubkey: msg.userPubkey,
+              channelName: msg.channelName ?? null,
+              removed: msg.removed ?? false,
+            },
+          })
+        )
+        break
+      case 'MSG_EDIT':
+        this.dispatchEvent(
+          new CustomEvent('msg-edit', {
+            detail: {
+              peerId: remoteId,
+              originalId: msg.originalId,
+              newContent: msg.newContent,
+              editedAt: msg.editedAt ?? Date.now(),
+              channelName: msg.channelName ?? null,
+            },
+          })
+        )
+        break
+      case 'MSG_DELETE':
+        this.dispatchEvent(
+          new CustomEvent('msg-delete', {
+            detail: {
+              peerId: remoteId,
+              originalId: msg.originalId,
+              channelName: msg.channelName ?? null,
+            },
+          })
+        )
+        break
+      case 'FILE_META':
+        this.dispatchEvent(
+          new CustomEvent('file-meta', {
+            detail: {
+              peerId: remoteId,
+              fileId: msg.fileId,
+              name: msg.name,
+              mimeType: msg.mimeType,
+              size: msg.size,
+              totalChunks: msg.totalChunks,
+              channelName: msg.channelName ?? null,
+            },
+          })
+        )
+        break
+      case 'FILE_CHUNK':
+        this.dispatchEvent(
+          new CustomEvent('file-chunk', {
+            detail: {
+              peerId: remoteId,
+              fileId: msg.fileId,
+              index: msg.index,
+              data: msg.data,
+            },
+          })
+        )
+        break
       case 'DM_INVITE':
         this.dispatchEvent(new CustomEvent('dm-invite', { detail: { peerId: remoteId, from: msg.from, to: msg.to } }))
         break
