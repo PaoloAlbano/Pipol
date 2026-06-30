@@ -32,6 +32,10 @@ export class MessageStore {
     this._channelMessages = [] // messages received via swarm control channel (browser mode)
     this._store = null
     this._listeners = new Map() // event → [fn, ...]
+    // Edit/delete ops for messages that live in Hypercore cores (own messages).
+    // Applied in getHistory() so they're visible even when the core block is immutable.
+    this._editsMap = new Map() // id → { newContent, editedAt }
+    this._deletedIds = new Set() // id
   }
 
   async init() {
@@ -178,6 +182,20 @@ export class MessageStore {
       if (!all.some((m) => m.id === msg.id)) all.push(msg)
     }
 
+    // Apply edit/delete ops (covers messages whose source is a Hypercore core)
+    for (const msg of all) {
+      if (this._deletedIds.has(msg.id) && !msg.deleted) {
+        msg.deleted = true
+        msg.content = ''
+      }
+      const edit = this._editsMap.get(msg.id)
+      if (edit && !msg.edited) {
+        msg.content = edit.newContent
+        msg.edited = true
+        msg.editedAt = edit.editedAt
+      }
+    }
+
     // Stable sort by timestamp; break ties by publicKey for determinism
     all.sort((a, b) => a.timestamp - b.timestamp || a.publicKey?.localeCompare(b.publicKey))
     return all
@@ -204,11 +222,15 @@ export class MessageStore {
    * @param {number} editedAt    timestamp of the edit
    */
   receiveEdit(originalId, newContent, editedAt) {
+    // Track for messages in Hypercore cores (own messages — immutable append-only log)
+    this._editsMap.set(originalId, { newContent, editedAt })
+    // Also update _channelMessages in-place if the message arrived via swarm control
     const idx = this._channelMessages.findIndex((m) => m.id === originalId)
-    if (idx === -1) return
-    const updated = { ...this._channelMessages[idx], content: newContent, edited: true, editedAt }
-    this._channelMessages[idx] = updated
-    persistMessage(this.roomCode, updated).catch(() => {})
+    if (idx !== -1) {
+      const updated = { ...this._channelMessages[idx], content: newContent, edited: true, editedAt }
+      this._channelMessages[idx] = updated
+      persistMessage(this.roomCode, updated).catch(() => {})
+    }
     this._emit('messages')
   }
 
@@ -218,11 +240,15 @@ export class MessageStore {
    * @param {string} originalId  id of the message being deleted
    */
   receiveDelete(originalId) {
+    // Track for messages in Hypercore cores (own messages — immutable append-only log)
+    this._deletedIds.add(originalId)
+    // Also update _channelMessages in-place if the message arrived via swarm control
     const idx = this._channelMessages.findIndex((m) => m.id === originalId)
-    if (idx === -1) return
-    const updated = { ...this._channelMessages[idx], deleted: true, content: '' }
-    this._channelMessages[idx] = updated
-    persistMessage(this.roomCode, updated).catch(() => {})
+    if (idx !== -1) {
+      const updated = { ...this._channelMessages[idx], deleted: true, content: '' }
+      this._channelMessages[idx] = updated
+      persistMessage(this.roomCode, updated).catch(() => {})
+    }
     this._emit('messages')
   }
 

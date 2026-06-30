@@ -446,6 +446,12 @@
 }
 
 @media (max-width: 767px) {
+  /* Hide the settings gear inside the sidebar user-card on mobile —
+     settings are accessible from the bottom bar (WorkspaceRail) */
+  .sidebar__user-card-btn[aria-label='Open settings'] {
+    display: none;
+  }
+
   .sidebar__mobile-close {
     display: flex;
     align-items: center;
