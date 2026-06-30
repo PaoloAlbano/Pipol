@@ -37,6 +37,7 @@ export default function Room({
   embedded = false,
   relayUrl = null,
   onMessageSent,
+  onPeerMessage = null, // called when a message arrives from a remote peer
   // Meta-swarm props (workspace rooms). When provided, no per-room swarm is created.
   swarm: swarmProp = null, // RoomSwarm from useWorkspaceSync
   channelName = null, // e.g. 'generale' — used to filter messages
@@ -197,6 +198,7 @@ export default function Room({
       if (isDM) return
       if (channelName && e.detail.channelName !== channelName) return
       msgStore.receiveMessage(e.detail.message)
+      onPeerMessage?.(e.detail.message)
     }
 
     function onDMMessage(e) {

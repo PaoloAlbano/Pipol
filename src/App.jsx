@@ -499,6 +499,14 @@ export default function App() {
             showStats={showStats}
             onLeave={handleLeaveDirectRoom}
             onOpenSettings={() => setSettingsOpen(true)}
+            onMessageSent={() => {
+              showNotification('Quick room', 'New message')
+              updateAppBadge(1)
+            }}
+            onPeerMessage={(msg) => {
+              showNotification(msg.username ?? 'Someone', msg.content || '📎 Image')
+              updateAppBadge(1)
+            }}
           />
         </Suspense>
       )}
