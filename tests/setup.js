@@ -5,11 +5,13 @@ import { cleanup } from '@testing-library/react'
 // Unmount React components after each test
 afterEach(() => {
   cleanup()
-  localStorage.clear()
+  if (typeof localStorage !== 'undefined') localStorage.clear()
 })
 
-// jsdom does not implement scrollIntoView
-window.HTMLElement.prototype.scrollIntoView = vi.fn()
+// jsdom does not implement scrollIntoView (skip in node environment)
+if (typeof window !== 'undefined') {
+  window.HTMLElement.prototype.scrollIntoView = vi.fn()
+}
 
 // jsdom does not have MediaStream — minimal mock compatible with media.js
 if (typeof globalThis.MediaStream === 'undefined') {
