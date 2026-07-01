@@ -152,6 +152,26 @@ export class RoomSwarm extends EventTarget {
       case 'signal':
         this._handleRTCSignal(msg.from, msg.signal)
         break
+      // ── WebSocket relay fallback ───────────────────────────────────────────
+      // Received when the sender could not (or did not) use the DataChannel.
+      case 'relay-data':
+        if (msg.from && msg.data) {
+          // Auto-register the sender if we haven't seen them via WebRTC yet.
+          // This lets messages arrive even when the DataChannel hasn't established.
+          if (!this.peers.has(msg.from)) {
+            this.peers.set(msg.from, {
+              id: msg.from,
+              username: msg.from.slice(0, 8),
+              messageCoreKey: null,
+              pc: null,
+              dc: null,
+              sendControl: null, // DataChannel not yet open; WS relay used for replies
+              expectedFingerprint: null,
+            })
+          }
+          this._handleControl(msg.from, msg.data)
+        }
+        break
     }
   }
 
@@ -533,10 +553,24 @@ export class RoomSwarm extends EventTarget {
 
   sendToAll(msg) {
     for (const peer of this.peers.values()) peer.sendControl?.(msg)
+    // Also relay via WebSocket so peers behind symmetric NAT (mobile) receive it.
+    // receiveMessage() deduplicates, so arriving via both paths is safe.
+    if (this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({ type: 'relay-data', data: msg }))
+    }
   }
 
   sendToPeer(peerId, msg) {
-    this.peers.get(peerId)?.sendControl?.(msg)
+    const peer = this.peers.get(peerId)
+    if (peer?.sendControl) {
+      peer.sendControl(msg)
+      // DataChannel is open — no need for WS relay
+      return
+    }
+    // DataChannel not available — relay via WebSocket
+    if (this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({ type: 'relay-data-to', to: peerId, data: msg }))
+    }
   }
 
   getPeers() {
