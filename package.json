@@ -16,7 +16,8 @@
     "format": "prettier --print-width 120 --write \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\"",
     "format:check": "prettier --print-width 120 --check \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\"",
     "e2e": "playwright test",
-    "e2e:headed": "playwright test --headed"
+    "e2e:headed": "playwright test --headed",
+    "e2e:update": "playwright test --update-snapshots=all"
   },
   "dependencies": {
     "@hyperswarm/dht-relay": "^0.4.3",
