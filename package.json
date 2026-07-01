@@ -14,7 +14,9 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --print-width 120 --write \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\"",
-    "format:check": "prettier --print-width 120 --check \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\""
+    "format:check": "prettier --print-width 120 --check \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\"",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@hyperswarm/dht-relay": "^0.4.3",
@@ -37,6 +39,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.61.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

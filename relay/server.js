@@ -10,7 +10,13 @@ const dht = new DHT()
 await dht.ready()
 console.log('[relay] DHT node ready')
 
-const server = http.createServer()
+const server = http.createServer((req, res) => {
+  // Health check for tests / load balancers
+  if (!req.headers.upgrade) {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('OK')
+  }
+})
 
 // ── DHT relay WebSocket server (path: /) ──────────────────────────────────────
 const wssDHT = new WebSocketServer({ noServer: true })

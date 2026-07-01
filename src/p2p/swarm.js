@@ -489,6 +489,8 @@ export class RoomSwarm extends EventTarget {
               size: msg.size,
               totalChunks: msg.totalChunks,
               channelName: msg.channelName ?? null,
+              senderUsername: msg.senderUsername ?? null,
+              senderPublicKey: msg.senderPublicKey ?? null,
             },
           })
         )

@@ -44,3 +44,6 @@ serveo_key
 
 # claude
 .claude/
+# Playwright E2E
+test-results/
+playwright-report/
