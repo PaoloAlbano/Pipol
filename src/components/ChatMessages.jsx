@@ -68,7 +68,7 @@ export default function ChatMessages({
 
   // Only root messages (no parentId) appear in the main list.
   // Reply counts are derived from messages that have a parentId.
-  const rootMessages = messages.filter((m) => !m.parentId)
+  const rootMessages = useMemo(() => messages.filter((m) => !m.parentId), [messages])
   const replyCounts = useMemo(() => {
     const counts = new Map()
     for (const m of messages) {
@@ -77,9 +77,11 @@ export default function ChatMessages({
     return counts
   }, [messages])
 
+  // Scroll to bottom only when root messages (visible in main chat) change —
+  // not when thread replies are added (they have parentId and are filtered out).
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, typingUsers])
+  }, [rootMessages, typingUsers])
 
   if (rootMessages.length === 0 && typingUsers.length === 0) {
     return (
@@ -140,6 +142,103 @@ export default function ChatMessages({
 function MessageContent({ content }) {
   const html = useMemo(() => renderMarkdown(content), [content])
   return <span className="message-content" dangerouslySetInnerHTML={{ __html: html }} />
+}
+
+// ── MessageMenu (kebab) ───────────────────────────────────────────────────────
+
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👀']
+
+function MessageMenu({ messageId, replyCount, onReact, onOpenThread, onEdit, onDelete }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onOutside(e) {
+      if (!ref.current?.contains(e.target)) setOpen(false)
+    }
+    function onEsc(e) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onOutside)
+    document.addEventListener('keydown', onEsc)
+    return () => {
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('keydown', onEsc)
+    }
+  }, [open])
+
+  return (
+    <div className="message-menu-wrap" ref={ref}>
+      <button
+        className="message-kebab-btn"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Message actions"
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        ···
+      </button>
+      {open && (
+        <div className="message-menu" role="menu">
+          {onReact && (
+            <div className="message-menu__emoji-row">
+              {QUICK_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  className="message-menu__emoji"
+                  onClick={() => {
+                    onReact(messageId, emoji)
+                    setOpen(false)
+                  }}
+                  aria-label={emoji}
+                  role="menuitem"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+          {onOpenThread && (
+            <button
+              className="message-menu__item"
+              onClick={() => {
+                onOpenThread()
+                setOpen(false)
+              }}
+              role="menuitem"
+            >
+              💬 {replyCount > 0 ? `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}` : 'Reply in thread'}
+            </button>
+          )}
+          {onEdit && (
+            <button
+              className="message-menu__item"
+              onClick={() => {
+                onEdit()
+                setOpen(false)
+              }}
+              role="menuitem"
+            >
+              ✏️ Edit
+            </button>
+          )}
+          {onDelete && (
+            <button
+              className="message-menu__item message-menu__item--danger"
+              onClick={() => {
+                onDelete()
+                setOpen(false)
+              }}
+              role="menuitem"
+            >
+              🗑️ Delete
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── MessageRow ────────────────────────────────────────────────────────────────
@@ -250,7 +349,6 @@ function MessageRow({
               />
               <span className="message-image-name">{msg.fileName}</span>
             </div>
-            {onReact && <ReactionPicker messageId={msg.id} onReact={onReact} myPubkey={myPubkey} />}
             {lightbox && (
               <ImageLightbox src={msg.imageData} alt={msg.fileName ?? 'image'} onClose={() => setLightbox(false)} />
             )}
@@ -258,7 +356,6 @@ function MessageRow({
         ) : (
           <div className="message-bubble__body">
             <MessageContent content={msg.content} />
-            {onReact && <ReactionPicker messageId={msg.id} onReact={onReact} myPubkey={myPubkey} />}
           </div>
         )}
 
@@ -283,121 +380,18 @@ function MessageRow({
           </div>
         )}
 
-        {/* Thread reply button — available on any non-deleted message */}
-        {onOpenThread && !msg.deleted && (
-          <button
-            className={`message-thread-btn${replyCount > 0 ? ' message-thread-btn--has-replies' : ''}`}
-            onClick={() => onOpenThread(msg)}
-            aria-label={
-              replyCount > 0
-                ? `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}, open thread`
-                : 'Reply in thread'
-            }
-          >
-            💬 {replyCount > 0 ? `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}` : 'Reply in thread'}
-          </button>
-        )}
-
-        {/* Hover actions — only for own non-deleted messages, hidden while editing */}
-        {isOwn && !editing && (onEdit || onDelete) && (
-          <div className="message-actions" aria-label="Message actions">
-            {onEdit && (
-              <button className="message-action-btn" onClick={startEdit} title="Edit message" aria-label="Edit message">
-                ✏️
-              </button>
-            )}
-            {onDelete && (
-              <button
-                className="message-action-btn message-action-btn--danger"
-                onClick={() => onDelete(msg.id)}
-                title="Delete message"
-                aria-label="Delete message"
-              >
-                🗑
-              </button>
-            )}
-          </div>
+        {/* Kebab menu — replaces separate edit/delete/reaction/thread buttons */}
+        {!editing && (onReact || onOpenThread || (isOwn && (onEdit || onDelete))) && (
+          <MessageMenu
+            messageId={msg.id}
+            replyCount={replyCount}
+            onReact={onReact}
+            onOpenThread={onOpenThread && !msg.deleted ? () => onOpenThread(msg) : undefined}
+            onEdit={isOwn && onEdit && !msg.deleted ? startEdit : undefined}
+            onDelete={isOwn && onDelete && !msg.deleted ? () => onDelete(msg.id) : undefined}
+          />
         )}
       </div>
-    </div>
-  )
-}
-
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👀']
-
-function ReactionPicker({ messageId, onReact }) {
-  const [open, setOpen] = useState(false)
-  const [pickerStyle, setPickerStyle] = useState({})
-  const triggerRef = useRef(null)
-  const pickerRef = useRef(null)
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return
-    function onOutside(e) {
-      if (!triggerRef.current?.contains(e.target) && !pickerRef.current?.contains(e.target)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onOutside)
-    return () => document.removeEventListener('mousedown', onOutside)
-  }, [open])
-
-  // Reposition picker so it never overflows the viewport
-  useEffect(() => {
-    if (!open || !triggerRef.current) return
-    const PICKER_WIDTH = 280 // approximate max width of 8 emoji buttons
-    const PICKER_HEIGHT = 44
-    const GAP = 6
-    const rect = triggerRef.current.getBoundingClientRect()
-    const vw = window.innerWidth
-
-    // Vertical: try above the trigger, fall back to below
-    let top = rect.top - PICKER_HEIGHT - GAP
-    if (top < 4) top = rect.bottom + GAP
-
-    // Horizontal: centre on trigger, clamp to viewport edges with 8px margin
-    let left = rect.left + rect.width / 2 - PICKER_WIDTH / 2
-    if (left < 8) left = 8
-    if (left + PICKER_WIDTH > vw - 8) left = vw - PICKER_WIDTH - 8
-
-    setPickerStyle({ top: Math.round(top), left: Math.round(left) })
-  }, [open])
-
-  return (
-    <div className="reaction-picker-wrap">
-      <button
-        ref={triggerRef}
-        className="reaction-picker-trigger"
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Add reaction"
-        title="Add reaction"
-      >
-        😊
-      </button>
-      {open && (
-        <div
-          ref={pickerRef}
-          className="reaction-picker reaction-picker--fixed"
-          role="listbox"
-          aria-label="Pick a reaction"
-          style={pickerStyle}
-        >
-          {QUICK_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              className="reaction-picker__emoji"
-              onClick={() => {
-                onReact(messageId, emoji)
-                setOpen(false)
-              }}
-              aria-label={emoji}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

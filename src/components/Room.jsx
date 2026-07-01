@@ -1336,6 +1336,33 @@ export default function Room({
           onSendReply={handleSendThreadReply}
         />
       )}
+
+      {/* ── Embedded call controls (workspace / channel mode) ─────────────────
+           In embedded mode there is no sidebar, so call controls float at the
+           bottom-left of the room layout.  The VideoGrid is already shown in
+           <main> above; this bar provides mute / end / PiP etc.
+      ── */}
+      {embedded && callActive && (
+        <div className="room-embedded-callbar">
+          {callElapsed && (
+            <span className="room-embedded-callbar__timer" aria-label="Call duration" aria-live="off">
+              {callElapsed}
+            </span>
+          )}
+          <VideoControls
+            audioMuted={audioMuted}
+            videoMuted={videoMuted}
+            screenSharing={screenSharing}
+            pipActive={pipActive}
+            onToggleAudio={handleToggleAudio}
+            onToggleVideo={handleToggleVideo}
+            onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
+            onToggleScreenShare={navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined}
+            onTogglePiP={handleTogglePiP}
+            onEndCall={handleEndCall}
+          />
+        </div>
+      )}
     </div>
   )
 }

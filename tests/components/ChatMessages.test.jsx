@@ -237,9 +237,10 @@ describe('ChatMessages — ReactionPicker', () => {
     const msg = makeMsg({ id: 'r1' })
     const onReact = vi.fn()
     render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={onReact} />)
-    const trigger = screen.getByRole('button', { name: /add reaction/i })
-    await user.click(trigger)
-    expect(screen.getByRole('listbox', { name: /pick a reaction/i })).toBeInTheDocument()
+    // Open the kebab menu first
+    await user.click(screen.getByRole('button', { name: /message actions/i }))
+    // Quick emoji row is now inside the menu
+    expect(screen.getAllByRole('menuitem').length).toBeGreaterThan(0)
   })
 
   it('calls onReact with messageId and emoji when emoji is clicked', async () => {
@@ -247,24 +248,25 @@ describe('ChatMessages — ReactionPicker', () => {
     const msg = makeMsg({ id: 'r2' })
     const onReact = vi.fn()
     render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={onReact} />)
-    await user.click(screen.getByRole('button', { name: /add reaction/i }))
-    await user.click(screen.getByRole('button', { name: '👍' }))
+    await user.click(screen.getByRole('button', { name: /message actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: '👍' }))
     expect(onReact).toHaveBeenCalledWith('r2', '👍')
   })
 
-  it('closes the picker after an emoji is selected', async () => {
+  it('closes the menu after an emoji is selected', async () => {
     const user = userEvent.setup()
     const msg = makeMsg({ id: 'r3' })
     render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={vi.fn()} />)
-    await user.click(screen.getByRole('button', { name: /add reaction/i }))
-    await user.click(screen.getByRole('button', { name: '👍' }))
-    expect(screen.queryByRole('listbox', { name: /pick a reaction/i })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /message actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: '👍' }))
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('does not render ReactionPicker when onReact is not provided', () => {
-    const msg = makeMsg({ id: 'r4' })
+  it('does not render message menu when no actions are available', () => {
+    // No onReact, no onOpenThread, not own message — no menu
+    const msg = makeMsg({ id: 'r4', publicKey: 'other' })
     render(<ChatMessages messages={[msg]} identity={identity} />)
-    expect(screen.queryByRole('button', { name: /add reaction/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /message actions/i })).not.toBeInTheDocument()
   })
 })
 
@@ -310,38 +312,43 @@ describe('ChatMessages — thread filtering', () => {
 })
 
 describe('ChatMessages — thread reply button', () => {
-  it('shows the "Reply in thread" button when onOpenThread is provided', () => {
+  it('shows the "Reply in thread" item in the kebab menu when onOpenThread is provided', async () => {
     const root = makeMsg({ id: 'root-1', content: 'Root' })
     render(<ChatMessages messages={[root]} identity={identity} onOpenThread={vi.fn()} />)
-    expect(screen.getByRole('button', { name: /reply in thread/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    expect(screen.getByRole('menuitem', { name: /reply in thread/i })).toBeInTheDocument()
   })
 
-  it('does not show thread button when onOpenThread is not provided', () => {
+  it('does not show thread item when onOpenThread is not provided', () => {
     const root = makeMsg({ id: 'root-1', content: 'Root' })
     render(<ChatMessages messages={[root]} identity={identity} />)
-    expect(screen.queryByRole('button', { name: /reply in thread/i })).not.toBeInTheDocument()
+    // No menu at all since there are no actions for remote messages without onReact/onOpenThread
+    expect(screen.queryByRole('button', { name: /message actions/i })).not.toBeInTheDocument()
   })
 
-  it('shows reply count when replies exist', () => {
+  it('shows reply count in the thread menu item when replies exist', async () => {
     const root = makeMsg({ id: 'root-1', content: 'Root' })
     const reply1 = makeMsg({ id: 'rep-1', parentId: 'root-1' })
     const reply2 = makeMsg({ id: 'rep-2', parentId: 'root-1' })
     render(<ChatMessages messages={[root, reply1, reply2]} identity={identity} onOpenThread={vi.fn()} />)
-    expect(screen.getByRole('button', { name: /2 replies/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    expect(screen.getByRole('menuitem', { name: /2 replies/i })).toBeInTheDocument()
   })
 
-  it('calls onOpenThread with the message when the thread button is clicked', async () => {
+  it('calls onOpenThread with the message when the thread item is clicked', async () => {
     const onOpenThread = vi.fn()
     const root = makeMsg({ id: 'root-1', content: 'Clickable root' })
     render(<ChatMessages messages={[root]} identity={identity} onOpenThread={onOpenThread} />)
-    await userEvent.click(screen.getByRole('button', { name: /reply in thread/i }))
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /reply in thread/i }))
     expect(onOpenThread).toHaveBeenCalledWith(expect.objectContaining({ id: 'root-1' }))
   })
 
-  it('does not show thread button for deleted messages', () => {
+  it('does not show thread item for deleted messages', async () => {
     const deleted = makeMsg({ id: 'del-1', deleted: true })
     render(<ChatMessages messages={[deleted]} identity={identity} onOpenThread={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: /reply in thread/i })).not.toBeInTheDocument()
+    // Deleted messages show no menu at all
+    expect(screen.queryByRole('button', { name: /message actions/i })).not.toBeInTheDocument()
   })
 })
 
@@ -414,13 +421,12 @@ describe('ChatMessages — @mention highlight', () => {
 // ── ReactionPicker ────────────────────────────────────────────────────────────
 
 describe('ChatMessages — ReactionPicker interaction', () => {
-  it('shows all 8 quick-emoji buttons when picker is open', async () => {
+  it('shows all 8 quick-emoji buttons when the kebab menu is open', async () => {
     const msg = makeMsg()
     const onReact = vi.fn()
     render(<ChatMessages messages={[msg]} identity={identity} onReact={onReact} />)
-    const trigger = screen.getByRole('button', { name: /add reaction/i })
-    await userEvent.click(trigger)
-    const buttons = screen.getAllByRole('button', { name: /👍|❤️|😂|😮|😢|🙏|🔥|👀/ })
-    expect(buttons.length).toBe(8)
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    const emojiItems = screen.getAllByRole('menuitem').filter((b) => b.className.includes('message-menu__emoji'))
+    expect(emojiItems.length).toBe(8)
   })
 })

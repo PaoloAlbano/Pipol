@@ -580,7 +580,9 @@ describe('Room — thread panel', () => {
     await waitFor(() => screen.getByText(/waiting for peers/i))
     await waitFor(() => screen.getByText('Root message'))
 
-    await userEvent.click(screen.getByRole('button', { name: /reply in thread/i }))
+    // Thread action is now inside the kebab menu
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /reply in thread/i }))
 
     expect(screen.getByLabelText('Thread')).toBeInTheDocument()
     expect(screen.getByText('Thread')).toBeInTheDocument()
@@ -611,7 +613,8 @@ describe('Room — thread panel', () => {
     render(<Room {...defaultProps} identity={threadIdentity} />)
     await waitFor(() => screen.getByText(/waiting for peers/i))
     await waitFor(() => screen.getByText('Another root'))
-    await userEvent.click(screen.getByRole('button', { name: /reply in thread/i }))
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /reply in thread/i }))
     expect(screen.getByLabelText('Thread')).toBeInTheDocument()
 
     await userEvent.click(screen.getByLabelText(/close thread/i))
