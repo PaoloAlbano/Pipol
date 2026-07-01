@@ -252,11 +252,7 @@ function MessageRow({
             </div>
             {onReact && <ReactionPicker messageId={msg.id} onReact={onReact} myPubkey={myPubkey} />}
             {lightbox && (
-              <ImageLightbox
-                src={msg.imageData}
-                alt={msg.fileName ?? 'image'}
-                onClose={() => setLightbox(false)}
-              />
+              <ImageLightbox src={msg.imageData} alt={msg.fileName ?? 'image'} onClose={() => setLightbox(false)} />
             )}
           </div>
         ) : (
@@ -440,19 +436,8 @@ function ImageLightbox({ src, alt, onClose }) {
   }, [onClose])
 
   return (
-    <div
-      className="lightbox-overlay"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Image preview"
-    >
-      <img
-        src={src}
-        alt={alt}
-        className="lightbox-img"
-        onClick={(e) => e.stopPropagation()}
-      />
+    <div className="lightbox-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Image preview">
+      <img src={src} alt={alt} className="lightbox-img" onClick={(e) => e.stopPropagation()} />
       <button className="lightbox-close" onClick={onClose} aria-label="Close image preview">
         ✕
       </button>

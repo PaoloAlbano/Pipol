@@ -256,7 +256,9 @@ function ChannelItem({ channel, active, onSelect }) {
       <span className="sidebar__item-prefix">›</span>
       <span className="sidebar__item-name">{name}</span>
       {mentioned > 0 && !active && (
-        <span className="sidebar__item-mention" aria-label={`${mentioned} mention${mentioned === 1 ? '' : 's'}`}>@</span>
+        <span className="sidebar__item-mention" aria-label={`${mentioned} mention${mentioned === 1 ? '' : 's'}`}>
+          @
+        </span>
       )}
       {unread > 0 && !active && mentioned === 0 && <span className="sidebar__item-dot" aria-hidden="true" />}
     </div>

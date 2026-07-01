@@ -108,7 +108,7 @@ export default function App() {
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0] || null
 
   // Trigger re-render when unread counts change (localStorage isn't reactive)
-  const [unreadVersion, bumpUnread] = useState(0)  // Ref for stable access inside workspace sync callback without stale closures
+  const [unreadVersion, bumpUnread] = useState(0) // Ref for stable access inside workspace sync callback without stale closures
   const activeChannelNameRef = useRef(activeChannelName)
   const activeWorkspaceIdRef = useRef(activeWorkspaceId)
   useEffect(() => {
