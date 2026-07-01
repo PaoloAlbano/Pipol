@@ -235,7 +235,7 @@ export default function ChannelSidebar({
 // ── ChannelItem ───────────────────────────────────────────────────────────────
 
 function ChannelItem({ channel, active, onSelect }) {
-  const { name, unread = 0 } = channel
+  const { name, unread = 0, mentioned = 0 } = channel
 
   return (
     <div
@@ -251,11 +251,14 @@ function ChannelItem({ channel, active, onSelect }) {
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onSelect()}
       aria-current={active ? 'page' : undefined}
-      aria-label={`Canale ${name}${unread > 0 ? ', messaggi non letti' : ''}`}
+      aria-label={`Canale ${name}${unread > 0 ? ', messaggi non letti' : ''}${mentioned > 0 && !active ? ', menzionato' : ''}`}
     >
       <span className="sidebar__item-prefix">›</span>
       <span className="sidebar__item-name">{name}</span>
-      {unread > 0 && !active && <span className="sidebar__item-dot" aria-hidden="true" />}
+      {mentioned > 0 && !active && (
+        <span className="sidebar__item-mention" aria-label={`${mentioned} mention${mentioned === 1 ? '' : 's'}`}>@</span>
+      )}
+      {unread > 0 && !active && mentioned === 0 && <span className="sidebar__item-dot" aria-hidden="true" />}
     </div>
   )
 }

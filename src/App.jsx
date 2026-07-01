@@ -12,7 +12,16 @@ import MobileNav from './components/MobileNav.jsx'
 
 const Room = lazy(() => import('./components/Room.jsx'))
 
-import { getIdentity, setUsername, getShowStats, setShowStats, getMasterSeed, lockSession } from './p2p/storage.js'
+import {
+  getIdentity,
+  setUsername,
+  getShowStats,
+  setShowStats,
+  getMirrorVideo,
+  setMirrorVideo,
+  getMasterSeed,
+  lockSession,
+} from './p2p/storage.js'
 import { initEncryption } from './p2p/db.js'
 import {
   getWorkspaces,
@@ -23,6 +32,7 @@ import {
   deriveChannelRoomCode,
   deriveDMRoomCode,
   addChannel,
+  setChannelTopic,
   parseInviteUrl,
   createWorkspace,
   getInviteParamFromUrl,
@@ -52,12 +62,35 @@ function incrementUnread(workspaceId, channelName) {
   localStorage.setItem(`p2p-chat:unread:${workspaceId}`, JSON.stringify(counts))
 }
 
+// ── Mention count helpers (localStorage) ─────────────────────────────────────
+
+function getMentionCounts(workspaceId) {
+  try {
+    return JSON.parse(localStorage.getItem(`p2p-chat:mentions:${workspaceId}`) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function clearMentions(workspaceId, channelName) {
+  const counts = getMentionCounts(workspaceId)
+  delete counts[channelName]
+  localStorage.setItem(`p2p-chat:mentions:${workspaceId}`, JSON.stringify(counts))
+}
+
+function incrementMention(workspaceId, channelName) {
+  const counts = getMentionCounts(workspaceId)
+  counts[channelName] = (counts[channelName] || 0) + 1
+  localStorage.setItem(`p2p-chat:mentions:${workspaceId}`, JSON.stringify(counts))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [identity, setIdentity] = useState(() => getIdentity())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showStats, setShowStatsState] = useState(getShowStats)
+  const [mirrorVideo, setMirrorVideoState] = useState(getMirrorVideo)
 
   // Workspace state
   const [workspaces, setWorkspaces] = useState(() => getWorkspaces())
@@ -67,13 +100,15 @@ export default function App() {
   const [activeChannelName, setActiveChannelName] = useState(null)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
 
+  // Call state reflected from the embedded Room (used to show correct icon in ChannelHeader)
+  const [roomCallActive, setRoomCallActive] = useState(false)
+  const [startCallTrigger, setStartCallTrigger] = useState(0)
+
   // Active workspace (derived — kept in sync for hooks that run before early returns)
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0] || null
 
   // Trigger re-render when unread counts change (localStorage isn't reactive)
-  const [unreadVersion, bumpUnread] = useState(0)
-
-  // Ref for stable access inside workspace sync callback without stale closures
+  const [unreadVersion, bumpUnread] = useState(0)  // Ref for stable access inside workspace sync callback without stale closures
   const activeChannelNameRef = useRef(activeChannelName)
   const activeWorkspaceIdRef = useRef(activeWorkspaceId)
   useEffect(() => {
@@ -93,6 +128,14 @@ export default function App() {
     // Badge = sum of all unread counts for this workspace
     const counts = getUnreadCounts(wsId)
     updateAppBadge(Object.values(counts).reduce((s, n) => s + n, 0))
+  }, [])
+
+  const onMentionNotify = useCallback((channelName) => {
+    const wsId = activeWorkspaceIdRef.current
+    const active = activeChannelNameRef.current
+    if (!wsId || channelName === active) return
+    incrementMention(wsId, channelName)
+    bumpUnread((v) => v + 1)
   }, [])
 
   // When a DM arrives for us, increment unread indicator (do NOT auto-switch)
@@ -119,7 +162,8 @@ export default function App() {
     identity,
     useCallback(() => setWorkspaces(getWorkspaces()), []),
     onChannelNotify,
-    onDMOpen
+    onDMOpen,
+    onMentionNotify
   )
 
   // Pending invite (from ?invite= URL param)
@@ -274,8 +318,11 @@ export default function App() {
 
   function handleSelectChannel(channelName) {
     clearUnread(activeWorkspaceId, channelName)
+    clearMentions(activeWorkspaceId, channelName)
     bumpUnread((v) => v + 1)
     setActiveChannelName(channelName)
+    setRoomCallActive(false)
+    setStartCallTrigger(0)
     // Recalculate badge after clearing
     const counts = getUnreadCounts(activeWorkspaceId)
     updateAppBadge(Object.values(counts).reduce((s, n) => s + n, 0))
@@ -285,6 +332,8 @@ export default function App() {
     clearUnread(activeWorkspaceId, `dm:${pubkey}`)
     bumpUnread((v) => v + 1)
     setActiveChannelName(`dm:${pubkey}`)
+    setRoomCallActive(false)
+    setStartCallTrigger(0)
     const counts = getUnreadCounts(activeWorkspaceId)
     updateAppBadge(Object.values(counts).reduce((s, n) => s + n, 0))
     // The DM room will be opened; no DM_INVITE needed — the first DM message
@@ -297,6 +346,16 @@ export default function App() {
 
   function handleCreateChannel(workspaceId) {
     setChannelModalWorkspaceId(workspaceId)
+  }
+
+  function handleSetChannelTopic(topic) {
+    if (!activeWorkspaceId || !activeChannelName || isDM) return
+    const updated = setChannelTopic(activeWorkspaceId, activeChannelName, topic)
+    if (!updated) return
+    const fresh = getWorkspaces()
+    setWorkspaces(fresh)
+    const ws = fresh.find((w) => w.id === activeWorkspaceId)
+    if (ws) broadcastChannels(ws.channels)
   }
 
   function handleChannelModalCreate(name) {
@@ -403,9 +462,11 @@ export default function App() {
   // Build channel list with unread counts.
   // unreadVersion changing forces a re-render so getUnreadCounts re-reads localStorage.
   const unreadCounts = activeWorkspace && unreadVersion >= 0 ? getUnreadCounts(activeWorkspace.id) : {}
+  const mentionCounts = activeWorkspace && unreadVersion >= 0 ? getMentionCounts(activeWorkspace.id) : {}
   const channels = (activeWorkspace?.channels ?? []).map((ch) => ({
     ...ch,
     unread: unreadCounts[ch.name] || 0,
+    mentioned: mentionCounts[ch.name] || 0,
   }))
 
   // Current user pubkey hex (needed for DM derivation and admin check)
@@ -435,6 +496,11 @@ export default function App() {
   const activeDisplayName = isDM
     ? (members.get(dmPeerPubkey)?.username ?? dmPeerPubkey?.slice(0, 8) ?? 'DM')
     : activeChannelName
+
+  // Topic of the active channel (null for DMs or when none set)
+  const activeChannelTopic = isDM
+    ? null
+    : activeWorkspace?.channels?.find((c) => c.name === activeChannelName)?.topic || null
 
   // Effective relay URL for active workspace (null = use global/env default)
 
@@ -497,6 +563,7 @@ export default function App() {
             roomCode={directRoomCode}
             identity={identity}
             showStats={showStats}
+            mirrorVideo={mirrorVideo}
             onLeave={handleLeaveDirectRoom}
             onOpenSettings={() => setSettingsOpen(true)}
             onMessageSent={() => {
@@ -537,7 +604,14 @@ export default function App() {
           {/* Render Room only when meta swarm is connected (or it's a direct room without swarm) */}
           {activeRoomCode && metaSwarm ? (
             <>
-              <ChannelHeader channelName={activeDisplayName} isPrivate={isDM} />
+              <ChannelHeader
+                channelName={activeDisplayName}
+                isPrivate={isDM}
+                topic={activeChannelTopic}
+                onSetTopic={!isDM ? handleSetChannelTopic : undefined}
+                callActive={roomCallActive}
+                onStartCall={() => setStartCallTrigger((n) => n + 1)}
+              />
               <Suspense fallback={null}>
                 <Room
                   key={activeRoomCode}
@@ -549,17 +623,20 @@ export default function App() {
                   swarm={metaSwarm}
                   identity={identity}
                   showStats={showStats}
+                  mirrorVideo={mirrorVideo}
                   onLeave={handleLeaveChannel}
                   onOpenSettings={() => setSettingsOpen(true)}
                   onMessageSent={() => notifyChannel(activeChannelName)}
                   embedded
+                  startCallTrigger={startCallTrigger}
+                  onCallActiveChange={setRoomCallActive}
                 />
               </Suspense>
             </>
           ) : activeRoomCode ? (
             // Swarm not yet connected — show brief connecting state
             <>
-              <ChannelHeader channelName={activeDisplayName} isPrivate={isDM} />
+              <ChannelHeader channelName={activeDisplayName} isPrivate={isDM} topic={activeChannelTopic} />
               <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Connecting…</div>
             </>
           ) : (
@@ -580,6 +657,11 @@ export default function App() {
           onShowStatsChange={(v) => {
             setShowStats(v)
             setShowStatsState(v)
+          }}
+          mirrorVideo={mirrorVideo}
+          onMirrorVideoChange={(v) => {
+            setMirrorVideo(v)
+            setMirrorVideoState(v)
           }}
           onClose={() => setSettingsOpen(false)}
           onLock={handleLock}

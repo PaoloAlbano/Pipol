@@ -18,6 +18,7 @@ const IDENTITY_STORAGE_KEY = 'p2p-chat:identity'
 const QUALITY_KEY = 'p2p-chat:video-quality'
 const SHOW_STATS_KEY = 'p2p-chat:show-stats'
 const RELAY_URL_KEY = 'p2p-chat:relay-url'
+const MIRROR_VIDEO_KEY = 'p2p-chat:mirror-video'
 
 export function getVideoQuality() {
   return localStorage.getItem(QUALITY_KEY) || '1080p'
@@ -31,6 +32,13 @@ export function getShowStats() {
 }
 export function setShowStats(v) {
   localStorage.setItem(SHOW_STATS_KEY, String(v))
+}
+
+export function getMirrorVideo() {
+  return localStorage.getItem(MIRROR_VIDEO_KEY) !== 'false'
+}
+export function setMirrorVideo(v) {
+  localStorage.setItem(MIRROR_VIDEO_KEY, String(v))
 }
 
 /** Returns the custom relay base URL (e.g. "wss://relay.example.com"), or '' if using the default. */

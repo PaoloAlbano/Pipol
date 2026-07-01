@@ -44,7 +44,7 @@ function renderMarkdown(content) {
  * Message content is parsed as Markdown (GFM subset, sanitized).
  * Auto-scrolls to the bottom when new messages arrive.
  *
- * @param {object[]} messages
+ * @param {object[]} messages        All messages (root + replies). Root-only messages are shown in the list.
  * @param {object}   identity
  * @param {string[]} [typingUsers]   Usernames of peers currently typing
  * @param {object[]} [peers]         Peer list (unused currently, reserved for future)
@@ -52,6 +52,7 @@ function renderMarkdown(content) {
  * @param {function} [onReact]       (messageId, emoji) => void
  * @param {function} [onEdit]        (messageId, newContent) => void
  * @param {function} [onDelete]      (messageId) => void
+ * @param {function} [onOpenThread]  (message) => void — open thread panel for a message
  */
 export default function ChatMessages({
   messages,
@@ -61,14 +62,26 @@ export default function ChatMessages({
   onReact,
   onEdit,
   onDelete,
+  onOpenThread,
 }) {
   const bottomRef = useRef(null)
+
+  // Only root messages (no parentId) appear in the main list.
+  // Reply counts are derived from messages that have a parentId.
+  const rootMessages = messages.filter((m) => !m.parentId)
+  const replyCounts = useMemo(() => {
+    const counts = new Map()
+    for (const m of messages) {
+      if (m.parentId) counts.set(m.parentId, (counts.get(m.parentId) || 0) + 1)
+    }
+    return counts
+  }, [messages])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, typingUsers])
 
-  if (messages.length === 0 && typingUsers.length === 0) {
+  if (rootMessages.length === 0 && typingUsers.length === 0) {
     return (
       <div className="messages-empty">
         <p>No messages yet. Say hello! 👋</p>
@@ -78,11 +91,12 @@ export default function ChatMessages({
 
   return (
     <div className="messages-list">
-      {messages.map((msg) => {
+      {rootMessages.map((msg) => {
         const isOwn = msg.publicKey === b4a.toString(identity.publicKey, 'hex')
         const displayName = isOwn ? identity.username : msg.username
         const msgReactions = reactions.get(msg.id)
         const myPubkey = b4a.toString(identity.publicKey, 'hex')
+        const replyCount = replyCounts.get(msg.id) || 0
         return (
           <MessageRow
             key={msg.id}
@@ -94,6 +108,8 @@ export default function ChatMessages({
             onReact={onReact}
             onEdit={onEdit}
             onDelete={onDelete}
+            replyCount={replyCount}
+            onOpenThread={onOpenThread}
           />
         )
       })}
@@ -128,9 +144,21 @@ function MessageContent({ content }) {
 
 // ── MessageRow ────────────────────────────────────────────────────────────────
 
-function MessageRow({ msg, isOwn, displayName, msgReactions, myPubkey, onReact, onEdit, onDelete }) {
+function MessageRow({
+  msg,
+  isOwn,
+  displayName,
+  msgReactions,
+  myPubkey,
+  onReact,
+  onEdit,
+  onDelete,
+  replyCount = 0,
+  onOpenThread,
+}) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  const [lightbox, setLightbox] = useState(false)
   const textareaRef = useRef(null)
 
   // Focus textarea when edit mode opens
@@ -213,10 +241,23 @@ function MessageRow({ msg, isOwn, displayName, msgReactions, myPubkey, onReact, 
         ) : msg.type === 'image' ? (
           <div className="message-bubble__body">
             <div className="message-image-wrap">
-              <img src={msg.imageData} alt={msg.fileName ?? 'image'} className="message-image" loading="lazy" />
+              <img
+                src={msg.imageData}
+                alt={msg.fileName ?? 'image'}
+                className="message-image"
+                loading="lazy"
+                onClick={() => setLightbox(true)}
+              />
               <span className="message-image-name">{msg.fileName}</span>
             </div>
             {onReact && <ReactionPicker messageId={msg.id} onReact={onReact} myPubkey={myPubkey} />}
+            {lightbox && (
+              <ImageLightbox
+                src={msg.imageData}
+                alt={msg.fileName ?? 'image'}
+                onClose={() => setLightbox(false)}
+              />
+            )}
           </div>
         ) : (
           <div className="message-bubble__body">
@@ -244,6 +285,21 @@ function MessageRow({ msg, isOwn, displayName, msgReactions, myPubkey, onReact, 
               </button>
             ))}
           </div>
+        )}
+
+        {/* Thread reply button — available on any non-deleted message */}
+        {onOpenThread && !msg.deleted && (
+          <button
+            className={`message-thread-btn${replyCount > 0 ? ' message-thread-btn--has-replies' : ''}`}
+            onClick={() => onOpenThread(msg)}
+            aria-label={
+              replyCount > 0
+                ? `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}, open thread`
+                : 'Reply in thread'
+            }
+          >
+            💬 {replyCount > 0 ? `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}` : 'Reply in thread'}
+          </button>
         )}
 
         {/* Hover actions — only for own non-deleted messages, hidden while editing */}
@@ -370,4 +426,36 @@ function formatTime(ts) {
   })
 
   return `${datePart} ${timePart}`
+}
+
+// ── ImageLightbox ─────────────────────────────────────────────────────────────
+
+function ImageLightbox({ src, alt, onClose }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="lightbox-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Image preview"
+    >
+      <img
+        src={src}
+        alt={alt}
+        className="lightbox-img"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <button className="lightbox-close" onClick={onClose} aria-label="Close image preview">
+        ✕
+      </button>
+    </div>
+  )
 }

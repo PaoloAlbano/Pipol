@@ -278,3 +278,69 @@ describe('ChatMessages — timestamp display', () => {
     expect(container.querySelector('.message-time')).not.toBeNull()
   })
 })
+
+// ── Thread support ────────────────────────────────────────────────────────────
+
+describe('ChatMessages — thread filtering', () => {
+  it('hides reply messages (parentId set) from the main list', () => {
+    const root = makeMsg({ id: 'root-1', content: 'Root message' })
+    const reply = makeMsg({ id: 'reply-1', content: 'Thread reply', parentId: 'root-1' })
+    render(<ChatMessages messages={[root, reply]} identity={identity} />)
+    expect(screen.getByText('Root message')).toBeInTheDocument()
+    expect(screen.queryByText('Thread reply')).not.toBeInTheDocument()
+  })
+
+  it('shows all root messages when some replies exist', () => {
+    const msgs = [
+      makeMsg({ id: 'r1', content: 'First root' }),
+      makeMsg({ id: 'r2', content: 'Second root' }),
+      makeMsg({ id: 'rep1', content: 'A reply', parentId: 'r1' }),
+    ]
+    render(<ChatMessages messages={msgs} identity={identity} />)
+    expect(screen.getByText('First root')).toBeInTheDocument()
+    expect(screen.getByText('Second root')).toBeInTheDocument()
+    expect(screen.queryByText('A reply')).not.toBeInTheDocument()
+  })
+
+  it('shows empty state when all messages are replies', () => {
+    const reply = makeMsg({ id: 'rep', content: 'Only reply', parentId: 'some-parent' })
+    render(<ChatMessages messages={[reply]} identity={identity} />)
+    expect(screen.getByText(/no messages/i)).toBeInTheDocument()
+  })
+})
+
+describe('ChatMessages — thread reply button', () => {
+  it('shows the "Reply in thread" button when onOpenThread is provided', () => {
+    const root = makeMsg({ id: 'root-1', content: 'Root' })
+    render(<ChatMessages messages={[root]} identity={identity} onOpenThread={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /reply in thread/i })).toBeInTheDocument()
+  })
+
+  it('does not show thread button when onOpenThread is not provided', () => {
+    const root = makeMsg({ id: 'root-1', content: 'Root' })
+    render(<ChatMessages messages={[root]} identity={identity} />)
+    expect(screen.queryByRole('button', { name: /reply in thread/i })).not.toBeInTheDocument()
+  })
+
+  it('shows reply count when replies exist', () => {
+    const root = makeMsg({ id: 'root-1', content: 'Root' })
+    const reply1 = makeMsg({ id: 'rep-1', parentId: 'root-1' })
+    const reply2 = makeMsg({ id: 'rep-2', parentId: 'root-1' })
+    render(<ChatMessages messages={[root, reply1, reply2]} identity={identity} onOpenThread={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /2 replies/i })).toBeInTheDocument()
+  })
+
+  it('calls onOpenThread with the message when the thread button is clicked', async () => {
+    const onOpenThread = vi.fn()
+    const root = makeMsg({ id: 'root-1', content: 'Clickable root' })
+    render(<ChatMessages messages={[root]} identity={identity} onOpenThread={onOpenThread} />)
+    await userEvent.click(screen.getByRole('button', { name: /reply in thread/i }))
+    expect(onOpenThread).toHaveBeenCalledWith(expect.objectContaining({ id: 'root-1' }))
+  })
+
+  it('does not show thread button for deleted messages', () => {
+    const deleted = makeMsg({ id: 'del-1', deleted: true })
+    render(<ChatMessages messages={[deleted]} identity={identity} onOpenThread={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /reply in thread/i })).not.toBeInTheDocument()
+  })
+})

@@ -4,6 +4,7 @@ import {
   setVideoQuality,
   getRelayUrl,
   setRelayUrl,
+  setMirrorVideo,
   getPassphrase,
   clearPassphrase,
   getStoredIdentityMeta,
@@ -29,6 +30,8 @@ export default function SettingsModal({
   onUsernameChange,
   showStats,
   onShowStatsChange,
+  mirrorVideo,
+  onMirrorVideoChange,
   onClose,
   onLock,
   activeWorkspace,
@@ -80,6 +83,7 @@ export default function SettingsModal({
     setVideoQuality(quality)
     applyVideoQuality(quality)
     setRelayUrl(trimmedRelay)
+    setMirrorVideo(mirrorVideo)
 
     setSaved(true)
     setTimeout(() => {
@@ -119,6 +123,22 @@ export default function SettingsModal({
               autoFocus
             />
             {nameError && <p className="settings-error">{nameError}</p>}
+          </div>
+
+          <div className="settings-section">
+            <label className="settings-label">Video</label>
+            <label className="settings-toggle-row">
+              <span className="settings-toggle-label">Mirror local camera</span>
+              <span className="settings-toggle-desc">Flip your own video preview horizontally</span>
+              <button
+                className={`settings-toggle ${mirrorVideo ? 'settings-toggle--on' : ''}`}
+                role="switch"
+                aria-checked={mirrorVideo}
+                onClick={() => onMirrorVideoChange?.(!mirrorVideo)}
+              >
+                <span className="settings-toggle-thumb" />
+              </button>
+            </label>
           </div>
 
           <div className="settings-section">

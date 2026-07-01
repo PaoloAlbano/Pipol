@@ -132,3 +132,66 @@ describe('ChannelSidebar — DM peer unread indicator', () => {
     expect(container.querySelector('.sidebar__item-dot')).toBeInTheDocument()
   })
 })
+
+// ── Channel @mention badge ────────────────────────────────────────────────────
+
+describe('ChannelSidebar — @mention badge', () => {
+  it('shows no mention badge when mentioned is 0', () => {
+    const { container } = renderSidebar({ channels: [makeChannel({ mentioned: 0 })] })
+    expect(container.querySelector('.sidebar__item-mention')).toBeNull()
+  })
+
+  it('shows @ badge when mentioned > 0 and channel is not active', () => {
+    const { container } = renderSidebar({
+      channels: [makeChannel({ name: 'generale', mentioned: 2 })],
+      activeChannelName: 'other',
+    })
+    const badge = container.querySelector('.sidebar__item-mention')
+    expect(badge).toBeInTheDocument()
+    expect(badge.textContent).toBe('@')
+  })
+
+  it('hides the @ badge when the mentioned channel is active', () => {
+    const { container } = renderSidebar({
+      channels: [makeChannel({ name: 'generale', mentioned: 3 })],
+      activeChannelName: 'generale',
+    })
+    expect(container.querySelector('.sidebar__item-mention')).toBeNull()
+  })
+
+  it('shows @ badge instead of the plain dot when both unread and mentioned > 0', () => {
+    const { container } = renderSidebar({
+      channels: [makeChannel({ name: 'generale', unread: 5, mentioned: 1 })],
+      activeChannelName: 'other',
+    })
+    expect(container.querySelector('.sidebar__item-mention')).toBeInTheDocument()
+    expect(container.querySelector('.sidebar__item-dot')).toBeNull()
+  })
+
+  it('shows plain dot but no @ badge when unread > 0 but mentioned is 0', () => {
+    const { container } = renderSidebar({
+      channels: [makeChannel({ name: 'generale', unread: 3, mentioned: 0 })],
+      activeChannelName: 'other',
+    })
+    expect(container.querySelector('.sidebar__item-dot')).toBeInTheDocument()
+    expect(container.querySelector('.sidebar__item-mention')).toBeNull()
+  })
+
+  it('@ badge has an accessible aria-label with the mention count', () => {
+    const { container } = renderSidebar({
+      channels: [makeChannel({ name: 'generale', mentioned: 1 })],
+      activeChannelName: 'other',
+    })
+    const badge = container.querySelector('.sidebar__item-mention')
+    expect(badge).toHaveAttribute('aria-label', '1 mention')
+  })
+
+  it('aria-label uses plural "mentions" when count > 1', () => {
+    const { container } = renderSidebar({
+      channels: [makeChannel({ name: 'generale', mentioned: 3 })],
+      activeChannelName: 'other',
+    })
+    const badge = container.querySelector('.sidebar__item-mention')
+    expect(badge).toHaveAttribute('aria-label', '3 mentions')
+  })
+})

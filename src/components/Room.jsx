@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
 import { decryptDM, encryptDM } from '../p2p/dm-crypto.js'
@@ -19,6 +19,8 @@ import ChatMessages from './ChatMessages.jsx'
 import ChatInput from './ChatInput.jsx'
 import VideoGrid from './VideoGrid.jsx'
 import VideoControls from './VideoControls.jsx'
+import ThreadPanel from './ThreadPanel.jsx'
+import { containsMention } from '../p2p/notifications.js'
 import '../styles/room.css'
 
 /**
@@ -32,6 +34,7 @@ export default function Room({
   roomCode,
   identity,
   showStats,
+  mirrorVideo = true,
   onLeave,
   onOpenSettings,
   embedded = false,
@@ -44,6 +47,9 @@ export default function Room({
   isDM = false, // true when this Room is a DM conversation
   dmPeerPublicKey = null, // Buffer: recipient's Ed25519 publicKey (DM only)
   dmPeerPubkeyHex = null, // hex string of dmPeerPublicKey
+  // External call control (used by ChannelHeader in embedded / workspace mode)
+  startCallTrigger = 0, // increment to programmatically start a call
+  onCallActiveChange = null, // (isActive: boolean) => void
 }) {
   const [peers, setPeers] = useState([])
   const [messages, setMessages] = useState([])
@@ -81,6 +87,8 @@ export default function Room({
 
   // Video call state
   const [callActive, setCallActive] = useState(false)
+  const [callStartedAt, setCallStartedAt] = useState(null) // timestamp when call started
+  const [callElapsed, setCallElapsed] = useState('') // formatted HH:MM:SS or MM:SS
   const [localStream, setLocalStream] = useState(null)
   const [remoteStreams, setRemoteStreams] = useState({}) // peerId → MediaStream
   const [audioMuted, setAudioMutedState] = useState(false)
@@ -108,9 +116,47 @@ export default function Room({
   const [pipActive, setPipActive] = useState(false)
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false)
 
+  // Thread state
+  const [activeThread, setActiveThread] = useState(null) // message object | null
+
+  const threadReplies = useMemo(
+    () => (activeThread ? messages.filter((m) => m.parentId === activeThread.id) : []),
+    [messages, activeThread]
+  )
+
   useEffect(() => {
     callActiveRef.current = callActive
   }, [callActive])
+
+  // Notify parent when call starts/ends (used by ChannelHeader in embedded mode)
+  useEffect(() => {
+    onCallActiveChange?.(callActive)
+  }, [callActive, onCallActiveChange])
+
+  // Start call when triggered externally (e.g. ChannelHeader 📹 button)
+  useEffect(() => {
+    if (startCallTrigger > 0 && !callActiveRef.current) handleStartCall()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startCallTrigger])
+
+  // ── Call duration timer ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!callStartedAt) return
+    function tick() {
+      const secs = Math.floor((Date.now() - callStartedAt) / 1000)
+      const h = Math.floor(secs / 3600)
+      const m = Math.floor((secs % 3600) / 60)
+      const s = secs % 60
+      const pad = (n) => String(n).padStart(2, '0')
+      setCallElapsed(h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => {
+      clearInterval(id)
+      setCallElapsed('')
+    }
+  }, [callStartedAt])
 
   // ── Attach swarm event listeners (reusable on reconnect) ──────────────────
   // Returns a detach function that removes every listener — MUST be called on unmount.
@@ -198,7 +244,11 @@ export default function Room({
       if (isDM) return
       if (channelName && e.detail.channelName !== channelName) return
       msgStore.receiveMessage(e.detail.message)
-      onPeerMessage?.(e.detail.message)
+      if (onPeerMessage) {
+        const msg = e.detail.message
+        const mentioned = containsMention(msg.content, identity?.username)
+        onPeerMessage(mentioned ? { ...msg, mentioned: true } : msg)
+      }
     }
 
     function onDMMessage(e) {
@@ -907,11 +957,25 @@ export default function Room({
     }, 2000)
   }, [identity?.username, isDM, channelName, roomCode])
 
+  const handleSendThreadReply = useCallback(
+    async (content) => {
+      if (!activeThread) return
+      const msg = await msgStoreRef.current?.addMessage(content, { parentId: activeThread.id })
+      if (msg && !isDM) {
+        swarmRef.current?.sendToAll({ type: 'MSG', channelName: channelName ?? roomCode, message: msg })
+        onMessageSent?.()
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeThread?.id, isDM, channelName, roomCode, onMessageSent]
+  )
+
   async function handleStartCall() {
     try {
       const stream = await getLocalStream()
       setLocalStream(stream)
       setCallActive(true)
+      setCallStartedAt(Date.now())
 
       navigator.mediaDevices?.enumerateDevices().then((devices) => {
         const videoInputs = devices.filter((d) => d.kind === 'videoinput')
@@ -941,6 +1005,7 @@ export default function Room({
     stopLocalStream()
     setLocalStream(null)
     setCallActive(false)
+    setCallStartedAt(null)
     setAudioMutedState(false)
     setVideoMutedState(false)
     setScreenSharing(false)
@@ -1205,6 +1270,11 @@ export default function Room({
       {/* ── Center: video grid (only during call) ── */}
       {callActive && (
         <main className="room-main">
+          {callElapsed && (
+            <div className="room-call-timer" aria-label="Call duration" aria-live="off">
+              {callElapsed}
+            </div>
+          )}
           <VideoGrid
             localStream={localStream}
             remoteStreams={remoteStreams}
@@ -1216,6 +1286,7 @@ export default function Room({
             spotlightPeerId={spotlightPeerId}
             onLayoutChange={setLayout}
             onSpotlightChange={setSpotlightPeerId}
+            mirrorVideo={mirrorVideo}
           />
         </main>
       )}
@@ -1242,6 +1313,7 @@ export default function Room({
               onReact={handleReaction}
               onEdit={handleEditMessage}
               onDelete={handleDeleteMessage}
+              onOpenThread={setActiveThread}
             />
             <ChatInput
               onSend={handleSendMessage}
@@ -1252,6 +1324,18 @@ export default function Room({
           </>
         )}
       </section>
+
+      {/* ── Thread panel (right of chat, when a thread is active) ── */}
+      {activeThread && (
+        <ThreadPanel
+          parentMessage={activeThread}
+          replies={threadReplies}
+          identity={identity}
+          peers={peers}
+          onClose={() => setActiveThread(null)}
+          onSendReply={handleSendThreadReply}
+        />
+      )}
     </div>
   )
 }

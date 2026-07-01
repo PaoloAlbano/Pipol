@@ -47,6 +47,19 @@ export function showNotification(title, body) {
   }
 }
 
+/**
+ * Check whether a message text contains a @mention of the given username.
+ * Matches word-boundary @username (case-insensitive), ignoring punctuation at the end.
+ * @param {string} text
+ * @param {string} username
+ * @returns {boolean}
+ */
+export function containsMention(text, username) {
+  if (!text || !username) return false
+  const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`\\B@${escaped}(?=[^\\w]|$)`, 'i').test(text)
+}
+
 // ── App badge ─────────────────────────────────────────────────────────────────
 
 /**

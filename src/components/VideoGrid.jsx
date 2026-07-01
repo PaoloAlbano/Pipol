@@ -17,6 +17,7 @@ export default function VideoGrid({
   spotlightPeerId,
   onLayoutChange,
   onSpotlightChange,
+  mirrorVideo = true,
 }) {
   const peerById = Object.fromEntries(peers.map((p) => [p.id, p]))
   const remoteEntries = Object.entries(remoteStreams)
@@ -68,7 +69,7 @@ export default function VideoGrid({
               stream={stream}
               label={id === '__local__' ? `${localUsername} (you)` : getLabel(id)}
               muted={id === '__local__'}
-              mirror={id === '__local__'}
+              mirror={id === '__local__' && mirrorVideo}
               stats={id === '__local__' ? null : getStats(id)}
               sidebar
               onClick={id !== '__local__' ? () => onSpotlightChange(id) : undefined}
@@ -87,7 +88,7 @@ export default function VideoGrid({
       {layoutToggle}
       <div className="video-grid" style={{ '--cols': cols, '--rows': rows }}>
         {count === 0 ? (
-          <VideoTile stream={localStream} label={`${localUsername} (you)`} muted mirror />
+          <VideoTile stream={localStream} label={`${localUsername} (you)`} muted mirror={mirrorVideo} />
         ) : (
           remoteEntries.map(([peerId, stream]) => (
             <VideoTile key={peerId} stream={stream} label={getLabel(peerId)} stats={getStats(peerId)} />
@@ -97,7 +98,7 @@ export default function VideoGrid({
 
       {count > 0 && (
         <div className="video-self-preview">
-          <VideoTile stream={localStream} label="You" muted small mirror />
+          <VideoTile stream={localStream} label="You" muted small mirror={mirrorVideo} />
         </div>
       )}
     </div>

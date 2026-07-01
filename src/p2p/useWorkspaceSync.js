@@ -24,6 +24,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { RoomSwarm } from './swarm.js'
 import { deriveSwarmTopic, mergeChannelList, getWorkspaces, saveWorkspace, getEffectiveConfig } from './workspace.js'
 import { encryptDM } from './dm-crypto.js'
+import { containsMention } from './notifications.js'
 
 function pubkeyToHex(publicKey) {
   if (!publicKey) return null
@@ -32,12 +33,13 @@ function pubkeyToHex(publicKey) {
     .join('')
 }
 
-export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChannelNotify, onDMOpen) {
+export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChannelNotify, onDMOpen, onMentionNotify) {
   const swarmRef = useRef(null)
   const channelsRef = useRef(workspace?.channels ?? [])
   const identityRef = useRef(identity)
   const onChannelNotifyRef = useRef(onChannelNotify)
   const onDMOpenRef = useRef(onDMOpen)
+  const onMentionNotifyRef = useRef(onMentionNotify)
 
   // members: Map<pubkey, { pubkey, username, status, lastSeen }>
   const membersRef = useRef(new Map())
@@ -60,6 +62,10 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
   useEffect(() => {
     onDMOpenRef.current = onDMOpen
   }, [onDMOpen])
+
+  useEffect(() => {
+    onMentionNotifyRef.current = onMentionNotify
+  }, [onMentionNotify])
 
   useEffect(() => {
     if (!workspace?.secret) return
@@ -123,7 +129,7 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
       if (!current) return
 
       const merged = mergeChannelList(current.channels, received)
-      if (merged.length === current.channels.length) return
+      if (merged === current.channels) return
 
       saveWorkspace({ ...current, channels: merged })
       onChannelsUpdated?.()
@@ -144,6 +150,15 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
     function onChannelNotifyEvent(e) {
       const { channelName } = e.detail
       if (channelName) onChannelNotifyRef.current?.(channelName)
+    }
+
+    function onChatMessageEvent(e) {
+      const { channelName, message } = e.detail
+      if (!channelName || !message) return
+      const username = identityRef.current?.username
+      if (username && containsMention(message.content, username)) {
+        onMentionNotifyRef.current?.(channelName, message)
+      }
     }
 
     // Incoming encrypted DM: try to decrypt. If it succeeds, it's for us.
@@ -174,6 +189,7 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
     swarm.addEventListener('member-hello', onMemberHello)
     swarm.addEventListener('presence-update', onPresenceUpdate)
     swarm.addEventListener('channel-notify', onChannelNotifyEvent)
+    swarm.addEventListener('chat-message', onChatMessageEvent)
     swarm.addEventListener('dm-message', onDMMessageEvent)
     document.addEventListener('visibilitychange', onVisibilityChange)
 
@@ -202,6 +218,7 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
       swarm.removeEventListener('member-hello', onMemberHello)
       swarm.removeEventListener('presence-update', onPresenceUpdate)
       swarm.removeEventListener('channel-notify', onChannelNotifyEvent)
+      swarm.removeEventListener('chat-message', onChatMessageEvent)
       swarm.removeEventListener('dm-message', onDMMessageEvent)
       document.removeEventListener('visibilitychange', onVisibilityChange)
       membersMap.clear()

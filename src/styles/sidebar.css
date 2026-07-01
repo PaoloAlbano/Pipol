@@ -327,6 +327,21 @@
   margin-left: auto;
 }
 
+/* @mention badge — shown instead of the plain dot when user is mentioned */
+.sidebar__item-mention {
+  background: var(--accent, #5865f2);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 99px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1.7;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 /* Online presence dot for DMs */
 .sidebar__presence {
   width: 8px;

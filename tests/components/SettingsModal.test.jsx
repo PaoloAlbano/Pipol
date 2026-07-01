@@ -26,6 +26,8 @@ vi.mock('../../src/p2p/storage.js', () => ({
   setVideoQuality: vi.fn(),
   getRelayUrl: vi.fn(() => ''),
   setRelayUrl: vi.fn(),
+  getMirrorVideo: vi.fn(() => true),
+  setMirrorVideo: vi.fn(),
   getPassphrase: () => mockGetPassphrase(),
   clearPassphrase: vi.fn(),
   getStoredIdentityMeta: () => mockGetStoredIdentityMeta(),
@@ -344,14 +346,14 @@ describe('SettingsModal — biometric unlock already enabled', () => {
 describe('SettingsModal — network stats toggle', () => {
   it('il toggle mostra stato off quando showStats=false', () => {
     setup({ showStats: false })
-    const toggle = screen.getByRole('switch')
+    const toggle = screen.getByRole('switch', { name: /show network stats/i })
     expect(toggle).toHaveAttribute('aria-checked', 'false')
     expect(toggle).not.toHaveClass('settings-toggle--on')
   })
 
   it('il toggle mostra stato on quando showStats=true', () => {
     setup({ showStats: true })
-    const toggle = screen.getByRole('switch')
+    const toggle = screen.getByRole('switch', { name: /show network stats/i })
     expect(toggle).toHaveAttribute('aria-checked', 'true')
     expect(toggle).toHaveClass('settings-toggle--on')
   })
@@ -359,15 +361,54 @@ describe('SettingsModal — network stats toggle', () => {
   it('chiama onShowStatsChange con true al click se era false', async () => {
     const user = userEvent.setup()
     const { onShowStatsChange } = setup({ showStats: false })
-    await user.click(screen.getByRole('switch'))
+    await user.click(screen.getByRole('switch', { name: /show network stats/i }))
     expect(onShowStatsChange).toHaveBeenCalledWith(true)
   })
 
   it('chiama onShowStatsChange con false al click se era true', async () => {
     const user = userEvent.setup()
     const { onShowStatsChange } = setup({ showStats: true })
-    await user.click(screen.getByRole('switch'))
+    await user.click(screen.getByRole('switch', { name: /show network stats/i }))
     expect(onShowStatsChange).toHaveBeenCalledWith(false)
+  })
+})
+
+// ── Mirror video toggle ───────────────────────────────────────────────────────
+
+describe('SettingsModal — mirror video toggle', () => {
+  it('shows mirror toggle', () => {
+    setup({ mirrorVideo: true, onMirrorVideoChange: vi.fn() })
+    expect(screen.getByRole('switch', { name: /mirror local camera/i })).toBeInTheDocument()
+  })
+
+  it('toggle is on when mirrorVideo=true', () => {
+    setup({ mirrorVideo: true, onMirrorVideoChange: vi.fn() })
+    const toggle = screen.getByRole('switch', { name: /mirror local camera/i })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(toggle).toHaveClass('settings-toggle--on')
+  })
+
+  it('toggle is off when mirrorVideo=false', () => {
+    setup({ mirrorVideo: false, onMirrorVideoChange: vi.fn() })
+    const toggle = screen.getByRole('switch', { name: /mirror local camera/i })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(toggle).not.toHaveClass('settings-toggle--on')
+  })
+
+  it('calls onMirrorVideoChange(false) when toggled off', async () => {
+    const user = userEvent.setup()
+    const onMirrorVideoChange = vi.fn()
+    setup({ mirrorVideo: true, onMirrorVideoChange })
+    await user.click(screen.getByRole('switch', { name: /mirror local camera/i }))
+    expect(onMirrorVideoChange).toHaveBeenCalledWith(false)
+  })
+
+  it('calls onMirrorVideoChange(true) when toggled on', async () => {
+    const user = userEvent.setup()
+    const onMirrorVideoChange = vi.fn()
+    setup({ mirrorVideo: false, onMirrorVideoChange })
+    await user.click(screen.getByRole('switch', { name: /mirror local camera/i }))
+    expect(onMirrorVideoChange).toHaveBeenCalledWith(true)
   })
 })
 

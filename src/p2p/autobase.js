@@ -98,10 +98,11 @@ export class MessageStore {
   /**
    * Append a new text message to our local Hypercore.
    * @param {string} content
+   * @param {{ parentId?: string }} [opts]  Optional metadata (e.g. thread parentId)
    * @returns {Promise<object>} The message object
    * @throws {Error} If content exceeds maximum length
    */
-  async addMessage(content) {
+  async addMessage(content, opts = {}) {
     const MAX_MESSAGE_LENGTH = 10000
     if (content.length > MAX_MESSAGE_LENGTH) {
       throw new Error(`Message too long (${content.length}/${MAX_MESSAGE_LENGTH} characters)`)
@@ -114,6 +115,7 @@ export class MessageStore {
       timestamp: Date.now(),
       type: 'text',
     }
+    if (opts.parentId) msg.parentId = opts.parentId
     await this._localCore.append(msg)
     persistMessage(this.roomCode, msg).catch(() => {})
     return msg

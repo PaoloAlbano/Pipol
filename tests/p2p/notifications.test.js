@@ -197,3 +197,61 @@ describe('updateAppBadge', () => {
     expect(() => updateAppBadge(0)).not.toThrow()
   })
 })
+
+// ── containsMention ──────────────────────────────────────────────────────────
+
+describe('containsMention', () => {
+  let containsMention
+
+  beforeEach(async () => {
+    vi.resetModules()
+    ;({ containsMention } = await import('../../src/p2p/notifications.js'))
+  })
+
+  it('detects a plain @mention', () => {
+    expect(containsMention('hello @swift-fox!', 'swift-fox')).toBe(true)
+  })
+
+  it('detects @mention at the end of a sentence', () => {
+    expect(containsMention('ping @alice', 'alice')).toBe(true)
+  })
+
+  it('is case-insensitive', () => {
+    expect(containsMention('Hey @Alice', 'alice')).toBe(true)
+    expect(containsMention('Hey @ALICE', 'Alice')).toBe(true)
+  })
+
+  it('requires a word boundary — does not match a partial username', () => {
+    expect(containsMention('hey @alice123', 'alice')).toBe(false)
+  })
+
+  it('does not match a plain word without @', () => {
+    expect(containsMention('alice said hello', 'alice')).toBe(false)
+  })
+
+  it('returns false for empty text', () => {
+    expect(containsMention('', 'alice')).toBe(false)
+  })
+
+  it('returns false for null text', () => {
+    expect(containsMention(null, 'alice')).toBe(false)
+  })
+
+  it('returns false for empty username', () => {
+    expect(containsMention('hello @alice', '')).toBe(false)
+  })
+
+  it('returns false for null username', () => {
+    expect(containsMention('hello @alice', null)).toBe(false)
+  })
+
+  it('escapes regex special characters in username', () => {
+    expect(containsMention('hi @a.b+c', 'a.b+c')).toBe(true)
+    expect(containsMention('hi @axbxc', 'a.b+c')).toBe(false)
+  })
+
+  it('detects mention followed by punctuation', () => {
+    expect(containsMention('@bob, come here', 'bob')).toBe(true)
+    expect(containsMention('hello @bob.', 'bob')).toBe(true)
+  })
+})

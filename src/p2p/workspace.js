@@ -211,11 +211,23 @@ export function getInviteParamFromUrl() {
 export function mergeChannelList(local, received) {
   if (!Array.isArray(received) || received.length === 0) return local
 
-  const existingNames = new Set(local.map((c) => c.name.toLowerCase()))
-  const toAdd = received.filter((c) => c?.name && !existingNames.has(c.name.toLowerCase()))
+  const localMap = new Map(local.map((c) => [c.name.toLowerCase(), { ...c }]))
+  let changed = false
 
-  if (toAdd.length === 0) return local
-  return [...local, ...toAdd]
+  for (const ch of received) {
+    if (!ch?.name) continue
+    const key = ch.name.toLowerCase()
+    if (!localMap.has(key)) {
+      localMap.set(key, ch)
+      changed = true
+    } else if (ch.topic != null && ch.topic !== '' && ch.topic !== localMap.get(key).topic) {
+      localMap.set(key, { ...localMap.get(key), topic: ch.topic })
+      changed = true
+    }
+  }
+
+  if (!changed) return local
+  return Array.from(localMap.values())
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
