@@ -32,18 +32,35 @@ export async function requestNotificationPermission() {
 
 /**
  * Show a desktop notification — only if permission is granted.
- * (The caller is responsible for not notifying the currently active channel.)
+ * Prefers ServiceWorkerRegistration.showNotification() (required by Chrome in
+ * PWA/installed context); falls back to the synchronous Notification constructor
+ * for environments without a service worker.
  * @param {string} title
  * @param {string} body
  */
 export function showNotification(title, body) {
   if (typeof Notification === 'undefined') return
   if (Notification.permission !== 'granted') return
+
+  // Preferred path: delegate to the service worker so it works in installed
+  // PWAs and avoids Chrome's deprecation of the synchronous Notification API.
+  if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.ready
+      .then((reg) => reg.showNotification(title, { body, icon: ICON, silent: false }))
+      .catch(() => _showDirect(title, body))
+    return
+  }
+
+  _showDirect(title, body)
+}
+
+function _showDirect(title, body) {
   try {
     const n = new Notification(title, { body, icon: ICON, silent: false })
     setTimeout(() => n.close(), 6000)
   } catch {
-    // Notification constructor can throw in some environments (e.g. Firefox private mode)
+    // Some environments (Firefox private mode, secure-context restrictions) can
+    // still throw; nothing we can do.
   }
 }
 

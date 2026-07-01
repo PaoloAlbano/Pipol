@@ -562,12 +562,13 @@ export class RoomSwarm extends EventTarget {
 
   sendToPeer(peerId, msg) {
     const peer = this.peers.get(peerId)
+    // Try DataChannel first (also works for directly-wired test peers where dc=null)
     if (peer?.sendControl) {
       peer.sendControl(msg)
-      // DataChannel is open — no need for WS relay
-      return
+      // If a real DataChannel is open we're done; otherwise fall through to WS relay
+      if (peer.dc?.readyState === 'open') return
     }
-    // DataChannel not available — relay via WebSocket
+    // DataChannel not open (or unavailable) — relay via WebSocket
     if (this._ws?.readyState === WebSocket.OPEN) {
       this._ws.send(JSON.stringify({ type: 'relay-data-to', to: peerId, data: msg }))
     }

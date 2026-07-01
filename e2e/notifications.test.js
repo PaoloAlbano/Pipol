@@ -171,6 +171,24 @@ test.describe('Notifications — browser Notification API', () => {
         static requestPermission() { return Promise.resolve('granted') }
       }
       window.Notification = NotificationSpy
+
+      // Also intercept the service-worker path (used by Chrome PWA context):
+      // wrap navigator.serviceWorker.ready to return a fake registration whose
+      // showNotification() records the call in __notificationCalls.
+      const origServiceWorker = navigator.serviceWorker
+      Object.defineProperty(navigator, 'serviceWorker', {
+        get: () => ({
+          get controller() { return origServiceWorker?.controller ?? null },
+          get ready() {
+            return Promise.resolve({
+              showNotification(title, opts) {
+                window.__notificationCalls.push({ title, body: opts?.body })
+              },
+            })
+          },
+        }),
+        configurable: true,
+      })
     })
 
     try {
