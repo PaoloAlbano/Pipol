@@ -4,7 +4,7 @@
  */
 
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChatMessages from '../../src/components/ChatMessages.jsx'
 
@@ -342,5 +342,85 @@ describe('ChatMessages — thread reply button', () => {
     const deleted = makeMsg({ id: 'del-1', deleted: true })
     render(<ChatMessages messages={[deleted]} identity={identity} onOpenThread={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /reply in thread/i })).not.toBeInTheDocument()
+  })
+})
+
+// ── ImageLightbox ─────────────────────────────────────────────────────────────
+
+describe('ChatMessages — image lightbox', () => {
+  it('opens the lightbox when an image is clicked', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    const img = screen.getByRole('img')
+    fireEvent.click(img)
+    expect(screen.getByRole('dialog', { name: /image preview/i })).toBeInTheDocument()
+  })
+
+  it('closes the lightbox when the close button is clicked', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    fireEvent.click(screen.getByRole('img'))
+    fireEvent.click(screen.getByRole('button', { name: /close image preview/i }))
+    expect(screen.queryByRole('dialog', { name: /image preview/i })).not.toBeInTheDocument()
+  })
+
+  it('closes the lightbox when the overlay backdrop is clicked', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    fireEvent.click(screen.getByRole('img'))
+    const overlay = screen.getByRole('dialog', { name: /image preview/i })
+    fireEvent.click(overlay)
+    expect(screen.queryByRole('dialog', { name: /image preview/i })).not.toBeInTheDocument()
+  })
+
+  it('closes the lightbox when Escape is pressed', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    fireEvent.click(screen.getByRole('img'))
+    expect(screen.getByRole('dialog', { name: /image preview/i })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: /image preview/i })).not.toBeInTheDocument()
+  })
+
+  it('clicking the lightbox image does not close the overlay', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    fireEvent.click(screen.getByRole('img'))
+    // Click the lightbox image (not the overlay)
+    const lightboxImg = screen.getByRole('dialog').querySelector('img')
+    fireEvent.click(lightboxImg)
+    expect(screen.getByRole('dialog', { name: /image preview/i })).toBeInTheDocument()
+  })
+})
+
+// ── @mention rendering ────────────────────────────────────────────────────────
+
+describe('ChatMessages — @mention highlight', () => {
+  it('wraps @username in a <mark class="mention"> element', () => {
+    const msg = makeMsg({ content: 'hello @swift-fox, welcome!' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    const mark = container.querySelector('mark.mention')
+    expect(mark).toBeInTheDocument()
+    expect(mark.textContent).toBe('@swift-fox')
+  })
+
+  it('does not add mention mark when no @ in content', () => {
+    const msg = makeMsg({ content: 'hello everyone!' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(container.querySelector('mark.mention')).toBeNull()
+  })
+})
+
+// ── ReactionPicker ────────────────────────────────────────────────────────────
+
+describe('ChatMessages — ReactionPicker interaction', () => {
+  it('shows all 8 quick-emoji buttons when picker is open', async () => {
+    const msg = makeMsg()
+    const onReact = vi.fn()
+    render(<ChatMessages messages={[msg]} identity={identity} onReact={onReact} />)
+    const trigger = screen.getByRole('button', { name: /add reaction/i })
+    await userEvent.click(trigger)
+    const buttons = screen.getAllByRole('button', { name: /👍|❤️|😂|😮|😢|🙏|🔥|👀/ })
+    expect(buttons.length).toBe(8)
   })
 })

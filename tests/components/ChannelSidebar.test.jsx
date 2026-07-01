@@ -7,8 +7,8 @@
  */
 
 import React from 'react'
-import { render } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { render, fireEvent, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
 import ChannelSidebar from '../../src/components/ChannelSidebar.jsx'
 
 const identity = {
@@ -193,5 +193,243 @@ describe('ChannelSidebar — @mention badge', () => {
     })
     const badge = container.querySelector('.sidebar__item-mention')
     expect(badge).toHaveAttribute('aria-label', '3 mentions')
+  })
+})
+
+// ── UserCard ──────────────────────────────────────────────────────────────────
+
+describe('ChannelSidebar — UserCard', () => {
+  it('renders the username', () => {
+    renderSidebar()
+    expect(screen.getByText('alice')).toBeInTheDocument()
+  })
+
+  it('shows "Online" status when not muted', () => {
+    renderSidebar({ audioMuted: false })
+    expect(screen.getByText('Online')).toBeInTheDocument()
+  })
+
+  it('shows "Microphone muted" status when muted', () => {
+    renderSidebar({ audioMuted: true })
+    expect(screen.getByText('Microphone muted')).toBeInTheDocument()
+  })
+
+  it('calls onOpenSettings when the avatar is clicked', () => {
+    const onOpenSettings = vi.fn()
+    renderSidebar({ onOpenSettings })
+    fireEvent.click(screen.getByRole('button', { name: /open profile settings/i }))
+    expect(onOpenSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onToggleMute when the mute button is clicked', () => {
+    const onToggleMute = vi.fn()
+    renderSidebar({ onToggleMute })
+    fireEvent.click(screen.getByRole('button', { name: /mute microphone/i }))
+    expect(onToggleMute).toHaveBeenCalledTimes(1)
+  })
+
+  it('mute button label changes when audioMuted is true', () => {
+    renderSidebar({ audioMuted: true, onToggleMute: vi.fn() })
+    expect(screen.getByRole('button', { name: /unmute microphone/i })).toBeInTheDocument()
+  })
+
+  it('calls onOpenSettings from the settings button', () => {
+    const onOpenSettings = vi.fn()
+    renderSidebar({ onOpenSettings })
+    fireEvent.click(screen.getByRole('button', { name: /open settings/i }))
+    expect(onOpenSettings).toHaveBeenCalled()
+  })
+
+  it('does not render the user card when identity is null', () => {
+    const { container } = render(
+      <ChannelSidebar workspace={workspace} identity={null} channels={[]} peers={[]} dmPeers={[]} />
+    )
+    expect(container.querySelector('.sidebar__user-card')).toBeNull()
+  })
+})
+
+// ── Workspace header ──────────────────────────────────────────────────────────
+
+describe('ChannelSidebar — workspace header', () => {
+  it('renders the workspace name', () => {
+    renderSidebar()
+    expect(screen.getByText('Test Workspace')).toBeInTheDocument()
+  })
+
+  it('shows online count when online peers are present', () => {
+    renderSidebar({ peers: [{ id: '1', username: 'bob', status: 'online' }] })
+    expect(screen.getByText('1 online')).toBeInTheDocument()
+  })
+
+  it('does not show online count when no online peers', () => {
+    renderSidebar({ peers: [] })
+    expect(screen.queryByText(/online/)).toBeNull()
+  })
+
+  it('offline peers are excluded from online count', () => {
+    renderSidebar({ peers: [{ id: '1', username: 'bob', status: 'offline' }] })
+    expect(screen.queryByText(/online/)).toBeNull()
+  })
+
+  it('does not show admin chevron when isAdmin is false', () => {
+    const { container } = renderSidebar({ isAdmin: false })
+    expect(container.querySelector('.sidebar__workspace-chevron')).toBeNull()
+  })
+
+  it('shows admin chevron when isAdmin is true', () => {
+    const { container } = renderSidebar({ isAdmin: true })
+    expect(container.querySelector('.sidebar__workspace-chevron')).toBeInTheDocument()
+  })
+
+  it('admin can open the workspace dropdown menu by clicking header', () => {
+    const { container } = renderSidebar({ isAdmin: true, onInvite: vi.fn() })
+    const header = container.querySelector('.sidebar__workspace-header')
+    fireEvent.click(header)
+    expect(container.querySelector('.sidebar__ws-menu')).toBeInTheDocument()
+  })
+
+  it('workspace menu shows invite button when onInvite is provided', () => {
+    const { container } = renderSidebar({ isAdmin: true, onInvite: vi.fn() })
+    fireEvent.click(container.querySelector('.sidebar__workspace-header'))
+    expect(screen.getByRole('menuitem', { name: /copy invite link/i })).toBeInTheDocument()
+  })
+
+  it('clicking invite button calls onInvite and closes menu', () => {
+    const onInvite = vi.fn()
+    const { container } = renderSidebar({ isAdmin: true, onInvite })
+    fireEvent.click(container.querySelector('.sidebar__workspace-header'))
+    fireEvent.click(screen.getByRole('menuitem', { name: /copy invite link/i }))
+    expect(onInvite).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.sidebar__ws-menu')).toBeNull()
+  })
+})
+
+// ── Channel search ────────────────────────────────────────────────────────────
+
+describe('ChannelSidebar — channel search', () => {
+  const channels = [
+    { name: 'general', topic: '', unread: 0 },
+    { name: 'random', topic: '', unread: 0 },
+    { name: 'announcements', topic: '', unread: 0 },
+  ]
+
+  it('shows all channels when search is empty', () => {
+    renderSidebar({ channels })
+    expect(screen.getByText('general')).toBeInTheDocument()
+    expect(screen.getByText('random')).toBeInTheDocument()
+    expect(screen.getByText('announcements')).toBeInTheDocument()
+  })
+
+  it('filters channels by search term', () => {
+    renderSidebar({ channels })
+    fireEvent.change(screen.getByRole('textbox', { name: /search channels/i }), {
+      target: { value: 'gen' },
+    })
+    expect(screen.getByText('general')).toBeInTheDocument()
+    expect(screen.queryByText('random')).toBeNull()
+    expect(screen.queryByText('announcements')).toBeNull()
+  })
+
+  it('clear button appears when search has text', () => {
+    renderSidebar({ channels })
+    const input = screen.getByRole('textbox', { name: /search channels/i })
+    fireEvent.change(input, { target: { value: 'gen' } })
+    expect(screen.getByRole('button', { name: /clear search/i })).toBeInTheDocument()
+  })
+
+  it('clear button clears the search and shows all channels', () => {
+    renderSidebar({ channels })
+    const input = screen.getByRole('textbox', { name: /search channels/i })
+    fireEvent.change(input, { target: { value: 'gen' } })
+    fireEvent.click(screen.getByRole('button', { name: /clear search/i }))
+    expect(screen.getByText('random')).toBeInTheDocument()
+    expect(screen.getByText('announcements')).toBeInTheDocument()
+  })
+
+  it('shows no channels when search matches nothing', () => {
+    renderSidebar({ channels })
+    fireEvent.change(screen.getByRole('textbox', { name: /search channels/i }), {
+      target: { value: 'zzz' },
+    })
+    expect(screen.queryByText('general')).toBeNull()
+  })
+})
+
+// ── Sections collapse ─────────────────────────────────────────────────────────
+
+describe('ChannelSidebar — collapsible sections', () => {
+  it('channels section is visible by default', () => {
+    renderSidebar({ channels: [{ name: 'general', topic: '', unread: 0 }] })
+    expect(screen.getByText('general')).toBeInTheDocument()
+  })
+
+  it('clicking the Channels section header collapses it', () => {
+    renderSidebar({ channels: [{ name: 'general', topic: '', unread: 0 }] })
+    const sectionHeader = screen.getByText('Channels').closest('[role="button"]')
+    fireEvent.click(sectionHeader)
+    expect(screen.queryByText('general')).toBeNull()
+  })
+
+  it('clicking the + button calls onCreateChannel', () => {
+    const onCreateChannel = vi.fn()
+    renderSidebar({ channels: [{ name: 'general', topic: '', unread: 0 }], onCreateChannel })
+    fireEvent.click(screen.getByRole('button', { name: /create channel/i }))
+    expect(onCreateChannel).toHaveBeenCalledTimes(1)
+  })
+
+  it('DM section collapses when its header is clicked', () => {
+    const peers = [{ pubkey: 'abc', username: 'bob', online: true, unread: 0 }]
+    renderSidebar({ dmPeers: peers })
+    const dmHeader = screen.getByText('Direct Messages').closest('[role="button"]')
+    fireEvent.click(dmHeader)
+    expect(screen.queryByText('bob')).toBeNull()
+  })
+})
+
+// ── onSelectChannel / onSelectDM callbacks ────────────────────────────────────
+
+describe('ChannelSidebar — selection callbacks', () => {
+  it('calls onSelectChannel when a channel item is clicked', () => {
+    const onSelectChannel = vi.fn()
+    renderSidebar({
+      channels: [{ name: 'general', topic: '', unread: 0 }],
+      onSelectChannel,
+    })
+    fireEvent.click(screen.getByText('general'))
+    expect(onSelectChannel).toHaveBeenCalledWith('general')
+  })
+
+  it('calls onSelectDM when a DM item is clicked', () => {
+    const onSelectDM = vi.fn()
+    renderSidebar({
+      dmPeers: [{ pubkey: 'aabbcc', username: 'bob', online: true, unread: 0 }],
+      onSelectDM,
+    })
+    fireEvent.click(screen.getByText('bob'))
+    expect(onSelectDM).toHaveBeenCalledWith('aabbcc')
+  })
+
+  it('calls closeMobileSidebar when a channel is selected', () => {
+    const onSelectChannel = vi.fn()
+    const closeMobileSidebar = vi.fn()
+    renderSidebar({
+      channels: [{ name: 'general', topic: '', unread: 0 }],
+      onSelectChannel,
+      closeMobileSidebar,
+    })
+    fireEvent.click(screen.getByText('general'))
+    expect(closeMobileSidebar).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders close button when closeMobileSidebar is provided', () => {
+    renderSidebar({ closeMobileSidebar: vi.fn() })
+    expect(screen.getByRole('button', { name: /close sidebar/i })).toBeInTheDocument()
+  })
+
+  it('calls closeMobileSidebar when the close button is clicked', () => {
+    const closeMobileSidebar = vi.fn()
+    renderSidebar({ closeMobileSidebar })
+    fireEvent.click(screen.getByRole('button', { name: /close sidebar/i }))
+    expect(closeMobileSidebar).toHaveBeenCalledTimes(1)
   })
 })

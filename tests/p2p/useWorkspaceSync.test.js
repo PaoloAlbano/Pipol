@@ -185,3 +185,111 @@ describe('useWorkspaceSync — onMentionNotify via chat-message', () => {
     unmount()
   })
 })
+
+// ── onChannelNotify via channel-notify ────────────────────────────────────────
+
+describe('useWorkspaceSync — onChannelNotify via channel-notify', () => {
+  beforeEach(() => {
+    lastSwarm = null
+  })
+
+  it('calls onChannelNotify when a channel-notify event is received', async () => {
+    const onChannelNotify = vi.fn()
+    const { unmount } = renderHook(() =>
+      useWorkspaceSync(WORKSPACE, IDENTITY, undefined, onChannelNotify)
+    )
+    await act(async () => {})
+
+    act(() => {
+      lastSwarm.dispatchEvent(
+        new CustomEvent('channel-notify', { detail: { channelName: 'general' } })
+      )
+    })
+
+    expect(onChannelNotify).toHaveBeenCalledWith('general')
+    unmount()
+  })
+
+  it('does not call onChannelNotify when channelName is missing', async () => {
+    const onChannelNotify = vi.fn()
+    const { unmount } = renderHook(() =>
+      useWorkspaceSync(WORKSPACE, IDENTITY, undefined, onChannelNotify)
+    )
+    await act(async () => {})
+
+    act(() => {
+      lastSwarm.dispatchEvent(
+        new CustomEvent('channel-notify', { detail: {} })
+      )
+    })
+
+    expect(onChannelNotify).not.toHaveBeenCalled()
+    unmount()
+  })
+})
+
+// ── member presence ───────────────────────────────────────────────────────────
+
+describe('useWorkspaceSync — member presence', () => {
+  beforeEach(() => {
+    lastSwarm = null
+  })
+
+  it('adds a member when member-hello is received', async () => {
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceSync(WORKSPACE, IDENTITY)
+    )
+    await act(async () => {})
+
+    act(() => {
+      lastSwarm.dispatchEvent(
+        new CustomEvent('member-hello', {
+          detail: { pubkey: 'aabbcc', username: 'bob', status: 'online' },
+        })
+      )
+    })
+
+    expect(result.current.members.get('aabbcc')).toMatchObject({ username: 'bob', status: 'online' })
+    unmount()
+  })
+
+  it('updates member status when presence-update is received', async () => {
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceSync(WORKSPACE, IDENTITY)
+    )
+    await act(async () => {})
+
+    // First, register the member
+    act(() => {
+      lastSwarm.dispatchEvent(
+        new CustomEvent('member-hello', { detail: { pubkey: 'dd1122', username: 'carol', status: 'online' } })
+      )
+    })
+
+    // Then update their presence
+    act(() => {
+      lastSwarm.dispatchEvent(
+        new CustomEvent('presence-update', { detail: { pubkey: 'dd1122', status: 'away' } })
+      )
+    })
+
+    expect(result.current.members.get('dd1122')).toMatchObject({ status: 'away' })
+    unmount()
+  })
+
+  it('ignores presence-update when pubkey or status is missing', async () => {
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceSync(WORKSPACE, IDENTITY)
+    )
+    await act(async () => {})
+
+    act(() => {
+      lastSwarm.dispatchEvent(
+        new CustomEvent('presence-update', { detail: { pubkey: null, status: null } })
+      )
+    })
+
+    expect(result.current.members.size).toBe(0)
+    unmount()
+  })
+})
