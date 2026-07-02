@@ -17,8 +17,22 @@ function roomCode(suffix) {
 /** Hover a message bubble to reveal action buttons, return the bubble locator */
 async function hoverMessage(page, text) {
   const bubble = page.locator('.message-bubble', { hasText: text }).last()
+  await bubble.scrollIntoViewIfNeeded()
   await bubble.hover()
   return bubble
+}
+
+/**
+ * Open the kebab action menu for a message.
+ * Uses hover + click; falls back to forcing visibility if CSS hover is unreliable
+ * (e.g. when multiple browser contexts are active in the same run).
+ */
+async function openMessageMenu(page, text) {
+  const row = page.locator('.message-row', { hasText: text }).last()
+  await row.scrollIntoViewIfNeeded()
+  await row.hover()
+  const kebab = row.getByRole('button', { name: 'Message actions' })
+  await kebab.click({ force: true })
 }
 
 // ── Edit message ──────────────────────────────────────────────────────────────
@@ -43,9 +57,9 @@ test.describe('Edit message', () => {
       await waitForMessage(pageA, 'original message')
       await waitForMessage(pageB, 'original message', 20000)
 
-      // Alice hovers her message and clicks Edit
-      await hoverMessage(pageA, 'original message')
-      await pageA.getByRole('button', { name: 'Edit message' }).click()
+      // Alice opens the kebab menu and clicks Edit
+      await openMessageMenu(pageA, 'original message')
+      await pageA.getByRole('menuitem', { name: /edit/i }).click()
 
       // Edit textarea appears pre-filled; clear and type new content
       const editArea = pageA.locator('.message-edit-textarea')
@@ -87,9 +101,9 @@ test.describe('Delete message', () => {
       await waitForMessage(pageA, 'message to delete')
       await waitForMessage(pageB, 'message to delete', 20000)
 
-      // Alice hovers and deletes
-      await hoverMessage(pageA, 'message to delete')
-      await pageA.getByRole('button', { name: 'Delete message' }).click()
+      // Alice opens the kebab menu and deletes
+      await openMessageMenu(pageA, 'message to delete')
+      await pageA.getByRole('menuitem', { name: /delete/i }).click()
 
       // Alice sees "Message deleted" placeholder
       await expect(pageA.locator('.message-deleted-label').first()).toBeVisible({ timeout: 5000 })
@@ -126,12 +140,9 @@ test.describe('Reactions', () => {
       await sendMessage(pageB, 'react to this')
       await waitForMessage(pageA, 'react to this', 20000)
 
-      // Alice hovers Bob's message and clicks the reaction trigger
-      await hoverMessage(pageA, 'react to this')
-      await pageA.getByRole('button', { name: 'Add reaction' }).click()
-
-      // Pick the first emoji in the picker
-      const firstEmoji = pageA.locator('.reaction-picker__emoji').first()
+      // Alice opens the kebab menu and picks the first emoji
+      await openMessageMenu(pageA, 'react to this')
+      const firstEmoji = pageA.locator('.message-menu__emoji').first()
       const emojiText = await firstEmoji.textContent()
       await firstEmoji.click()
 
