@@ -275,8 +275,8 @@ export default function Room({
       setLayout('grid')
     }
     function onSwarmError(e) {
-      console.error('[room] swarm error', e.detail)
-      setStatus('⚠ swarm error — check console')
+      console.warn('[room] signaling lost, reconnecting…', e.detail)
+      setStatus('reconnecting…')
     }
     function onReaction(e) {
       const { messageId, emoji, userPubkey, channelName: rxChannel, removed } = e.detail

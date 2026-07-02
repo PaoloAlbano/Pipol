@@ -431,7 +431,7 @@ describe('Room — swarm events', () => {
       fireSwarmEvent('error', { message: 'something broke' })
     })
 
-    expect(screen.getByText(/swarm error/i)).toBeInTheDocument()
+    expect(screen.getByText(/reconnect/i)).toBeInTheDocument()
   })
 
   it('shows the relay unreachable banner when createRoomSwarm rejects', async () => {

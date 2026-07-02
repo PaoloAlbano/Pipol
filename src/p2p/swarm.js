@@ -66,6 +66,8 @@ export class RoomSwarm extends EventTarget {
     this._ws = null // signaling WebSocket
     this._localPeerId = null
     this._identity = null
+    this._leaving = false // true while leave() is in progress
+    this._wsReconnectTimer = null // reconnect back-off timer
 
     // ICE candidates buffered before remote description is set
     this._pendingCandidates = new Map() // peerId → [candidate, ...]
@@ -129,6 +131,11 @@ export class RoomSwarm extends EventTarget {
         const hasOpenChannels = [...this.peers.values()].some((p) => p.dc?.readyState === 'open')
         if (this.peers.size > 0 && !hasOpenChannels) {
           this.dispatchEvent(new CustomEvent('error', { detail: new Error('Signaling connection lost') }))
+        }
+        // Schedule reconnect unless the swarm is intentionally being torn down.
+        if (!this._leaving) {
+          clearTimeout(this._wsReconnectTimer)
+          this._wsReconnectTimer = setTimeout(() => this._reconnectWS(), 3000)
         }
       })
     })
@@ -549,6 +556,58 @@ export class RoomSwarm extends EventTarget {
     }
   }
 
+  // ── WebSocket reconnect ───────────────────────────────────────────────────
+  // Called automatically when the signaling WS closes unexpectedly.
+  // Re-joins the relay room with the same peerId so peers can rediscover us.
+  _reconnectWS() {
+    if (this._leaving || !this._localPeerId) return
+
+    const url = signalUrl(this._relayUrl)
+    console.info('[swarm] reconnecting WS…', url)
+
+    let ws
+    try {
+      ws = new WebSocket(url)
+    } catch {
+      // URL may be invalid; retry later
+      this._wsReconnectTimer = setTimeout(() => this._reconnectWS(), 5000)
+      return
+    }
+
+    this._ws = ws
+
+    ws.addEventListener(
+      'open',
+      () => {
+        ws.send(JSON.stringify({ type: 'join', room: this.roomCode, peerId: this._localPeerId }))
+        console.info('[swarm] WS reconnected, re-joined room', this.roomCode.slice(0, 16) + '…')
+      },
+      { once: true }
+    )
+
+    ws.addEventListener('message', (e) => {
+      let msg
+      try {
+        msg = JSON.parse(e.data)
+      } catch {
+        return
+      }
+      this._handleSignal(msg)
+    })
+
+    ws.addEventListener('close', () => {
+      if (!this._leaving) {
+        // Exponential-ish back-off capped at 10 s
+        clearTimeout(this._wsReconnectTimer)
+        this._wsReconnectTimer = setTimeout(() => this._reconnectWS(), 5000)
+      }
+    })
+
+    ws.addEventListener('error', () => {
+      // close event will fire next; back-off handled there
+    })
+  }
+
   // ── Public API ──────────────────────────────────────────────────────────────
 
   sendToAll(msg) {
@@ -582,6 +641,8 @@ export class RoomSwarm extends EventTarget {
   }
 
   async leave() {
+    this._leaving = true
+    clearTimeout(this._wsReconnectTimer)
     this._ws?.close()
     for (const peer of this.peers.values()) {
       peer.dc?.close()
