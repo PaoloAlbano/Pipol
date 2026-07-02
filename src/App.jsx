@@ -36,6 +36,7 @@ import {
   parseInviteUrl,
   createWorkspace,
   getInviteParamFromUrl,
+  getEffectiveConfig,
 } from './p2p/workspace.js'
 import { useWorkspaceSync } from './p2p/useWorkspaceSync.js'
 import { showNotification, updateAppBadge } from './p2p/notifications.js'
@@ -676,6 +677,51 @@ export default function App() {
                 }
               : null
           }
+          getDebugInfo={() => {
+            const swarm = metaSwarm ?? null
+            const wsStates = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']
+            const toHex = (key) =>
+              key
+                ? Array.from(key)
+                    .map((b) => b.toString(16).padStart(2, '0'))
+                    .join('')
+                : null
+            return {
+              timestamp: new Date().toISOString(),
+              identity: identity
+                ? {
+                    username: identity.username,
+                    pubkey: toHex(identity.publicKey)?.slice(0, 16) + '…',
+                    isGuest: identity.isGuest ?? false,
+                  }
+                : null,
+              workspace: activeWorkspace
+                ? {
+                    name: activeWorkspace.name,
+                    id: activeWorkspace.id.slice(0, 8) + '…',
+                    channels: (activeWorkspace.channels ?? []).map((c) => c.name),
+                  }
+                : null,
+              activeChannel: activeChannelName ?? null,
+              relay: {
+                url: swarm?._ws?.url ?? (activeWorkspace ? getEffectiveConfig(activeWorkspace.config).relayUrl : null),
+                wsState: wsStates[swarm?._ws?.readyState] ?? 'none',
+                leaving: swarm?._leaving ?? false,
+              },
+              membersOnline: Array.from((members ?? new Map()).values())
+                .filter((m) => m.status !== 'offline')
+                .map((m) => ({ username: m.username, pubkey: m.pubkey?.slice(0, 8) + '…' })),
+              swarmPeers: swarm
+                ? Array.from(swarm.peers.values()).map((p) => ({
+                    username: p.username,
+                    id: p.id?.slice(0, 8) + '…',
+                    dc: p.dc?.readyState ?? 'none',
+                    wsRelay: !p.dc || p.dc.readyState !== 'open',
+                    joinedFired: p._joinedFired ?? false,
+                  }))
+                : [],
+            }
+          }}
         />
       )}
     </>

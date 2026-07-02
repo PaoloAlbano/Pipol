@@ -315,3 +315,31 @@
   font-size: 12px;
   min-width: unset;
 }
+
+/* ── Debug diagnostics panel ─────────────────────────────────────────────── */
+
+.settings-debug-diag {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-debug-btn {
+  align-self: flex-start;
+}
+
+.settings-debug-text {
+  width: 100%;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}

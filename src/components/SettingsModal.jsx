@@ -38,6 +38,7 @@ export default function SettingsModal({
   onLeaveWorkspace,
   workspaces = [],
   onSelectWorkspace,
+  getDebugInfo,
 }) {
   const [name, setName] = useState(identity.username)
   const [nameError, setNameError] = useState('')
@@ -48,6 +49,8 @@ export default function SettingsModal({
   const [biometricAvailable, setBiometricAvailable] = useState(false)
   const [biometricEnabled, setBiometricEnabled] = useState(hasBiometricUnlock)
   const [biometricError, setBiometricError] = useState('')
+  const [debugText, setDebugText] = useState(null)
+  const [debugCopied, setDebugCopied] = useState(false)
   const [biometricLoading, setBiometricLoading] = useState(false)
   const [biometricDisableConfirm, setBiometricDisableConfirm] = useState(false)
   const [leaveConfirm, setLeaveConfirm] = useState(false)
@@ -224,6 +227,41 @@ export default function SettingsModal({
                 <span className="settings-toggle-thumb" />
               </button>
             </label>
+            {getDebugInfo && (
+              <div className="settings-debug-diag">
+                <button
+                  className="btn btn-secondary settings-debug-btn"
+                  onClick={() => {
+                    setDebugText(JSON.stringify(getDebugInfo(), null, 2))
+                    setDebugCopied(false)
+                  }}
+                >
+                  Show diagnostics
+                </button>
+                {debugText && (
+                  <>
+                    <textarea
+                      className="settings-debug-text"
+                      readOnly
+                      value={debugText}
+                      rows={14}
+                      aria-label="Diagnostic info"
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(debugText).then(() => {
+                          setDebugCopied(true)
+                          setTimeout(() => setDebugCopied(false), 2000)
+                        })
+                      }}
+                    >
+                      {debugCopied ? '✓ Copied!' : 'Copy to clipboard'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {biometricAvailable && !identity.isGuest && (
