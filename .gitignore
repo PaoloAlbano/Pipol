@@ -28,6 +28,9 @@ node_modules/.vite/
 .DS_Store
 Thumbs.db
 
+# Local-only notes (not tracked in the repo)
+TODO.md
+
 # Editor
 .vscode/
 .idea/
