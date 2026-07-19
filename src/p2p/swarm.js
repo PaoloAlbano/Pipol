@@ -234,7 +234,6 @@ export class RoomSwarm extends EventTarget {
 
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
       const expectedFingerprint = signal.fingerprint || null
-
       this._registerPeer(remotePeerId, pc, expectedFingerprint)
 
       pc.addEventListener('datachannel', (e) => {
