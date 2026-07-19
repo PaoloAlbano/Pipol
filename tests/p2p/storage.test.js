@@ -334,6 +334,31 @@ describe('storage — stats overlay', () => {
   })
 })
 
+describe('storage — mirrorVideo', () => {
+  let storage
+
+  beforeEach(async () => {
+    localStorage.clear()
+    vi.resetModules()
+    storage = await import('../../src/p2p/storage.js')
+  })
+
+  it('returns true by default (mirror on)', () => {
+    expect(storage.getMirrorVideo()).toBe(true)
+  })
+
+  it('persists false', () => {
+    storage.setMirrorVideo(false)
+    expect(storage.getMirrorVideo()).toBe(false)
+  })
+
+  it('persists true after setting false', () => {
+    storage.setMirrorVideo(false)
+    storage.setMirrorVideo(true)
+    expect(storage.getMirrorVideo()).toBe(true)
+  })
+})
+
 describe('storage — restoreFromMasterSeed', () => {
   let storage
 

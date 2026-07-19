@@ -34,6 +34,10 @@
   object-fit: cover;
 }
 
+.video-element--mirror {
+  transform: scaleX(-1);
+}
+
 .video-placeholder {
   display: flex;
   align-items: center;

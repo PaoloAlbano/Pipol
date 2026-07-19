@@ -1,0 +1,173 @@
+/* ── Thread panel ─────────────────────────────────────────────── */
+.thread-panel {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  min-width: 260px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  height: 100%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.thread-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.thread-panel__title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.thread-panel__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.thread-panel__close:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* Body: scrollable replies area */
+.thread-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Parent message block */
+.thread-panel__parent {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border-left: 3px solid var(--primary);
+}
+
+.thread-panel__parent-sender {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.thread-panel__parent-content {
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thread-panel__parent-time {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Reply count separator */
+.thread-panel__reply-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Replies list */
+.thread-panel__replies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.thread-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.thread-reply--own {
+  align-items: flex-end;
+}
+
+.thread-reply--remote {
+  align-items: flex-start;
+}
+
+.thread-reply__sender {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.thread-reply__content {
+  font-size: 13px;
+  background: var(--surface-3);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 12px;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thread-reply--own .thread-reply__content {
+  background: var(--primary);
+  color: #fff;
+}
+
+.thread-reply__time {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Input area */
+.thread-panel__input {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+
+/* ── Thread reply button on messages ─────────────────────────── */
+.message-thread-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.message-thread-btn:hover {
+  color: var(--primary);
+  background: var(--primary-glow);
+}
+
+.message-thread-btn--has-replies {
+  color: var(--primary);
+  font-weight: 500;
+}

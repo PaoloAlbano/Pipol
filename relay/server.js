@@ -10,7 +10,13 @@ const dht = new DHT()
 await dht.ready()
 console.log('[relay] DHT node ready')
 
-const server = http.createServer()
+const server = http.createServer((req, res) => {
+  // Health check for tests / load balancers
+  if (!req.headers.upgrade) {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('OK')
+  }
+})
 
 // ── DHT relay WebSocket server (path: /) ──────────────────────────────────────
 const wssDHT = new WebSocketServer({ noServer: true })
@@ -67,6 +73,29 @@ wssSignal.on('connection', (ws) => {
       const target = room?.get(msg.to)
       if (target?.readyState === 1) {
         target.send(JSON.stringify({ ...msg, from: peerId }))
+      }
+      return
+    }
+
+    // ── WebSocket data relay fallback ──────────────────────────────────────
+    // Broadcast to all other peers in the room (used when WebRTC DataChannel
+    // is not available, e.g. behind symmetric NAT on mobile).
+    if (msg.type === 'relay-data' && roomCode) {
+      const room = rooms.get(roomCode)
+      if (!room) return
+      const payload = JSON.stringify({ type: 'relay-data', from: peerId, data: msg.data })
+      for (const [id, peerWs] of room) {
+        if (id !== peerId && peerWs.readyState === 1) peerWs.send(payload)
+      }
+      return
+    }
+
+    // Unicast relay to a specific peer (used for HISTORY_REQ/RES etc.)
+    if (msg.type === 'relay-data-to' && msg.to && roomCode) {
+      const room = rooms.get(roomCode)
+      const target = room?.get(msg.to)
+      if (target?.readyState === 1) {
+        target.send(JSON.stringify({ type: 'relay-data', from: peerId, data: msg.data }))
       }
     }
   })

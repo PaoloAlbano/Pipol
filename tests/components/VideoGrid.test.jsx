@@ -324,3 +324,74 @@ describe('VideoGrid — stats overlay', () => {
     expect(container.querySelector('.video-stats-rtt').textContent).toContain('20ms')
   })
 })
+
+// ── Mirror video ──────────────────────────────────────────────────────────────
+
+describe('VideoGrid — mirrorVideo prop', () => {
+  it('applies video-element--mirror to local tile when mirrorVideo=true (solo)', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{}}
+        peers={[]}
+        localUsername="swift-fox"
+        showStats={false}
+        peerStats={{}}
+        layout="grid"
+        spotlightPeerId={null}
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+        mirrorVideo={true}
+      />
+    )
+    expect(container.querySelector('.video-element--mirror')).toBeInTheDocument()
+  })
+
+  it('does not apply video-element--mirror when mirrorVideo=false (solo)', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{}}
+        peers={[]}
+        localUsername="swift-fox"
+        showStats={false}
+        peerStats={{}}
+        layout="grid"
+        spotlightPeerId={null}
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+        mirrorVideo={false}
+      />
+    )
+    expect(container.querySelector('.video-element--mirror')).toBeNull()
+  })
+
+  it('does not apply mirror to remote peer tiles', () => {
+    const peer1 = { id: 'peer-1', username: 'bob' }
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-1': makeFakeStream() }}
+        peers={[peer1]}
+        localUsername="swift-fox"
+        showStats={false}
+        peerStats={{}}
+        layout="grid"
+        spotlightPeerId={null}
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+        mirrorVideo={true}
+      />
+    )
+    // Only the self-preview tile should be mirrored, not the remote tile
+    const mirroredVideos = container.querySelectorAll('.video-element--mirror')
+    const allLabels = container.querySelectorAll('.video-label')
+    // All mirrored tiles must be the "You" self-preview, not remote peers
+    for (const mirrored of mirroredVideos) {
+      const tile = mirrored.closest('.video-tile')
+      const label = tile?.querySelector('.video-label')
+      expect(label?.textContent).toMatch(/you/i)
+    }
+    expect(allLabels.length).toBeGreaterThan(0)
+  })
+})

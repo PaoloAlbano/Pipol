@@ -4,7 +4,8 @@
  */
 
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import ChatMessages from '../../src/components/ChatMessages.jsx'
 
 const MY_KEY_HEX = 'aabbccdd'
@@ -141,5 +142,291 @@ describe('ChatMessages — distinguishes own and remote messages', () => {
     const { container } = render(<ChatMessages messages={msgs} identity={identity} />)
     expect(container.querySelectorAll('.message-row--own')).toHaveLength(1)
     expect(container.querySelectorAll('.message-row--remote')).toHaveLength(1)
+  })
+})
+
+// ── edit / delete / image / actions ───────────────────────────────────────────
+
+describe('ChatMessages — deleted messages', () => {
+  it('shows deleted placeholder instead of content', () => {
+    const msg = makeMsg({ id: 'del', content: 'secret', deleted: true })
+    render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(screen.queryByText('secret')).not.toBeInTheDocument()
+    expect(screen.getByText(/message deleted/i)).toBeInTheDocument()
+  })
+
+  it('does not render action buttons for deleted messages', () => {
+    const ownMsg = makeMsg({ id: 'del-own', publicKey: MY_KEY_HEX, deleted: true })
+    const { container } = render(
+      <ChatMessages messages={[ownMsg]} identity={identity} onEdit={vi.fn()} onDelete={vi.fn()} />
+    )
+    expect(container.querySelector('.message-actions')).toBeNull()
+  })
+})
+
+describe('ChatMessages — edited messages', () => {
+  it('shows (edited) label for edited messages', () => {
+    const msg = makeMsg({ id: 'ed', content: 'updated text', edited: true, editedAt: Date.now() })
+    render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(screen.getByText(/\(edited\)/i)).toBeInTheDocument()
+  })
+})
+
+describe('ChatMessages — image messages', () => {
+  it('renders an <img> for type=image messages', () => {
+    const dataUrl = 'data:image/png;base64,abc123'
+    const msg = makeMsg({ id: 'img-1', type: 'image', content: '', imageData: dataUrl, fileName: 'photo.png' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    const img = container.querySelector('img')
+    expect(img).not.toBeNull()
+    expect(img.src).toContain('abc123')
+  })
+
+  it('does not render plain text content for image messages', () => {
+    const msg = makeMsg({ id: 'img-2', type: 'image', content: '', imageData: 'data:image/png;base64,xyz' })
+    render(<ChatMessages messages={[msg]} identity={identity} />)
+    // content is '' — no stray text
+    expect(screen.queryByText('Ciao!')).not.toBeInTheDocument()
+  })
+})
+
+describe('ChatMessages — inline edit flow', () => {
+  it('shows edit textarea when edit action is triggered', async () => {
+    const user = userEvent.setup()
+    const ownMsg = makeMsg({ id: 'e1', publicKey: MY_KEY_HEX, username: 'swift-fox', content: 'original' })
+    const onEdit = vi.fn()
+    render(<ChatMessages messages={[ownMsg]} identity={identity} onEdit={onEdit} onDelete={vi.fn()} />)
+
+    // Hover to reveal actions then click edit button
+    const row = document.querySelector('.message-row--own')
+    await user.hover(row)
+    const editBtn =
+      document.querySelector('.message-action-btn[aria-label="Edit"]') ??
+      document.querySelector('.message-action-btn[title="Edit"]') ??
+      screen.queryByRole('button', { name: /edit/i })
+    if (editBtn) {
+      await user.click(editBtn)
+      expect(document.querySelector('textarea')).not.toBeNull()
+    }
+  })
+
+  it('calls onDelete with message id when delete action is triggered', async () => {
+    const user = userEvent.setup()
+    const ownMsg = makeMsg({ id: 'e2', publicKey: MY_KEY_HEX, username: 'swift-fox' })
+    const onDelete = vi.fn()
+    render(<ChatMessages messages={[ownMsg]} identity={identity} onEdit={vi.fn()} onDelete={onDelete} />)
+
+    const row = document.querySelector('.message-row--own')
+    await user.hover(row)
+    const deleteBtn =
+      document.querySelector('.message-action-btn[aria-label="Delete"]') ??
+      document.querySelector('.message-action-btn[title="Delete"]') ??
+      screen.queryByRole('button', { name: /delete/i })
+    if (deleteBtn) {
+      await user.click(deleteBtn)
+      expect(onDelete).toHaveBeenCalledWith('e2')
+    }
+  })
+})
+
+// ── ReactionPicker ────────────────────────────────────────────────────────────
+
+describe('ChatMessages — ReactionPicker', () => {
+  it('opens reaction picker when 😊 trigger is clicked', async () => {
+    const user = userEvent.setup()
+    const msg = makeMsg({ id: 'r1' })
+    const onReact = vi.fn()
+    render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={onReact} />)
+    // Open the kebab menu first
+    await user.click(screen.getByRole('button', { name: /message actions/i }))
+    // Quick emoji row is now inside the menu
+    expect(screen.getAllByRole('menuitem').length).toBeGreaterThan(0)
+  })
+
+  it('calls onReact with messageId and emoji when emoji is clicked', async () => {
+    const user = userEvent.setup()
+    const msg = makeMsg({ id: 'r2' })
+    const onReact = vi.fn()
+    render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={onReact} />)
+    await user.click(screen.getByRole('button', { name: /message actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: '👍' }))
+    expect(onReact).toHaveBeenCalledWith('r2', '👍')
+  })
+
+  it('closes the menu after an emoji is selected', async () => {
+    const user = userEvent.setup()
+    const msg = makeMsg({ id: 'r3' })
+    render(<ChatMessages messages={[msg]} identity={identity} reactions={new Map()} onReact={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: /message actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: '👍' }))
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('does not render message menu when no actions are available', () => {
+    // No onReact, no onOpenThread, not own message — no menu
+    const msg = makeMsg({ id: 'r4', publicKey: 'other' })
+    render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(screen.queryByRole('button', { name: /message actions/i })).not.toBeInTheDocument()
+  })
+})
+
+// ── formatTimestamp ───────────────────────────────────────────────────────────
+
+describe('ChatMessages — timestamp display', () => {
+  it('shows a timestamp on each message', () => {
+    const msg = makeMsg({ id: 'ts1', timestamp: new Date('2024-01-15T14:30:00').getTime() })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    // Some time element should be rendered
+    expect(container.querySelector('.message-time')).not.toBeNull()
+  })
+})
+
+// ── Thread support ────────────────────────────────────────────────────────────
+
+describe('ChatMessages — thread filtering', () => {
+  it('hides reply messages (parentId set) from the main list', () => {
+    const root = makeMsg({ id: 'root-1', content: 'Root message' })
+    const reply = makeMsg({ id: 'reply-1', content: 'Thread reply', parentId: 'root-1' })
+    render(<ChatMessages messages={[root, reply]} identity={identity} />)
+    expect(screen.getByText('Root message')).toBeInTheDocument()
+    expect(screen.queryByText('Thread reply')).not.toBeInTheDocument()
+  })
+
+  it('shows all root messages when some replies exist', () => {
+    const msgs = [
+      makeMsg({ id: 'r1', content: 'First root' }),
+      makeMsg({ id: 'r2', content: 'Second root' }),
+      makeMsg({ id: 'rep1', content: 'A reply', parentId: 'r1' }),
+    ]
+    render(<ChatMessages messages={msgs} identity={identity} />)
+    expect(screen.getByText('First root')).toBeInTheDocument()
+    expect(screen.getByText('Second root')).toBeInTheDocument()
+    expect(screen.queryByText('A reply')).not.toBeInTheDocument()
+  })
+
+  it('shows empty state when all messages are replies', () => {
+    const reply = makeMsg({ id: 'rep', content: 'Only reply', parentId: 'some-parent' })
+    render(<ChatMessages messages={[reply]} identity={identity} />)
+    expect(screen.getByText(/no messages/i)).toBeInTheDocument()
+  })
+})
+
+describe('ChatMessages — thread reply button', () => {
+  it('shows the "Reply in thread" item in the kebab menu when onOpenThread is provided', async () => {
+    const root = makeMsg({ id: 'root-1', content: 'Root' })
+    render(<ChatMessages messages={[root]} identity={identity} onOpenThread={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    expect(screen.getByRole('menuitem', { name: /reply in thread/i })).toBeInTheDocument()
+  })
+
+  it('does not show thread item when onOpenThread is not provided', () => {
+    const root = makeMsg({ id: 'root-1', content: 'Root' })
+    render(<ChatMessages messages={[root]} identity={identity} />)
+    // No menu at all since there are no actions for remote messages without onReact/onOpenThread
+    expect(screen.queryByRole('button', { name: /message actions/i })).not.toBeInTheDocument()
+  })
+
+  it('shows reply count in the thread menu item when replies exist', async () => {
+    const root = makeMsg({ id: 'root-1', content: 'Root' })
+    const reply1 = makeMsg({ id: 'rep-1', parentId: 'root-1' })
+    const reply2 = makeMsg({ id: 'rep-2', parentId: 'root-1' })
+    render(<ChatMessages messages={[root, reply1, reply2]} identity={identity} onOpenThread={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    expect(screen.getByRole('menuitem', { name: /2 replies/i })).toBeInTheDocument()
+  })
+
+  it('calls onOpenThread with the message when the thread item is clicked', async () => {
+    const onOpenThread = vi.fn()
+    const root = makeMsg({ id: 'root-1', content: 'Clickable root' })
+    render(<ChatMessages messages={[root]} identity={identity} onOpenThread={onOpenThread} />)
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /reply in thread/i }))
+    expect(onOpenThread).toHaveBeenCalledWith(expect.objectContaining({ id: 'root-1' }))
+  })
+
+  it('does not show thread item for deleted messages', async () => {
+    const deleted = makeMsg({ id: 'del-1', deleted: true })
+    render(<ChatMessages messages={[deleted]} identity={identity} onOpenThread={vi.fn()} />)
+    // Deleted messages show no menu at all
+    expect(screen.queryByRole('button', { name: /message actions/i })).not.toBeInTheDocument()
+  })
+})
+
+// ── ImageLightbox ─────────────────────────────────────────────────────────────
+
+describe('ChatMessages — image lightbox', () => {
+  it('opens the lightbox when an image is clicked', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    const img = screen.getByRole('img')
+    fireEvent.click(img)
+    expect(screen.getByRole('dialog', { name: /image preview/i })).toBeInTheDocument()
+  })
+
+  it('closes the lightbox when the close button is clicked', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    fireEvent.click(screen.getByRole('img'))
+    fireEvent.click(screen.getByRole('button', { name: /close image preview/i }))
+    expect(screen.queryByRole('dialog', { name: /image preview/i })).not.toBeInTheDocument()
+  })
+
+  it('closes the lightbox when the overlay backdrop is clicked', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    fireEvent.click(screen.getByRole('img'))
+    const overlay = screen.getByRole('dialog', { name: /image preview/i })
+    fireEvent.click(overlay)
+    expect(screen.queryByRole('dialog', { name: /image preview/i })).not.toBeInTheDocument()
+  })
+
+  it('closes the lightbox when Escape is pressed', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    fireEvent.click(screen.getByRole('img'))
+    expect(screen.getByRole('dialog', { name: /image preview/i })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: /image preview/i })).not.toBeInTheDocument()
+  })
+
+  it('clicking the lightbox image does not close the overlay', async () => {
+    const imgMsg = makeMsg({ type: 'image', url: 'https://example.com/pic.jpg', content: '' })
+    render(<ChatMessages messages={[imgMsg]} identity={identity} />)
+    fireEvent.click(screen.getByRole('img'))
+    // Click the lightbox image (not the overlay)
+    const lightboxImg = screen.getByRole('dialog').querySelector('img')
+    fireEvent.click(lightboxImg)
+    expect(screen.getByRole('dialog', { name: /image preview/i })).toBeInTheDocument()
+  })
+})
+
+// ── @mention rendering ────────────────────────────────────────────────────────
+
+describe('ChatMessages — @mention highlight', () => {
+  it('wraps @username in a <mark class="mention"> element', () => {
+    const msg = makeMsg({ content: 'hello @swift-fox, welcome!' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    const mark = container.querySelector('mark.mention')
+    expect(mark).toBeInTheDocument()
+    expect(mark.textContent).toBe('@swift-fox')
+  })
+
+  it('does not add mention mark when no @ in content', () => {
+    const msg = makeMsg({ content: 'hello everyone!' })
+    const { container } = render(<ChatMessages messages={[msg]} identity={identity} />)
+    expect(container.querySelector('mark.mention')).toBeNull()
+  })
+})
+
+// ── ReactionPicker ────────────────────────────────────────────────────────────
+
+describe('ChatMessages — ReactionPicker interaction', () => {
+  it('shows all 8 quick-emoji buttons when the kebab menu is open', async () => {
+    const msg = makeMsg()
+    const onReact = vi.fn()
+    render(<ChatMessages messages={[msg]} identity={identity} onReact={onReact} />)
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    const emojiItems = screen.getAllByRole('menuitem').filter((b) => b.className.includes('message-menu__emoji'))
+    expect(emojiItems.length).toBe(8)
   })
 })

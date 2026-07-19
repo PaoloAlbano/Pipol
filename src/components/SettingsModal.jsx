@@ -4,6 +4,7 @@ import {
   setVideoQuality,
   getRelayUrl,
   setRelayUrl,
+  setMirrorVideo,
   getPassphrase,
   clearPassphrase,
   getStoredIdentityMeta,
@@ -15,6 +16,7 @@ import {
   setupBiometricUnlock,
   removeBiometricUnlock,
 } from '../p2p/webauthn.js'
+import { getNotificationPermission, requestNotificationPermission } from '../p2p/notifications.js'
 import '../styles/settings.css'
 
 const QUALITIES = [
@@ -23,7 +25,21 @@ const QUALITIES = [
   { value: '1080p', label: '1080p', desc: 'Best quality' },
 ]
 
-export default function SettingsModal({ identity, onUsernameChange, showStats, onShowStatsChange, onClose, onLock }) {
+export default function SettingsModal({
+  identity,
+  onUsernameChange,
+  showStats,
+  onShowStatsChange,
+  mirrorVideo,
+  onMirrorVideoChange,
+  onClose,
+  onLock,
+  activeWorkspace,
+  onLeaveWorkspace,
+  workspaces = [],
+  onSelectWorkspace,
+  getDebugInfo,
+}) {
   const [name, setName] = useState(identity.username)
   const [nameError, setNameError] = useState('')
   const [quality, setQuality] = useState(getVideoQuality)
@@ -33,8 +49,12 @@ export default function SettingsModal({ identity, onUsernameChange, showStats, o
   const [biometricAvailable, setBiometricAvailable] = useState(false)
   const [biometricEnabled, setBiometricEnabled] = useState(hasBiometricUnlock)
   const [biometricError, setBiometricError] = useState('')
+  const [debugText, setDebugText] = useState(null)
+  const [debugCopied, setDebugCopied] = useState(false)
   const [biometricLoading, setBiometricLoading] = useState(false)
   const [biometricDisableConfirm, setBiometricDisableConfirm] = useState(false)
+  const [leaveConfirm, setLeaveConfirm] = useState(false)
+  const [notifPerm, setNotifPerm] = useState(getNotificationPermission)
 
   useEffect(() => {
     if (identity.isGuest) return
@@ -66,6 +86,7 @@ export default function SettingsModal({ identity, onUsernameChange, showStats, o
     setVideoQuality(quality)
     applyVideoQuality(quality)
     setRelayUrl(trimmedRelay)
+    setMirrorVideo(mirrorVideo)
 
     setSaved(true)
     setTimeout(() => {
@@ -108,6 +129,22 @@ export default function SettingsModal({ identity, onUsernameChange, showStats, o
           </div>
 
           <div className="settings-section">
+            <label className="settings-label">Video</label>
+            <label className="settings-toggle-row">
+              <span className="settings-toggle-label">Mirror local camera</span>
+              <span className="settings-toggle-desc">Flip your own video preview horizontally</span>
+              <button
+                className={`settings-toggle ${mirrorVideo ? 'settings-toggle--on' : ''}`}
+                role="switch"
+                aria-checked={mirrorVideo}
+                onClick={() => onMirrorVideoChange?.(!mirrorVideo)}
+              >
+                <span className="settings-toggle-thumb" />
+              </button>
+            </label>
+          </div>
+
+          <div className="settings-section">
             <label className="settings-label">Video quality</label>
             <div className="settings-quality-group">
               {QUALITIES.map((q) => (
@@ -146,6 +183,37 @@ export default function SettingsModal({ identity, onUsernameChange, showStats, o
           </div>
 
           <div className="settings-section">
+            <label className="settings-label">Notifications</label>
+            {notifPerm === 'unsupported' ? (
+              <p className="settings-hint">Desktop notifications are unavailable in this browser.</p>
+            ) : notifPerm === 'granted' ? (
+              <p className="settings-hint">
+                Notifications are enabled. You&apos;ll be notified of new messages in channels you&apos;re not currently
+                viewing.
+              </p>
+            ) : notifPerm === 'denied' ? (
+              <p className="settings-hint settings-hint--warn">
+                Notifications are blocked. Allow them in your browser settings to receive alerts.
+              </p>
+            ) : (
+              <>
+                <p className="settings-hint">
+                  Get desktop notifications for new messages in channels you’re not currently viewing.
+                </p>
+                <button
+                  className="btn btn-secondary"
+                  onClick={async () => {
+                    const result = await requestNotificationPermission()
+                    setNotifPerm(result)
+                  }}
+                >
+                  Enable notifications
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="settings-section">
             <label className="settings-label">Debug</label>
             <label className="settings-toggle-row">
               <span className="settings-toggle-label">Show network stats overlay</span>
@@ -159,6 +227,41 @@ export default function SettingsModal({ identity, onUsernameChange, showStats, o
                 <span className="settings-toggle-thumb" />
               </button>
             </label>
+            {getDebugInfo && (
+              <div className="settings-debug-diag">
+                <button
+                  className="btn btn-secondary settings-debug-btn"
+                  onClick={() => {
+                    setDebugText(JSON.stringify(getDebugInfo(), null, 2))
+                    setDebugCopied(false)
+                  }}
+                >
+                  Show diagnostics
+                </button>
+                {debugText && (
+                  <>
+                    <textarea
+                      className="settings-debug-text"
+                      readOnly
+                      value={debugText}
+                      rows={14}
+                      aria-label="Diagnostic info"
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(debugText).then(() => {
+                          setDebugCopied(true)
+                          setTimeout(() => setDebugCopied(false), 2000)
+                        })
+                      }}
+                    >
+                      {debugCopied ? '✓ Copied!' : 'Copy to clipboard'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {biometricAvailable && !identity.isGuest && (
@@ -250,6 +353,59 @@ export default function SettingsModal({ identity, onUsernameChange, showStats, o
               Removes the decryption key from memory. You&apos;ll need your passphrase to unlock again.
             </p>
           </div>
+
+          {workspaces.length > 0 && (
+            <div className="settings-section">
+              <label className="settings-label">Workspaces</label>
+              <ul className="settings-workspace-list">
+                {workspaces.map((ws) => {
+                  const isActive = ws.id === activeWorkspace?.id
+                  return (
+                    <li
+                      key={ws.id}
+                      className={`settings-workspace-item ${isActive ? 'settings-workspace-item--active' : ''}`}
+                    >
+                      <button
+                        className="settings-workspace-name"
+                        onClick={() => !isActive && onSelectWorkspace?.(ws.id)}
+                        disabled={isActive}
+                      >
+                        {ws.name}
+                        {isActive && <span className="settings-workspace-badge">current</span>}
+                      </button>
+                      {isActive &&
+                        onLeaveWorkspace &&
+                        (leaveConfirm ? (
+                          <span className="settings-workspace-confirm">
+                            <span className="settings-hint--warn">Sure?</span>
+                            <button
+                              className="btn btn-lock btn-xs"
+                              onClick={() => {
+                                onClose()
+                                onLeaveWorkspace()
+                              }}
+                            >
+                              Leave
+                            </button>
+                            <button className="btn btn-secondary btn-xs" onClick={() => setLeaveConfirm(false)}>
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button className="btn btn-lock btn-xs" onClick={() => setLeaveConfirm(true)}>
+                            Leave
+                          </button>
+                        ))}
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="settings-hint">
+                Click a workspace to switch. Leaving removes it from this device — you&apos;ll need an invite link to
+                rejoin.
+              </p>
+            </div>
+          )}
         </div>
         {/* settings-body */}
 

@@ -1,4 +1,4 @@
-.PHONY: install dev dev-tunnel build check-key expose start-relay start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format
+.PHONY: install dev dev-tunnel build check-key expose start-relay start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed
 
 SERVEO_SUBDOMAIN ?= pipol
 SERVEO_KEY       ?= ./serveo_key
@@ -62,3 +62,9 @@ lint:
 
 format:
 	pnpm run format
+
+e2e:
+	pnpm exec playwright test
+
+e2e-headed:
+	pnpm exec playwright test --headed

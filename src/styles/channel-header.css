@@ -1,0 +1,100 @@
+/* ── ChannelHeader ───────────────────────────────────────────── */
+
+.channel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  height: 48px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.channel-header__prefix {
+  font-size: 17px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.channel-header__name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.channel-header__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.channel-header__topic {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.channel-header__topic-input {
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  outline: none;
+  width: 220px;
+  max-width: 100%;
+}
+
+/* Actions */
+.channel-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.channel-header__btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    color 0.1s;
+  position: relative;
+}
+
+.channel-header__btn:hover {
+  background: var(--surface-4);
+  color: var(--text);
+}
+
+.channel-header__btn--active {
+  color: var(--primary);
+  background: var(--primary-glow);
+}
+
+.channel-header__btn--call-active {
+  color: var(--success);
+  background: rgba(35, 209, 96, 0.12);
+}

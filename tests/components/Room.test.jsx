@@ -92,6 +92,7 @@ function resetSwarmMock() {
     addEventListener: vi.fn((evt, cb) => {
       swarmListeners[evt] = cb
     }),
+    removeEventListener: vi.fn(),
     sendToAll: vi.fn(),
     sendToPeer: vi.fn(),
     getPeers: vi.fn().mockReturnValue([]),
@@ -194,6 +195,71 @@ describe('Room — call lifecycle', () => {
     await setupWithCall()
     await userEvent.click(screen.getByTitle(/leave video call/i))
     expect(swarmMock.sendToAll).toHaveBeenCalledWith(expect.objectContaining({ type: 'CALL_END' }))
+  })
+})
+
+// ── Call duration timer ───────────────────────────────────────────────────────
+
+describe('Room — call duration timer', () => {
+  it('shows a timer (MM:SS) after starting a call', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      mockGetLocalStream.mockResolvedValue(new MediaStream())
+      await setup()
+      await userEvent.click(screen.getByText(/start video call/i))
+      await waitFor(() => screen.getByTitle(/mute microphone/i))
+      // Advance 2 seconds
+      await act(async () => {
+        vi.advanceTimersByTime(2000)
+      })
+      await waitFor(() => screen.getByLabelText(/call duration/i))
+      expect(screen.getByLabelText(/call duration/i).textContent).toMatch(/^\d{2}:\d{2}$/)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('increments the timer each second', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      mockGetLocalStream.mockResolvedValue(new MediaStream())
+      await setup()
+      await userEvent.click(screen.getByText(/start video call/i))
+      await waitFor(() => screen.getByTitle(/mute microphone/i))
+
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+      })
+      await waitFor(() => screen.getByLabelText(/call duration/i))
+      expect(screen.getByLabelText(/call duration/i).textContent).toBe('00:01')
+
+      await act(async () => {
+        vi.advanceTimersByTime(59000)
+      })
+      await waitFor(() => expect(screen.getByLabelText(/call duration/i).textContent).toBe('01:00'))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('removes the timer when the call ends', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      mockGetLocalStream.mockResolvedValue(new MediaStream())
+      await setup()
+      await userEvent.click(screen.getByText(/start video call/i))
+      await waitFor(() => screen.getByTitle(/mute microphone/i))
+      await act(async () => {
+        vi.advanceTimersByTime(2000)
+      })
+      await waitFor(() => screen.getByLabelText(/call duration/i))
+
+      await userEvent.click(screen.getByTitle(/leave video call/i))
+      await waitFor(() => screen.getByText(/start video call/i))
+      expect(screen.queryByLabelText(/call duration/i)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -365,7 +431,7 @@ describe('Room — swarm events', () => {
       fireSwarmEvent('error', { message: 'something broke' })
     })
 
-    expect(screen.getByText(/swarm error/i)).toBeInTheDocument()
+    expect(screen.getByText(/reconnect/i)).toBeInTheDocument()
   })
 
   it('shows the relay unreachable banner when createRoomSwarm rejects', async () => {
@@ -475,5 +541,83 @@ describe('Room — in-call button actions', () => {
     )
     expect(screen.getByTitle(/stop screen share/i)).toBeInTheDocument()
     Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
+  })
+})
+
+// ── Thread panel ──────────────────────────────────────────────────────────────
+
+describe('Room — thread panel', () => {
+  // Thread tests need a proper Uint8Array publicKey so b4a.toString works in ChatMessages
+  const threadIdentity = {
+    publicKey: Uint8Array.from([0xaa, 0xbb]),
+    secretKey: 'ccdd',
+    username: 'alice',
+  }
+
+  it('opens the thread panel when a thread button is clicked', async () => {
+    const { MessageStore } = await import('../../src/p2p/autobase.js')
+    const parentMsg = {
+      id: 'parent-1',
+      content: 'Root message',
+      username: 'alice',
+      publicKey: 'aabb',
+      timestamp: Date.now(),
+      type: 'text',
+    }
+    MessageStore.mockImplementationOnce(function () {
+      return {
+        init: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn(),
+        getHistory: vi.fn().mockResolvedValue([parentMsg]),
+        getLastTimestamp: vi.fn().mockResolvedValue(0),
+        getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
+        addMessage: vi.fn().mockResolvedValue({ id: '2', content: 'reply', timestamp: Date.now() }),
+        close: vi.fn().mockResolvedValue(undefined),
+      }
+    })
+
+    render(<Room {...defaultProps} identity={threadIdentity} />)
+    await waitFor(() => screen.getByText(/waiting for peers/i))
+    await waitFor(() => screen.getByText('Root message'))
+
+    // Thread action is now inside the kebab menu
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /reply in thread/i }))
+
+    expect(screen.getByLabelText('Thread')).toBeInTheDocument()
+    expect(screen.getByText('Thread')).toBeInTheDocument()
+  })
+
+  it('closes the thread panel when the close button is clicked', async () => {
+    const { MessageStore } = await import('../../src/p2p/autobase.js')
+    const parentMsg = {
+      id: 'parent-2',
+      content: 'Another root',
+      username: 'alice',
+      publicKey: 'aabb',
+      timestamp: Date.now(),
+      type: 'text',
+    }
+    MessageStore.mockImplementationOnce(function () {
+      return {
+        init: vi.fn().mockResolvedValue(undefined),
+        on: vi.fn(),
+        getHistory: vi.fn().mockResolvedValue([parentMsg]),
+        getLastTimestamp: vi.fn().mockResolvedValue(0),
+        getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
+        addMessage: vi.fn().mockResolvedValue({ id: '3', content: 'reply', timestamp: Date.now() }),
+        close: vi.fn().mockResolvedValue(undefined),
+      }
+    })
+
+    render(<Room {...defaultProps} identity={threadIdentity} />)
+    await waitFor(() => screen.getByText(/waiting for peers/i))
+    await waitFor(() => screen.getByText('Another root'))
+    await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /reply in thread/i }))
+    expect(screen.getByLabelText('Thread')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByLabelText(/close thread/i))
+    expect(screen.queryByLabelText('Thread')).not.toBeInTheDocument()
   })
 })

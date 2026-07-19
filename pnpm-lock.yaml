@@ -12,8 +12,8 @@ importers:
         specifier: ^0.4.3
         version: 0.4.3(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       b4a:
-        specifier: ^1.6.7
-        version: 1.8.0
+        specifier: ^1.8.1
+        version: 1.8.1
       compact-encoding:
         specifier: ^2.19.0
         version: 2.19.2
@@ -21,8 +21,8 @@ importers:
         specifier: ^6.18.4
         version: 6.18.4(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       dompurify:
-        specifier: ^3.3.3
-        version: 3.3.3
+        specifier: ^3.4.11
+        version: 3.4.11
       hyperbeam:
         specifier: ^3.1.0
         version: 3.1.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
@@ -33,8 +33,8 @@ importers:
         specifier: ^10.38.2
         version: 10.38.2(bare-url@2.4.0)(sodium-javascript@0.8.0)
       hypercore-crypto:
-        specifier: ^3.6.1
-        version: 3.6.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
+        specifier: ^3.7.0
+        version: 3.7.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       hyperswarm:
         specifier: ^4.17.0
         version: 4.17.0(bare-url@2.4.0)(sodium-javascript@0.8.0)
@@ -42,8 +42,8 @@ importers:
         specifier: ^17.0.5
         version: 17.0.5
       protomux:
-        specifier: ^3.10.1
-        version: 3.10.1
+        specifier: ^3.11.0
+        version: 3.11.0
       random-access-memory:
         specifier: ^6.2.1
         version: 6.2.1
@@ -63,6 +63,9 @@ importers:
       '@eslint/js':
         specifier: ^9.39.4
         version: 9.39.4
+      '@playwright/test':
+        specifier: ^1.61.1
+        version: 1.61.1
       '@testing-library/dom':
         specifier: ^10.4.1
         version: 10.4.1
@@ -82,8 +85,8 @@ importers:
         specifier: ^5.2.0
         version: 5.2.0(vite@6.4.1)
       '@vitest/coverage-v8':
-        specifier: ^4.1.2
-        version: 4.1.2(vitest@4.1.2(jsdom@29.0.1)(vite@6.4.1))
+        specifier: ^4.1.9
+        version: 4.1.9(vitest@4.1.9)
       eslint:
         specifier: ^9.39.4
         version: 9.39.4
@@ -91,20 +94,20 @@ importers:
         specifier: ^7.37.5
         version: 7.37.5(eslint@9.39.4)
       eslint-plugin-react-hooks:
-        specifier: ^7.0.1
-        version: 7.0.1(eslint@9.39.4)
+        specifier: ^7.1.1
+        version: 7.1.1(eslint@9.39.4)
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5
       globals:
-        specifier: ^17.4.0
-        version: 17.4.0
+        specifier: ^17.7.0
+        version: 17.7.0
       jsdom:
-        specifier: ^29.0.1
-        version: 29.0.1
+        specifier: ^29.1.1
+        version: 29.1.1
       prettier:
-        specifier: ^3.8.1
-        version: 3.8.1
+        specifier: ^3.9.4
+        version: 3.9.4
       vite:
         specifier: ^6.4.1
         version: 6.4.1
@@ -112,20 +115,27 @@ importers:
         specifier: ^0.25.0
         version: 0.25.0(rollup@4.60.0)(vite@6.4.1)
       vitest:
-        specifier: ^4.1.2
-        version: 4.1.2(jsdom@29.0.1)(vite@6.4.1)
+        specifier: ^4.1.9
+        version: 4.1.9(@vitest/coverage-v8@4.1.9)(jsdom@29.1.1)(vite@6.4.1)
+      ws:
+        specifier: ^8.21.0
+        version: 8.21.0
 
 packages:
 
   '@adobe/css-tools@4.4.4':
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==}
 
-  '@asamuzakjp/css-color@5.0.1':
-    resolution: {integrity: sha512-2SZFvqMyvboVV1d15lMf7XiI3m7SDqXUuKaTymJYLN6dSGadqp+fVojqJlVoMlbZnlTmu3S0TLwLTJpvBMO1Aw==}
+  '@asamuzakjp/css-color@5.1.11':
+    resolution: {integrity: sha512-KVw6qIiCTUQhByfTd78h2yD1/00waTmm9uy/R7Ck/ctUyAPj+AEDLkQIdJW0T8+qGgj3j5bpNKK7Q3G+LedJWg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
-  '@asamuzakjp/dom-selector@7.0.4':
-    resolution: {integrity: sha512-jXR6x4AcT3eIrS2fSNAwJpwirOkGcd+E7F7CP3zjdTqz9B/2huHOL8YJZBgekKwLML+u7qB/6P1LXQuMScsx0w==}
+  '@asamuzakjp/dom-selector@7.1.1':
+    resolution: {integrity: sha512-67RZDnYRc8H/8MLDgQCDE//zoqVFwajkepHZgmXrbwybzXOEwOWGPYGmALYl9J2DOLfFPPs6kKCqmbzV895hTQ==}
+    engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+
+  '@asamuzakjp/generational-cache@1.0.1':
+    resolution: {integrity: sha512-wajfB8KqzMCN2KGNFdLkReeHncd0AslUSrvHVvvYWuU8ghncRJoA50kT3zP9MVL0+9g4/67H+cdvBskj9THPzg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
   '@asamuzakjp/nwsapi@2.3.9':
@@ -226,19 +236,19 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@csstools/color-helpers@6.0.2':
-    resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
+  '@csstools/color-helpers@6.1.0':
+    resolution: {integrity: sha512-064IFJdjTfUqnjpCVpMOdbr8FLQBhinbZj6yRv2An2E41O/pLEXqfFRWqGq/SxlE5PEUYTlvWsG2r8MswAVvkg==}
     engines: {node: '>=20.19.0'}
 
-  '@csstools/css-calc@3.1.1':
-    resolution: {integrity: sha512-HJ26Z/vmsZQqs/o3a6bgKslXGFAungXGbinULZO3eMsOyNJHeBBZfup5FiZInOghgoM4Hwnmw+OgbJCNg1wwUQ==}
+  '@csstools/css-calc@3.2.1':
+    resolution: {integrity: sha512-DtdHlgXh5ZkA43cwBcAm+huzgJiwx3ZTWVjBs94kwz2xKqSimDA3lBgCjphYgwgVUMWatSM0pDd8TILB1yrVVg==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@csstools/css-parser-algorithms': ^4.0.0
       '@csstools/css-tokenizer': ^4.0.0
 
-  '@csstools/css-color-parser@4.0.2':
-    resolution: {integrity: sha512-0GEfbBLmTFf0dJlpsNU7zwxRIH0/BGEMuXLTCvFYxuL1tNhqzTbtnFICyJLTNK4a+RechKP75e7w42ClXSnJQw==}
+  '@csstools/css-color-parser@4.1.9':
+    resolution: {integrity: sha512-paQcIaOO53Rk5+YrBaBjm/SgrV4INImjo2BT1DtQRYr+XeTRbeAYlS+jxXp9drqvKmtFnWRJKIalDLhZZDu42A==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@csstools/css-parser-algorithms': ^4.0.0
@@ -250,8 +260,8 @@ packages:
     peerDependencies:
       '@csstools/css-tokenizer': ^4.0.0
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.2':
-    resolution: {integrity: sha512-5GkLzz4prTIpoyeUiIu3iV6CSG3Plo7xRVOFPKI7FVEJ3mZ0A8SwK0XU3Gl7xAkiQ+mDyam+NNp875/C5y+jSA==}
+  '@csstools/css-syntax-patches-for-csstree@1.1.6':
+    resolution: {integrity: sha512-TcJCWFbXLPpJYq6z7bfOyjWYJDiDg2/I4gyUC9pqPNqHFRIey0EB0q0L5cSnQDfWJg8Jd6VadakxdIez/3zkqQ==}
     peerDependencies:
       css-tree: ^3.2.1
     peerDependenciesMeta:
@@ -504,6 +514,11 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
+  '@playwright/test@1.61.1':
+    resolution: {integrity: sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   '@rolldown/pluginutils@1.0.0-rc.3':
     resolution: {integrity: sha512-eybk3TjzzzV97Dlj5c+XrBFW57eTNhzod66y9HrBlzJ6NsCrWCp/2kaPS3K9wJmurBC0Tdw4yPjXKZqlznim3Q==}
 
@@ -727,20 +742,20 @@ packages:
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0
 
-  '@vitest/coverage-v8@4.1.2':
-    resolution: {integrity: sha512-sPK//PHO+kAkScb8XITeB1bf7fsk85Km7+rt4eeuRR3VS1/crD47cmV5wicisJmjNdfeokTZwjMk4Mj2d58Mgg==}
+  '@vitest/coverage-v8@4.1.9':
+    resolution: {integrity: sha512-G9/lgqibheLVBDRuya45EbsEXTYcWoSG+TLg7i2axuzx0Eq62eXn+aWXyaVdV5vKvFSWd6ywcX8hA7la9Pvu8g==}
     peerDependencies:
-      '@vitest/browser': 4.1.2
-      vitest: 4.1.2
+      '@vitest/browser': 4.1.9
+      vitest: 4.1.9
     peerDependenciesMeta:
       '@vitest/browser':
         optional: true
 
-  '@vitest/expect@4.1.2':
-    resolution: {integrity: sha512-gbu+7B0YgUJ2nkdsRJrFFW6X7NTP44WlhiclHniUhxADQJH5Szt9mZ9hWnJPJ8YwOK5zUOSSlSvyzRf0u1DSBQ==}
+  '@vitest/expect@4.1.9':
+    resolution: {integrity: sha512-vl/rYsUKcBr3SnQn166+XR5ZQcgMx3DQhFWdfli/cWpLnLUmbxZvyrJZotLFUryib+LtArYMSTJ5RbQ57ZqrlA==}
 
-  '@vitest/mocker@4.1.2':
-    resolution: {integrity: sha512-Ize4iQtEALHDttPRCmN+FKqOl2vxTiNUhzobQFFt/BM1lRUTG7zRCLOykG/6Vo4E4hnUdfVLo5/eqKPukcWW7Q==}
+  '@vitest/mocker@4.1.9':
+    resolution: {integrity: sha512-EVkXzBjrPGM+cK8/ANWgBrkUCfJfb38/EfTSO8h7pWvKkyPkpWxvR7BkD2MyItMF62C97zAEoqdpUixwR/e+Rw==}
     peerDependencies:
       msw: ^2.4.9
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
@@ -750,20 +765,20 @@ packages:
       vite:
         optional: true
 
-  '@vitest/pretty-format@4.1.2':
-    resolution: {integrity: sha512-dwQga8aejqeuB+TvXCMzSQemvV9hNEtDDpgUKDzOmNQayl2OG241PSWeJwKRH3CiC+sESrmoFd49rfnq7T4RnA==}
+  '@vitest/pretty-format@4.1.9':
+    resolution: {integrity: sha512-s0iufns3iIFitdgm+YR7g1whCAaGtXz459VS9/PqyKDEEFgYIhsHOQmXgIgDuYCt7DeQmiZT0Qe2OA2p4ZPu5A==}
 
-  '@vitest/runner@4.1.2':
-    resolution: {integrity: sha512-Gr+FQan34CdiYAwpGJmQG8PgkyFVmARK8/xSijia3eTFgVfpcpztWLuP6FttGNfPLJhaZVP/euvujeNYar36OQ==}
+  '@vitest/runner@4.1.9':
+    resolution: {integrity: sha512-KXLMDtc7oe70+3mJfGrPUWPesswH+3sTxAMAMl8DG7I8IUQT4XW718dY5ID3vPUcmlu27CcKfY4P3h3I29SLJg==}
 
-  '@vitest/snapshot@4.1.2':
-    resolution: {integrity: sha512-g7yfUmxYS4mNxk31qbOYsSt2F4m1E02LFqO53Xpzg3zKMhLAPZAjjfyl9e6z7HrW6LvUdTwAQR3HHfLjpko16A==}
+  '@vitest/snapshot@4.1.9':
+    resolution: {integrity: sha512-Jc7RKGNBo8Z28WYIm0Niej4xdSPByRf6mU58VpHQkd6Zh05rlnA+twjbK5HyeIGHxrzsc3mJgS43uM0CZKzaIA==}
 
-  '@vitest/spy@4.1.2':
-    resolution: {integrity: sha512-DU4fBnbVCJGNBwVA6xSToNXrkZNSiw59H8tcuUspVMsBDBST4nfvsPsEHDHGtWRRnqBERBQu7TrTKskmjqTXKA==}
+  '@vitest/spy@4.1.9':
+    resolution: {integrity: sha512-fHpsS6mIi+PiEW+vcRVOMkX1oSaPKne3VOclSFICPcGOmfKgXPU5iAah+wcNcj2xPrCCmfq99IDGf+EojhhvhA==}
 
-  '@vitest/utils@4.1.2':
-    resolution: {integrity: sha512-xw2/TiX82lQHA06cgbqRKFb5lCAy3axQ4H4SoUFhUsg+wztiet+co86IAMDtF6Vm1hc7J6j09oh/rgDn+JdKIQ==}
+  '@vitest/utils@4.1.9':
+    resolution: {integrity: sha512-A51o8ymO5PpqlWNnBP9ZHPXDIpuMtTLlGSjN7la4US+LJzoUMyhwjA5QXlm39JexgwHKW4Xjs8Z2d3dLCXOeuA==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -852,8 +867,8 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
-  b4a@1.8.0:
-    resolution: {integrity: sha512-qRuSmNSkGQaHwNbM7J78Wwy+ghLEYF1zNrSeMxj4Kgw6y33O3mXcQ6Ie9fRvfU/YnxWkOchPXbaLb73TkIsfdg==}
+  b4a@1.8.1:
+    resolution: {integrity: sha512-aiqre1Nr0B/6DgE2N5vwTc+2/oQZ4Wh1t4NznYY4E00y8LCt6NqdRv81so00oo27D8MVKTpUa/MwUUtBLXCoDw==}
     peerDependencies:
       react-native-b4a: '*'
     peerDependenciesMeta:
@@ -1108,6 +1123,9 @@ packages:
   compact-encoding@2.19.2:
     resolution: {integrity: sha512-/YjhHQE/5L4F7l5Bht69dRbP9RV6zoJPeowi8bMKQxNKe3Nh6hOY8pBGoVE9fz5GaWfEd8fWJ2aU9sB4KZuMYg==}
 
+  compact-encoding@3.3.0:
+    resolution: {integrity: sha512-e64XyzlBvTRJ3iScuU/U2w25Dglkm7fhrRbrGaHIwuTlNnzjRKMaQBCVl7mJRvZg7wI5a9wX1IVTXCuaAANNkw==}
+
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
 
@@ -1228,8 +1246,8 @@ packages:
     resolution: {integrity: sha512-IGBwjF7tNk3cwypFNH/7bfzBcgSCbaMOD3GsaY1AU/JRrnHnYgEM0+9kQt52iZxjNsjBtJYtao146V+f8jFZNw==}
     engines: {node: '>=10'}
 
-  dompurify@3.3.3:
-    resolution: {integrity: sha512-Oj6pzI2+RqBfFG+qOaOLbFXLQ90ARpcGG6UePL82bJLtdsa6CYJD7nmiU8MW9nQNOtCHV3lZ/Bzq1X0QYbBZCA==}
+  dompurify@3.4.11:
+    resolution: {integrity: sha512-zhlUV12GsaRzMsf9q5M254YhA4+VuF0fG+QFqu6aYpoGlKtz+w8//jBcGVYBgQkR5GHjUomejY84AV+/uPbWdw==}
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -1241,9 +1259,9 @@ packages:
   elliptic@6.6.1:
     resolution: {integrity: sha512-RaddvvMatK2LJHqFJ+YA4WysVN5Ita9E35botqIYspQ4TkRAlCicdzKOjlyv/1Za5RyTNn7di//eEV0uTAfe3g==}
 
-  entities@6.0.1:
-    resolution: {integrity: sha512-aN97NXWF6AWBTahfVOIrB/NShkzi5H7F9r1s9mD3cDj4Ko5f2qhhVoYMibXF7GlLveb/D2ioWay8lxI97Ven3g==}
-    engines: {node: '>=0.12'}
+  entities@8.0.0:
+    resolution: {integrity: sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA==}
+    engines: {node: '>=20.19.0'}
 
   es-abstract@1.24.1:
     resolution: {integrity: sha512-zHXBLhP+QehSSbsS9Pt23Gg964240DPd6QCf8WpkqEXxQ7fhdZzYsocOr5u7apWonsS5EjZDmTF+/slGMyasvw==}
@@ -1293,11 +1311,11 @@ packages:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
 
-  eslint-plugin-react-hooks@7.0.1:
-    resolution: {integrity: sha512-O0d0m04evaNzEPoSW+59Mezf8Qt0InfgGIBJnpC0h3NH/WjUAR7BIKUfysC6todmtiZ/A0oUVS8Gce0WhBrHsA==}
+  eslint-plugin-react-hooks@7.1.1:
+    resolution: {integrity: sha512-f2I7Gw6JbvCexzIInuSbZpfdQ44D7iqdWX01FKLvrPgqxoE7oMj8clOfto8U6vYiz4yd5oKu39rRSVOe1zRu0g==}
     engines: {node: '>=18'}
     peerDependencies:
-      eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0
+      eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0
 
   eslint-plugin-react@7.37.5:
     resolution: {integrity: sha512-Qteup0SqU15kdocexFNAJMvCJEfa2xUKNV4CC1xsVMrIIqEy3SQ/rqyxCWNzfrd3/ldy6HMlD2e0JDVpDg2qIA==}
@@ -1417,6 +1435,11 @@ packages:
   fs-native-extensions@1.4.5:
     resolution: {integrity: sha512-ekV0T//iDm4AvhOcuPaHpxub4DI7HvY5ucLJVDvi7T2J+NZkQ9S6MuvgP0yeQvoqNUaAGyLjVYb1905BF9bpmg==}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -1460,8 +1483,8 @@ packages:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
     engines: {node: '>=18'}
 
-  globals@17.4.0:
-    resolution: {integrity: sha512-hjrNztw/VajQwOLsMNT1cbJiH2muO3OROCHnbehc8eY5JyD2gqz4AcMHPqgaOR59DjgUjYAYLeH699g/eWi2jw==}
+  globals@17.7.0:
+    resolution: {integrity: sha512-Czmyns5dUsq4seFBR/Kdydhmo8y9kC79hiSkPn0YcGtNnYWnrgt0vjrSjx9tspoDGWm2CMarffRuLjM4xUz8xg==}
     engines: {node: '>=18'}
 
   globalthis@1.0.4:
@@ -1542,8 +1565,8 @@ packages:
   hyperbee@2.27.3:
     resolution: {integrity: sha512-PXURH2U4juUZyJRKHTrY5z1zX851pmI1Q0jfv5F/hCIErDt/ND8jOZuxc3hfOLM9f0W3qJEDTMlV5AJBkVPy8w==}
 
-  hypercore-crypto@3.6.1:
-    resolution: {integrity: sha512-ltIz2uDwy9pO/ZGTvqcjzyBkvt6O4cVm4r/nNxh0GFs/RbQtqP/i4wCvLEdmU7ptgtnw7fI67WYD1aHPuv4OVA==}
+  hypercore-crypto@3.7.0:
+    resolution: {integrity: sha512-SWxobptQf2V/+ZLCCDRTXqFzGfTPIkNIuDyLKXpEMfcpJ1/ec94N9aWgylHcWOHmRt14ng/KR7z0BugebWHK9Q==}
 
   hypercore-errors@1.5.0:
     resolution: {integrity: sha512-5KQ/SuDxsvet+7qWA35Ay6zdD9WyAHQoyWHGcPUTbmJBd300gvNIJoi3oma7kp4TTCSzii6qYumNZe/s0j/saQ==}
@@ -1736,8 +1759,8 @@ packages:
     resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
     hasBin: true
 
-  jsdom@29.0.1:
-    resolution: {integrity: sha512-z6JOK5gRO7aMybVq/y/MlIpKh8JIi68FBKMUtKkK2KH/wMSRlCxQ682d08LB9fYXplyY/UXG8P4XXTScmdjApg==}
+  jsdom@29.1.1:
+    resolution: {integrity: sha512-ECi4Fi2f7BdJtUKTflYRTiaMxIB0O6zfR1fX0GXpUrf6flp8QIYn1UT20YQqdSOfk2dfkCwS8LAFoJDEppNK5Q==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24.0.0}
     peerDependencies:
       canvas: ^3.0.0
@@ -1789,8 +1812,8 @@ packages:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
 
-  lru-cache@11.2.7:
-    resolution: {integrity: sha512-aY/R+aEsRelme17KGQa/1ZSIpLpNYYrhcrepKTZgE+W3WM16YMCaPwOHLHsmopZHELU0Ojin1lPVxKR0MihncA==}
+  lru-cache@11.5.1:
+    resolution: {integrity: sha512-RPimw/7aMdv2oqRrxKwvZXcPfwBrn/JZ2xYcY9Hus/6LaS3VOAKVWKWgNLCFSiOm1ESXinjsDlidVU7JlnCN2A==}
     engines: {node: 20 || >=22}
 
   lru-cache@5.1.1:
@@ -1953,8 +1976,8 @@ packages:
     resolution: {integrity: sha512-fIYNuZ/HastSb80baGOuPRo1O9cf4baWw5WsAp7dBuUzeTD/BoaG8sVTdlPFksBE2lF21dN+A1AnrpIjSWqHHg==}
     engines: {node: '>= 0.10'}
 
-  parse5@8.0.0:
-    resolution: {integrity: sha512-9m4m5GSgXjL4AjumKzq1Fgfp3Z8rsvjRNbnkVwfu2ImRqE5D0LnY2QfDen18FSY9C573YU5XxSapdHZTZ2WolA==}
+  parse5@8.0.1:
+    resolution: {integrity: sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==}
 
   path-browserify@1.0.1:
     resolution: {integrity: sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==}
@@ -1988,6 +2011,16 @@ packages:
     resolution: {integrity: sha512-NPE8TDbzl/3YQYY7CSS228s3g2ollTFnc+Qi3tqmqJp9Vg2ovUpixcJEo2HJScN2Ez+kEaal6y70c0ehqJBJeA==}
     engines: {node: '>=10'}
 
+  playwright-core@1.61.1:
+    resolution: {integrity: sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.61.1:
+    resolution: {integrity: sha512-DWnY5o3YbLWK4GovuAVwpqL+1VwGNdUGrRr++8j8PtQQzvAVZUIMjKQ90fY689sEJZJBbZVw1rXaOKSTitkzPQ==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
     engines: {node: '>= 0.4'}
@@ -2000,8 +2033,8 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
-  prettier@3.8.1:
-    resolution: {integrity: sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg==}
+  prettier@3.9.4:
+    resolution: {integrity: sha512-yWG/o/4oJfo036EKAfK6ACAoDOfHeRHx4tuxkfBZiauURiaSmYwlpOr5LQqKtIkRD2z1PLteme2WoxEnj4tHTg==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -2022,8 +2055,8 @@ packages:
   protocol-buffers-encodings@1.2.0:
     resolution: {integrity: sha512-daeNPuKh1NlLD1uDfbLpD+xyUTc07nEtfHwmBZmt/vH0B7VOM+JOCOpDcx9ZRpqHjAiIkGqyTDi+wfGSl17R9w==}
 
-  protomux@3.10.1:
-    resolution: {integrity: sha512-jgBqx8ZyaBWea/DFG4eOu1scOaeBwcnagiRC1XFVrjeGt7oAb0Pk5udPpBUpJ4DJBRjra50jD6YcZiQQTRqaaA==}
+  protomux@3.11.0:
+    resolution: {integrity: sha512-Ze43XaNHbL6zQ/zJwVYvue7Aj8pDB1HNnISsrFhAur3291Y+Iu2fMhOpySD73J/32BoBIUYrhl07lJsBR/fUVA==}
 
   public-encrypt@4.0.3:
     resolution: {integrity: sha512-zVpa8oKZSz5bTMTFClc1fQOnyyEzpl5ozpi1B5YcvBrdohMjH2rfsBtyXcuNuwjsDIXmBYlF2N5FlJYhR29t8Q==}
@@ -2466,8 +2499,8 @@ packages:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
     engines: {node: '>= 0.4'}
 
-  undici@7.24.6:
-    resolution: {integrity: sha512-Xi4agocCbRzt0yYMZGMA6ApD7gvtUFaxm4ZmeacWI4cZxaF6C+8I8QfofC20NAePiB/IcvZmzkJ7XPa471AEtA==}
+  undici@7.28.0:
+    resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
     engines: {node: '>=20.18.1'}
 
   unordered-set@2.0.1:
@@ -2543,18 +2576,20 @@ packages:
       yaml:
         optional: true
 
-  vitest@4.1.2:
-    resolution: {integrity: sha512-xjR1dMTVHlFLh98JE3i/f/WePqJsah4A0FK9cc8Ehp9Udk0AZk6ccpIZhh1qJ/yxVWRZ+Q54ocnD8TXmkhspGg==}
+  vitest@4.1.9:
+    resolution: {integrity: sha512-nE3/LEyc0z87uHYLZebqCUOaJr2hdtuPp7BQ4BosVFnfltxgAvMG08NyrSGlPpOUWvR27c5flSmYFTNr78L9GQ==}
     engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
     hasBin: true
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
       '@types/node': ^20.0.0 || ^22.0.0 || >=24.0.0
-      '@vitest/browser-playwright': 4.1.2
-      '@vitest/browser-preview': 4.1.2
-      '@vitest/browser-webdriverio': 4.1.2
-      '@vitest/ui': 4.1.2
+      '@vitest/browser-playwright': 4.1.9
+      '@vitest/browser-preview': 4.1.9
+      '@vitest/browser-webdriverio': 4.1.9
+      '@vitest/coverage-istanbul': 4.1.9
+      '@vitest/coverage-v8': 4.1.9
+      '@vitest/ui': 4.1.9
       happy-dom: '*'
       jsdom: '*'
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
@@ -2570,6 +2605,10 @@ packages:
       '@vitest/browser-preview':
         optional: true
       '@vitest/browser-webdriverio':
+        optional: true
+      '@vitest/coverage-istanbul':
+        optional: true
+      '@vitest/coverage-v8':
         optional: true
       '@vitest/ui':
         optional: true
@@ -2633,8 +2672,8 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.20.0:
-    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
+  ws@8.21.0:
+    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -2685,21 +2724,23 @@ snapshots:
 
   '@adobe/css-tools@4.4.4': {}
 
-  '@asamuzakjp/css-color@5.0.1':
+  '@asamuzakjp/css-color@5.1.11':
     dependencies:
-      '@csstools/css-calc': 3.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-color-parser': 4.0.2(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@asamuzakjp/generational-cache': 1.0.1
+      '@csstools/css-calc': 3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-color-parser': 4.1.9(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
-      lru-cache: 11.2.7
 
-  '@asamuzakjp/dom-selector@7.0.4':
+  '@asamuzakjp/dom-selector@7.1.1':
     dependencies:
+      '@asamuzakjp/generational-cache': 1.0.1
       '@asamuzakjp/nwsapi': 2.3.9
       bidi-js: 1.0.3
       css-tree: 3.2.1
       is-potential-custom-element-name: 1.0.1
-      lru-cache: 11.2.7
+
+  '@asamuzakjp/generational-cache@1.0.1': {}
 
   '@asamuzakjp/nwsapi@2.3.9': {}
 
@@ -2823,17 +2864,17 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@csstools/color-helpers@6.0.2': {}
+  '@csstools/color-helpers@6.1.0': {}
 
-  '@csstools/css-calc@3.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-calc@3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
     dependencies:
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
 
-  '@csstools/css-color-parser@4.0.2(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-color-parser@4.1.9(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
     dependencies:
-      '@csstools/color-helpers': 6.0.2
-      '@csstools/css-calc': 3.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/color-helpers': 6.1.0
+      '@csstools/css-calc': 3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
 
@@ -2841,7 +2882,7 @@ snapshots:
     dependencies:
       '@csstools/css-tokenizer': 4.0.0
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.2(css-tree@3.2.1)':
+  '@csstools/css-syntax-patches-for-csstree@1.1.6(css-tree@3.2.1)':
     optionalDependencies:
       css-tree: 3.2.1
 
@@ -2987,19 +3028,19 @@ snapshots:
   '@hyperswarm/dht-relay@0.4.3(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)':
     dependencies:
       '@hyperswarm/secret-stream': 6.9.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
-      b4a: 1.8.0
+      b4a: 1.8.1
       compact-encoding: 2.19.2
       compact-encoding-net: 1.2.0
       events: 3.3.0
       graceful-goodbye: 1.3.3
       hyperdht: 6.29.6(bare-url@2.4.0)(sodium-javascript@0.8.0)
       noise-handshake: 3.1.0(bare-url@2.4.0)(sodium-javascript@0.8.0)
-      protomux: 3.10.1
+      protomux: 3.11.0
       safety-catch: 1.0.3
       sodium-universal: 4.0.1(bare-url@2.4.0)(sodium-javascript@0.8.0)
       streamx: 2.25.0
       timeout-refresh: 2.0.1
-      ws: 8.20.0
+      ws: 8.21.0
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -3012,8 +3053,8 @@ snapshots:
 
   '@hyperswarm/secret-stream@6.9.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)':
     dependencies:
-      b4a: 1.8.0
-      hypercore-crypto: 3.6.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
+      b4a: 1.8.1
+      hypercore-crypto: 3.7.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       noise-curve-ed: 2.1.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       noise-handshake: 4.2.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       sodium-secretstream: 1.2.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
@@ -3047,6 +3088,10 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@playwright/test@1.61.1':
+    dependencies:
+      playwright: 1.61.1
 
   '@rolldown/pluginutils@1.0.0-rc.3': {}
 
@@ -3232,10 +3277,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/coverage-v8@4.1.2(vitest@4.1.2(jsdom@29.0.1)(vite@6.4.1))':
+  '@vitest/coverage-v8@4.1.9(vitest@4.1.9)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
-      '@vitest/utils': 4.1.2
+      '@vitest/utils': 4.1.9
       ast-v8-to-istanbul: 1.0.0
       istanbul-lib-coverage: 3.2.2
       istanbul-lib-report: 3.0.1
@@ -3244,46 +3289,46 @@ snapshots:
       obug: 2.1.1
       std-env: 4.0.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.2(jsdom@29.0.1)(vite@6.4.1)
+      vitest: 4.1.9(@vitest/coverage-v8@4.1.9)(jsdom@29.1.1)(vite@6.4.1)
 
-  '@vitest/expect@4.1.2':
+  '@vitest/expect@4.1.9':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/chai': 5.2.3
-      '@vitest/spy': 4.1.2
-      '@vitest/utils': 4.1.2
+      '@vitest/spy': 4.1.9
+      '@vitest/utils': 4.1.9
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.2(vite@6.4.1)':
+  '@vitest/mocker@4.1.9(vite@6.4.1)':
     dependencies:
-      '@vitest/spy': 4.1.2
+      '@vitest/spy': 4.1.9
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
       vite: 6.4.1
 
-  '@vitest/pretty-format@4.1.2':
+  '@vitest/pretty-format@4.1.9':
     dependencies:
       tinyrainbow: 3.1.0
 
-  '@vitest/runner@4.1.2':
+  '@vitest/runner@4.1.9':
     dependencies:
-      '@vitest/utils': 4.1.2
+      '@vitest/utils': 4.1.9
       pathe: 2.0.3
 
-  '@vitest/snapshot@4.1.2':
+  '@vitest/snapshot@4.1.9':
     dependencies:
-      '@vitest/pretty-format': 4.1.2
-      '@vitest/utils': 4.1.2
+      '@vitest/pretty-format': 4.1.9
+      '@vitest/utils': 4.1.9
       magic-string: 0.30.21
       pathe: 2.0.3
 
-  '@vitest/spy@4.1.2': {}
+  '@vitest/spy@4.1.9': {}
 
-  '@vitest/utils@4.1.2':
+  '@vitest/utils@4.1.9':
     dependencies:
-      '@vitest/pretty-format': 4.1.2
+      '@vitest/pretty-format': 4.1.9
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
@@ -3405,7 +3450,7 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  b4a@1.8.0: {}
+  b4a@1.8.1: {}
 
   balanced-match@1.0.2: {}
 
@@ -3537,13 +3582,13 @@ snapshots:
 
   bits-to-bytes@1.3.0:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
 
   blake2b-wasm@2.4.0:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       nanoassert: 2.0.0
     transitivePeerDependencies:
       - react-native-b4a
@@ -3557,12 +3602,12 @@ snapshots:
 
   blind-relay@1.4.0(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       bare-events: 2.8.2
       bits-to-bytes: 1.3.0
       compact-encoding: 2.19.2
       compact-encoding-bitfield: 1.0.0
-      protomux: 3.10.1
+      protomux: 3.11.0
       sodium-universal: 5.0.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       streamx: 2.25.0
     transitivePeerDependencies:
@@ -3711,7 +3756,7 @@ snapshots:
 
   codecs@3.1.0:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
 
@@ -3735,7 +3780,13 @@ snapshots:
 
   compact-encoding@2.19.2:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
+    transitivePeerDependencies:
+      - react-native-b4a
+
+  compact-encoding@3.3.0:
+    dependencies:
+      b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
 
@@ -3751,9 +3802,9 @@ snapshots:
 
   corestore@6.18.4(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       hypercore: 10.38.2(bare-url@2.4.0)(sodium-javascript@0.8.0)
-      hypercore-crypto: 3.6.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
+      hypercore-crypto: 3.7.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       hypercore-id-encoding: 1.3.0
       read-write-mutexify: 2.1.0
       ready-resource: 1.2.0
@@ -3890,7 +3941,7 @@ snapshots:
   dht-rpc@6.26.3(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
       adaptive-timeout: 1.0.1
-      b4a: 1.8.0
+      b4a: 1.8.1
       bare-events: 2.8.2
       compact-encoding: 2.19.2
       compact-encoding-net: 1.2.0
@@ -3924,7 +3975,7 @@ snapshots:
 
   domain-browser@4.22.0: {}
 
-  dompurify@3.3.3:
+  dompurify@3.4.11:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -3946,7 +3997,7 @@ snapshots:
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
 
-  entities@6.0.1: {}
+  entities@8.0.0: {}
 
   es-abstract@1.24.1:
     dependencies:
@@ -4085,7 +4136,7 @@ snapshots:
 
   escape-string-regexp@4.0.0: {}
 
-  eslint-plugin-react-hooks@7.0.1(eslint@9.39.4):
+  eslint-plugin-react-hooks@7.1.1(eslint@9.39.4):
     dependencies:
       '@babel/core': 7.29.0
       '@babel/parser': 7.29.2
@@ -4249,6 +4300,9 @@ snapshots:
       - bare-url
     optional: true
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -4299,7 +4353,7 @@ snapshots:
 
   globals@14.0.0: {}
 
-  globals@17.4.0: {}
+  globals@17.7.0: {}
 
   globalthis@1.0.4:
     dependencies:
@@ -4382,7 +4436,7 @@ snapshots:
 
   hyperbeam@3.1.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       hi-base32: 0.5.1
       hyperdht: 6.29.6(bare-url@2.4.0)(sodium-javascript@0.8.0)
       queue-tick: 1.0.1
@@ -4398,7 +4452,7 @@ snapshots:
 
   hyperbee@2.27.3:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       codecs: 3.1.0
       debounceify: 1.1.0
       hypercore-errors: 1.5.0
@@ -4414,10 +4468,10 @@ snapshots:
       - bare-abort-controller
       - react-native-b4a
 
-  hypercore-crypto@3.6.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0):
+  hypercore-crypto@3.7.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
-      compact-encoding: 2.19.2
+      b4a: 1.8.1
+      compact-encoding: 3.3.0
       sodium-universal: 5.0.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
     transitivePeerDependencies:
       - bare-abort-controller
@@ -4435,7 +4489,7 @@ snapshots:
 
   hypercore-id-encoding@1.3.0:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       z32: 1.1.0
     transitivePeerDependencies:
       - react-native-b4a
@@ -4443,18 +4497,18 @@ snapshots:
   hypercore@10.38.2(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
       '@hyperswarm/secret-stream': 6.9.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
-      b4a: 1.8.0
+      b4a: 1.8.1
       bare-events: 2.8.2
       big-sparse-array: 1.0.3
       compact-encoding: 2.19.2
       crc-universal: 1.0.4(bare-url@2.4.0)
       fast-fifo: 1.3.2
       flat-tree: 1.13.0
-      hypercore-crypto: 3.6.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
+      hypercore-crypto: 3.7.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       hypercore-errors: 1.5.0
       hypercore-id-encoding: 1.3.0
       is-options: 1.0.2
-      protomux: 3.10.1
+      protomux: 3.11.0
       quickbit-universal: 2.2.0(bare-url@2.4.0)
       random-access-file: 4.1.2(bare-url@2.4.0)
       random-array-iterator: 1.0.0
@@ -4474,13 +4528,13 @@ snapshots:
   hyperdht@6.29.6(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
       '@hyperswarm/secret-stream': 6.9.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
-      b4a: 1.8.0
+      b4a: 1.8.1
       bare-events: 2.8.2
       blind-relay: 1.4.0(bare-url@2.4.0)(sodium-javascript@0.8.0)
       bogon: 1.2.0
       compact-encoding: 2.19.2
       dht-rpc: 6.26.3(bare-url@2.4.0)(sodium-javascript@0.8.0)
-      hypercore-crypto: 3.6.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
+      hypercore-crypto: 3.7.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       hypercore-id-encoding: 1.3.0
       noise-curve-ed: 2.1.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
       noise-handshake: 4.2.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
@@ -4500,7 +4554,7 @@ snapshots:
 
   hyperswarm@4.17.0(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       bare-events: 2.8.2
       hyperdht: 6.29.6(bare-url@2.4.0)(sodium-javascript@0.8.0)
       safety-catch: 1.0.3
@@ -4614,7 +4668,7 @@ snapshots:
 
   is-options@1.0.2:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
 
@@ -4697,24 +4751,24 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  jsdom@29.0.1:
+  jsdom@29.1.1:
     dependencies:
-      '@asamuzakjp/css-color': 5.0.1
-      '@asamuzakjp/dom-selector': 7.0.4
+      '@asamuzakjp/css-color': 5.1.11
+      '@asamuzakjp/dom-selector': 7.1.1
       '@bramus/specificity': 2.4.2
-      '@csstools/css-syntax-patches-for-csstree': 1.1.2(css-tree@3.2.1)
+      '@csstools/css-syntax-patches-for-csstree': 1.1.6(css-tree@3.2.1)
       '@exodus/bytes': 1.15.0
       css-tree: 3.2.1
       data-urls: 7.0.0
       decimal.js: 10.6.0
       html-encoding-sniffer: 6.0.0
       is-potential-custom-element-name: 1.0.1
-      lru-cache: 11.2.7
-      parse5: 8.0.0
+      lru-cache: 11.5.1
+      parse5: 8.0.1
       saxes: 6.0.0
       symbol-tree: 3.2.4
       tough-cookie: 6.0.1
-      undici: 7.24.6
+      undici: 7.28.0
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -4765,7 +4819,7 @@ snapshots:
     dependencies:
       js-tokens: 4.0.0
 
-  lru-cache@11.2.7: {}
+  lru-cache@11.5.1: {}
 
   lru-cache@5.1.1:
     dependencies:
@@ -4871,7 +4925,7 @@ snapshots:
 
   noise-curve-ed@2.1.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       nanoassert: 2.0.0
       sodium-universal: 5.0.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
     transitivePeerDependencies:
@@ -4884,7 +4938,7 @@ snapshots:
 
   noise-handshake@3.1.0(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       nanoassert: 2.0.0
       sodium-universal: 4.0.1(bare-url@2.4.0)(sodium-javascript@0.8.0)
     transitivePeerDependencies:
@@ -4894,7 +4948,7 @@ snapshots:
 
   noise-handshake@4.2.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       nanoassert: 2.0.0
       sodium-universal: 5.0.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
     transitivePeerDependencies:
@@ -4991,9 +5045,9 @@ snapshots:
       pbkdf2: 3.1.5
       safe-buffer: 5.2.1
 
-  parse5@8.0.0:
+  parse5@8.0.1:
     dependencies:
-      entities: 6.0.1
+      entities: 8.0.0
 
   path-browserify@1.0.1: {}
 
@@ -5022,6 +5076,14 @@ snapshots:
     dependencies:
       find-up: 5.0.0
 
+  playwright-core@1.61.1: {}
+
+  playwright@1.61.1:
+    dependencies:
+      playwright-core: 1.61.1
+    optionalDependencies:
+      fsevents: 2.3.2
+
   possible-typed-array-names@1.1.0: {}
 
   postcss@8.5.8:
@@ -5032,7 +5094,7 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  prettier@3.8.1: {}
+  prettier@3.9.4: {}
 
   pretty-format@27.5.1:
     dependencies:
@@ -5052,16 +5114,16 @@ snapshots:
 
   protocol-buffers-encodings@1.2.0:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       signed-varint: 2.0.1
       varint: 5.0.0
     transitivePeerDependencies:
       - react-native-b4a
 
-  protomux@3.10.1:
+  protomux@3.11.0:
     dependencies:
-      b4a: 1.8.0
-      compact-encoding: 2.19.2
+      b4a: 1.8.1
+      compact-encoding: 3.3.0
       queue-tick: 1.0.1
       safety-catch: 1.0.3
       unslab: 1.3.0
@@ -5098,7 +5160,7 @@ snapshots:
 
   quickbit-universal@2.2.0(bare-url@2.4.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       simdle-universal: 1.1.2(bare-url@2.4.0)
     optionalDependencies:
       quickbit-native: 2.4.8(bare-url@2.4.0)
@@ -5149,7 +5211,7 @@ snapshots:
 
   random-access-memory@6.2.1:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       is-options: 1.0.2
       random-access-storage: 3.0.2
     transitivePeerDependencies:
@@ -5237,7 +5299,7 @@ snapshots:
 
   record-cache@1.2.0:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
 
@@ -5398,28 +5460,28 @@ snapshots:
 
   sha256-universal@1.2.1:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       sha256-wasm: 2.2.2
     transitivePeerDependencies:
       - react-native-b4a
 
   sha256-wasm@2.2.2:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       nanoassert: 2.0.0
     transitivePeerDependencies:
       - react-native-b4a
 
   sha512-universal@1.2.1:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       sha512-wasm: 2.3.4
     transitivePeerDependencies:
       - react-native-b4a
 
   sha512-wasm@2.3.4:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       nanoassert: 2.0.0
     transitivePeerDependencies:
       - react-native-b4a
@@ -5472,7 +5534,7 @@ snapshots:
 
   simdle-native@1.3.9(bare-url@2.4.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       require-addon: 1.2.0(bare-url@2.4.0)
     transitivePeerDependencies:
       - bare-url
@@ -5481,7 +5543,7 @@ snapshots:
 
   simdle-universal@1.1.2(bare-url@2.4.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
     optionalDependencies:
       simdle-native: 1.3.9(bare-url@2.4.0)
     transitivePeerDependencies:
@@ -5524,7 +5586,7 @@ snapshots:
 
   sodium-secretstream@1.2.0(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       sodium-universal: 5.0.1(bare-events@2.8.2)(bare-url@2.4.0)(sodium-javascript@0.8.0)
     transitivePeerDependencies:
       - bare-abort-controller
@@ -5661,7 +5723,7 @@ snapshots:
 
   text-decoder@1.2.7:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
 
@@ -5745,7 +5807,7 @@ snapshots:
 
   udx-native@1.19.2(bare-url@2.4.0):
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
       bare-events: 2.8.2
       require-addon: 1.2.0(bare-url@2.4.0)
       streamx: 2.25.0
@@ -5761,13 +5823,13 @@ snapshots:
       has-symbols: 1.1.0
       which-boxed-primitive: 1.1.1
 
-  undici@7.24.6: {}
+  undici@7.28.0: {}
 
   unordered-set@2.0.1: {}
 
   unslab@1.3.0:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
 
@@ -5817,15 +5879,15 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  vitest@4.1.2(jsdom@29.0.1)(vite@6.4.1):
+  vitest@4.1.9(@vitest/coverage-v8@4.1.9)(jsdom@29.1.1)(vite@6.4.1):
     dependencies:
-      '@vitest/expect': 4.1.2
-      '@vitest/mocker': 4.1.2(vite@6.4.1)
-      '@vitest/pretty-format': 4.1.2
-      '@vitest/runner': 4.1.2
-      '@vitest/snapshot': 4.1.2
-      '@vitest/spy': 4.1.2
-      '@vitest/utils': 4.1.2
+      '@vitest/expect': 4.1.9
+      '@vitest/mocker': 4.1.9(vite@6.4.1)
+      '@vitest/pretty-format': 4.1.9
+      '@vitest/runner': 4.1.9
+      '@vitest/snapshot': 4.1.9
+      '@vitest/spy': 4.1.9
+      '@vitest/utils': 4.1.9
       es-module-lexer: 2.0.0
       expect-type: 1.3.0
       magic-string: 0.30.21
@@ -5840,7 +5902,8 @@ snapshots:
       vite: 6.4.1
       why-is-node-running: 2.3.0
     optionalDependencies:
-      jsdom: 29.0.1
+      '@vitest/coverage-v8': 4.1.9(vitest@4.1.9)
+      jsdom: 29.1.1
     transitivePeerDependencies:
       - msw
 
@@ -5918,7 +5981,7 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  ws@8.20.0: {}
+  ws@8.21.0: {}
 
   xache@1.2.1: {}
 
@@ -5936,7 +5999,7 @@ snapshots:
 
   z32@1.1.0:
     dependencies:
-      b4a: 1.8.0
+      b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
 

@@ -1,0 +1,132 @@
+/* ── WorkspaceRail ───────────────────────────────────────────── */
+/* The rail itself (.workspace-rail) is in workspace.css.        */
+/* This file styles the contents rendered inside it.             */
+
+.workspace-avatar-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Active pill — left edge indicator (Discord-style) */
+.workspace-avatar__pill {
+  position: absolute;
+  left: -8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--text);
+  height: 0;
+  transition: height 0.15s ease;
+  pointer-events: none;
+}
+
+.workspace-avatar__pill--active {
+  height: 60%;
+}
+
+/* Avatar button */
+.workspace-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-radius 0.15s ease,
+    transform 0.1s ease,
+    filter 0.1s ease;
+  flex-shrink: 0;
+}
+
+.workspace-avatar:hover,
+.workspace-avatar--active {
+  border-radius: 14px;
+}
+
+.workspace-avatar:hover {
+  filter: brightness(1.15);
+  transform: scale(1.05);
+}
+
+/* Tooltip */
+.workspace-avatar__tooltip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--surface-5);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* Tooltip arrow */
+.workspace-avatar__tooltip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: var(--surface-5);
+}
+
+/* Divider */
+.workspace-rail__divider {
+  width: 24px;
+  height: 1px;
+  background: var(--border-strong);
+  margin: 4px 0;
+  flex-shrink: 0;
+}
+
+/* + button and settings button */
+.workspace-rail__icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: none;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-radius 0.15s;
+  flex-shrink: 0;
+}
+
+.workspace-rail__icon-btn:hover {
+  background: var(--surface-4);
+  color: var(--text);
+  border-radius: 14px;
+}
+
+.workspace-rail__plus {
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 300;
+}
+
+/* Spacer — pushes settings to the bottom */
+.workspace-rail__spacer {
+  flex: 1;
+}

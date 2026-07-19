@@ -3,11 +3,18 @@
  * Peer discovery and P2P messaging via WebRTC DataChannels.
  *
  * Architecture:
- *   Browser ──── WebSocket ────▶ Relay /signal  (signaling only: SDP + ICE)
+ *   Browser ──── WebSocket ────▶ Relay /signal  (signaling: SDP + ICE)
  *   Browser ◀──── WebRTC DataChannel ────▶ Browser  (P2P: all messages)
  *
- * The relay sees only WebRTC handshake metadata (SDP/ICE), never message content.
- * After the initial handshake, all data flows directly peer-to-peer via DataChannel.
+ * When every peer's DataChannel is open, the relay only ever sees WebRTC
+ * handshake metadata (SDP/ICE) — never message content.
+ *
+ * Fallback: if a peer's DataChannel cannot be established (e.g. symmetric
+ * NAT with no TURN server — common on mobile networks), messages to that
+ * peer are relayed in clear-text through the signaling WebSocket
+ * (`relay-data` / `relay-data-to`). This trades the P2P-only privacy
+ * guarantee for delivery reliability in that specific case; sendToAll/
+ * sendToPeer only use this path for peers that actually need it.
  *
  * Events emitted (CustomEvent via EventTarget):
  *   peer-joined   { id, username, messageCoreKey }
@@ -36,9 +43,11 @@ export function extractFingerprint(sdp) {
 }
 
 /** Build the signaling WebSocket URL.
- *  Priority: user setting (localStorage) → VITE_DHT_RELAY_URL env → auto-derive from window.location.
+ *  Priority: explicit override (workspace config) → user setting (localStorage) → VITE_DHT_RELAY_URL env → auto-derive from window.location.
+ * @param {string|null} [override]  Optional relay base URL that takes over everything else.
  */
-function signalUrl() {
+function signalUrl(override) {
+  if (override) return override.replace(/\/?$/, '') + '/signal'
   const stored = getRelayUrl()
   if (stored) return stored.replace(/\/?$/, '') + '/signal'
   if (import.meta.env.VITE_DHT_RELAY_URL) {
@@ -58,9 +67,14 @@ export class RoomSwarm extends EventTarget {
     this.peers = new Map() // peerId → { id, username, messageCoreKey, pc, dc, sendControl }
     this.mode = 'webrtc'
 
+    // Optional workspace-level relay override (takes priority over global settings)
+    this._relayUrl = opts.relayUrl || null
+
     this._ws = null // signaling WebSocket
     this._localPeerId = null
     this._identity = null
+    this._leaving = false // true while leave() is in progress
+    this._wsReconnectTimer = null // reconnect back-off timer
 
     // ICE candidates buffered before remote description is set
     this._pendingCandidates = new Map() // peerId → [candidate, ...]
@@ -71,7 +85,7 @@ export class RoomSwarm extends EventTarget {
     this._localPeerId = b4a.toString(this._identity.publicKey, 'hex')
 
     return new Promise((resolve, reject) => {
-      const url = signalUrl()
+      const url = signalUrl(this._relayUrl)
       const ws = new WebSocket(url)
       this._ws = ws
 
@@ -125,6 +139,11 @@ export class RoomSwarm extends EventTarget {
         if (this.peers.size > 0 && !hasOpenChannels) {
           this.dispatchEvent(new CustomEvent('error', { detail: new Error('Signaling connection lost') }))
         }
+        // Schedule reconnect unless the swarm is intentionally being torn down.
+        if (!this._leaving) {
+          clearTimeout(this._wsReconnectTimer)
+          this._wsReconnectTimer = setTimeout(() => this._reconnectWS(), 3000)
+        }
       })
     })
   }
@@ -140,12 +159,40 @@ export class RoomSwarm extends EventTarget {
         } else {
           console.info('[swarm] peer-joined — waiting for offer from', msg.peerId.slice(0, 16) + '…')
         }
+        // ── WS-relay bootstrap ─────────────────────────────────────────────
+        // Send HELLO via WS relay immediately so the other side can fire
+        // peer-joined without waiting for WebRTC DataChannel to open.
+        // This is the critical path on mobile / symmetric-NAT where WebRTC
+        // ICE often fails: without this, HISTORY_REQ and WORKSPACE_META are
+        // never triggered and the two clients see nothing from each other.
+        this._sendRelayHello(msg.peerId)
         break
       case 'peer-left':
         this._handleDisconnect(msg.peerId)
         break
       case 'signal':
         this._handleRTCSignal(msg.from, msg.signal)
+        break
+      // ── WebSocket relay fallback ───────────────────────────────────────────
+      // Received when the sender could not (or did not) use the DataChannel.
+      case 'relay-data':
+        if (msg.from && msg.data) {
+          // Auto-register the sender if we haven't seen them via WebRTC yet.
+          // This lets messages arrive even when the DataChannel hasn't established.
+          if (!this.peers.has(msg.from)) {
+            this.peers.set(msg.from, {
+              id: msg.from,
+              username: msg.from.slice(0, 8),
+              messageCoreKey: null,
+              pc: null,
+              dc: null,
+              sendControl: null, // DataChannel not yet open; WS relay used for replies
+              expectedFingerprint: null,
+              _joinedFired: false,
+            })
+          }
+          this._handleControl(msg.from, msg.data)
+        }
         break
     }
   }
@@ -259,6 +306,7 @@ export class RoomSwarm extends EventTarget {
       dc: null,
       sendControl: null,
       expectedFingerprint,
+      _joinedFired: false,
     })
 
     pc.addEventListener('connectionstatechange', () => {
@@ -346,25 +394,46 @@ export class RoomSwarm extends EventTarget {
         }
 
         this.peers.set(remoteId, peer)
-        this.dispatchEvent(
-          new CustomEvent('peer-joined', {
-            detail: { id: remoteId, username: msg.username, messageCoreKey: msg.messageCoreKey },
-          })
-        )
+        // Fire peer-joined exactly once per peer, regardless of whether HELLO
+        // arrived via DataChannel or WS relay.
+        if (!peer._joinedFired) {
+          peer._joinedFired = true
+          this.dispatchEvent(
+            new CustomEvent('peer-joined', {
+              detail: { id: remoteId, username: msg.username, messageCoreKey: msg.messageCoreKey },
+            })
+          )
+        }
         break
       case 'MSG':
-        this.dispatchEvent(new CustomEvent('chat-message', { detail: { message: msg.message } }))
+        this.dispatchEvent(
+          new CustomEvent('chat-message', { detail: { message: msg.message, channelName: msg.channelName } })
+        )
+        break
+      case 'DM':
+        // Encrypted direct message — dispatched as-is; decryption happens in the receiver
+        this.dispatchEvent(
+          new CustomEvent('dm-message', {
+            detail: { from: remoteId, to: msg.to, nonce: msg.nonce, ciphertext: msg.ciphertext },
+          })
+        )
         break
       case 'HISTORY':
       case 'HISTORY_RES':
         if (Array.isArray(msg.messages)) {
           for (const m of msg.messages) {
-            this.dispatchEvent(new CustomEvent('chat-message', { detail: { message: m } }))
+            this.dispatchEvent(
+              new CustomEvent('chat-message', { detail: { message: m, channelName: msg.channelName } })
+            )
           }
         }
         break
       case 'HISTORY_REQ':
-        this.dispatchEvent(new CustomEvent('history-req', { detail: { peerId: remoteId, since: msg.since ?? 0 } }))
+        this.dispatchEvent(
+          new CustomEvent('history-req', {
+            detail: { peerId: remoteId, since: msg.since ?? 0, channelName: msg.channelName },
+          })
+        )
         break
       case 'VIDEO_OFFER':
         this.dispatchEvent(new CustomEvent('video-offer', { detail: { peerId: remoteId, sdp: msg.sdp } }))
@@ -387,6 +456,108 @@ export class RoomSwarm extends EventTarget {
       case 'SCREEN_SHARE_END':
         this.dispatchEvent(new CustomEvent('screen-share-end', { detail: { peerId: remoteId } }))
         break
+      case 'WORKSPACE_META':
+        this.dispatchEvent(new CustomEvent('workspace-meta', { detail: { peerId: remoteId, channels: msg.channels } }))
+        break
+      case 'MEMBER_HELLO':
+        this.dispatchEvent(
+          new CustomEvent('member-hello', {
+            detail: { peerId: remoteId, pubkey: msg.pubkey, username: msg.username, status: msg.status ?? 'online' },
+          })
+        )
+        break
+      case 'PRESENCE_UPDATE':
+        this.dispatchEvent(
+          new CustomEvent('presence-update', { detail: { peerId: remoteId, pubkey: msg.pubkey, status: msg.status } })
+        )
+        break
+      case 'TYPING':
+        this.dispatchEvent(
+          new CustomEvent('typing', {
+            detail: {
+              peerId: remoteId,
+              username: msg.username ?? remoteId.slice(0, 8),
+              stopped: msg.stopped ?? false,
+              channelName: msg.channelName ?? null,
+            },
+          })
+        )
+        break
+      case 'CHANNEL_NOTIFY':
+        this.dispatchEvent(
+          new CustomEvent('channel-notify', { detail: { peerId: remoteId, channelName: msg.channelName } })
+        )
+        break
+      case 'REACTION':
+        this.dispatchEvent(
+          new CustomEvent('reaction', {
+            detail: {
+              peerId: remoteId,
+              messageId: msg.messageId,
+              emoji: msg.emoji,
+              userPubkey: msg.userPubkey,
+              channelName: msg.channelName ?? null,
+              removed: msg.removed ?? false,
+            },
+          })
+        )
+        break
+      case 'MSG_EDIT':
+        this.dispatchEvent(
+          new CustomEvent('msg-edit', {
+            detail: {
+              peerId: remoteId,
+              originalId: msg.originalId,
+              newContent: msg.newContent,
+              editedAt: msg.editedAt ?? Date.now(),
+              channelName: msg.channelName ?? null,
+            },
+          })
+        )
+        break
+      case 'MSG_DELETE':
+        this.dispatchEvent(
+          new CustomEvent('msg-delete', {
+            detail: {
+              peerId: remoteId,
+              originalId: msg.originalId,
+              channelName: msg.channelName ?? null,
+            },
+          })
+        )
+        break
+      case 'FILE_META':
+        this.dispatchEvent(
+          new CustomEvent('file-meta', {
+            detail: {
+              peerId: remoteId,
+              fileId: msg.fileId,
+              name: msg.name,
+              mimeType: msg.mimeType,
+              size: msg.size,
+              totalChunks: msg.totalChunks,
+              channelName: msg.channelName ?? null,
+              senderUsername: msg.senderUsername ?? null,
+              senderPublicKey: msg.senderPublicKey ?? null,
+            },
+          })
+        )
+        break
+      case 'FILE_CHUNK':
+        this.dispatchEvent(
+          new CustomEvent('file-chunk', {
+            detail: {
+              peerId: remoteId,
+              fileId: msg.fileId,
+              index: msg.index,
+              data: msg.data,
+            },
+          })
+        )
+        break
+      case 'DM_INVITE':
+        this.dispatchEvent(new CustomEvent('dm-invite', { detail: { peerId: remoteId, from: msg.from, to: msg.to } }))
+        break
     }
   }
 
@@ -406,14 +577,108 @@ export class RoomSwarm extends EventTarget {
     }
   }
 
+  // Send a HELLO to a specific peer via the WS relay so that peer-joined fires
+  // on both sides without waiting for WebRTC DataChannel to open.
+  _sendRelayHello(toPeerId) {
+    if (this._ws?.readyState !== WebSocket.OPEN || !this._localPeerId) return
+    this._ws.send(
+      JSON.stringify({
+        type: 'relay-data-to',
+        to: toPeerId,
+        data: {
+          type: 'HELLO',
+          username: this._identity?.username ?? '…',
+          publicKey: this._localPeerId,
+          messageCoreKey: this.messageCoreKey,
+          fingerprint: null, // no DTLS for WS-relay path — fingerprint check skipped when null
+        },
+      })
+    )
+  }
+
+  // ── WebSocket reconnect ───────────────────────────────────────────────────
+  // Called automatically when the signaling WS closes unexpectedly.
+  // Re-joins the relay room with the same peerId so peers can rediscover us.
+  _reconnectWS() {
+    if (this._leaving || !this._localPeerId) return
+
+    const url = signalUrl(this._relayUrl)
+    console.info('[swarm] reconnecting WS…', url)
+
+    let ws
+    try {
+      ws = new WebSocket(url)
+    } catch {
+      // URL may be invalid; retry later
+      this._wsReconnectTimer = setTimeout(() => this._reconnectWS(), 5000)
+      return
+    }
+
+    this._ws = ws
+
+    ws.addEventListener(
+      'open',
+      () => {
+        ws.send(JSON.stringify({ type: 'join', room: this.roomCode, peerId: this._localPeerId }))
+        console.info('[swarm] WS reconnected, re-joined room', this.roomCode.slice(0, 16) + '…')
+      },
+      { once: true }
+    )
+
+    ws.addEventListener('message', (e) => {
+      let msg
+      try {
+        msg = JSON.parse(e.data)
+      } catch {
+        return
+      }
+      this._handleSignal(msg)
+    })
+
+    ws.addEventListener('close', () => {
+      if (!this._leaving) {
+        // Exponential-ish back-off capped at 10 s
+        clearTimeout(this._wsReconnectTimer)
+        this._wsReconnectTimer = setTimeout(() => this._reconnectWS(), 5000)
+      }
+    })
+
+    ws.addEventListener('error', () => {
+      // close event will fire next; back-off handled there
+    })
+  }
+
   // ── Public API ──────────────────────────────────────────────────────────────
 
   sendToAll(msg) {
-    for (const peer of this.peers.values()) peer.sendControl?.(msg)
+    // Prefer the DataChannel (true P2P, no server ever sees the payload).
+    // Only fall back to the WS relay for peers whose DataChannel isn't open —
+    // if every known peer already has an open DataChannel, skip the relay
+    // entirely so the relay server never sees message content in that case.
+    // (Also relay when no peers are known yet — a peer may exist in the room
+    // whose HELLO/registration hasn't completed on our side yet.)
+    let allHaveOpenDC = this.peers.size > 0
+    for (const peer of this.peers.values()) {
+      peer.sendControl?.(msg)
+      if (peer.dc?.readyState !== 'open') allHaveOpenDC = false
+    }
+    if (!allHaveOpenDC && this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({ type: 'relay-data', data: msg }))
+    }
   }
 
   sendToPeer(peerId, msg) {
-    this.peers.get(peerId)?.sendControl?.(msg)
+    const peer = this.peers.get(peerId)
+    // Try DataChannel first (also works for directly-wired test peers where dc=null)
+    if (peer?.sendControl) {
+      peer.sendControl(msg)
+      // If a real DataChannel is open we're done; otherwise fall through to WS relay
+      if (peer.dc?.readyState === 'open') return
+    }
+    // DataChannel not open (or unavailable) — relay via WebSocket
+    if (this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify({ type: 'relay-data-to', to: peerId, data: msg }))
+    }
   }
 
   getPeers() {
@@ -424,6 +689,8 @@ export class RoomSwarm extends EventTarget {
   }
 
   async leave() {
+    this._leaving = true
+    clearTimeout(this._wsReconnectTimer)
     this._ws?.close()
     for (const peer of this.peers.values()) {
       peer.dc?.close()

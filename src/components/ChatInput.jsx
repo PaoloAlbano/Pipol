@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import '../styles/chat.css'
 
 // Maximum message length (prevents DoS and abuse)
@@ -84,10 +84,45 @@ function exitAfter(el, sel) {
  *   inline code, code block.
  * - Toolbar buttons stay highlighted while the cursor is inside that format.
  */
-export default function ChatInput({ onSend }) {
+/**
+ * Returns the @word being typed immediately before the cursor, or null.
+ */
+function getMentionQuery(editor) {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || !editor.contains(sel.anchorNode)) return null
+  const range = sel.getRangeAt(0)
+  if (!range.collapsed) return null
+  const pre = range.cloneRange()
+  pre.selectNodeContents(editor)
+  pre.setEnd(range.endContainer, range.endOffset)
+  const m = pre.toString().match(/\B@(\w*)$/)
+  return m ? m[1] : null
+}
+
+export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) {
   const [hasContent, setHasContent] = useState(false)
   const [activeFormats, setActiveFormats] = useState(new Set())
+  const [mentionQuery, setMentionQuery] = useState(null) // string | null
+  const [mentionIdx, setMentionIdx] = useState(0)
+  const [dragOver, setDragOver] = useState(false)
   const editorRef = useRef(null)
+  const dropdownRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  const mentionMatches =
+    mentionQuery !== null ? peers.filter((p) => p.username?.toLowerCase().startsWith(mentionQuery.toLowerCase())) : []
+
+  // Clear dropdown on outside click
+  useEffect(() => {
+    if (mentionQuery === null) return
+    function onPointerDown(e) {
+      if (!dropdownRef.current?.contains(e.target) && !editorRef.current?.contains(e.target)) {
+        setMentionQuery(null)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [mentionQuery])
 
   // On touch-only devices there is no physical keyboard, so the Shift+Enter
   // hint is irrelevant. matchMedia with 'pointer: fine' is the most reliable
@@ -127,9 +162,56 @@ export default function ChatInput({ onSend }) {
     const el = editorRef.current
     setHasContent(!!el && el.textContent.trim() !== '')
     updateActiveFormats()
+    onTyping?.()
+    const query = getMentionQuery(el)
+    setMentionQuery(query)
+    setMentionIdx(0)
+  }
+
+  function insertMention(username) {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+    const textNode = range.endContainer
+    if (textNode.nodeType !== Node.TEXT_NODE) return
+    const text = textNode.textContent
+    const atPos = text.lastIndexOf('@', range.endOffset - 1)
+    if (atPos === -1) return
+    const newRange = document.createRange()
+    newRange.setStart(textNode, atPos)
+    newRange.setEnd(textNode, range.endOffset)
+    sel.removeAllRanges()
+    sel.addRange(newRange)
+    document.execCommand('insertText', false, `@${username} `)
+    setMentionQuery(null)
+    setMentionIdx(0)
   }
 
   function handleKeyDown(e) {
+    if (mentionMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionIdx((i) => (i + 1) % mentionMatches.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionIdx((i) => (i - 1 + mentionMatches.length) % mentionMatches.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        insertMention(mentionMatches[mentionIdx].username)
+        return
+      }
+      if (e.key === 'Escape') {
+        setMentionQuery(null)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       doSend()
@@ -149,6 +231,21 @@ export default function ChatInput({ onSend }) {
     el.innerHTML = ''
     setHasContent(false)
     setActiveFormats(new Set())
+  }
+
+  function handleFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = '' // allow re-selecting same file
+    onSendFile?.(file)
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    onSendFile?.(file)
   }
 
   function handleToolbarClick(e, btn) {
@@ -195,13 +292,52 @@ export default function ChatInput({ onSend }) {
 
   return (
     <form
-      className="chat-input-form"
+      className={`chat-input-form${dragOver ? ' chat-input-form--dragover' : ''}`}
       onSubmit={(e) => {
         e.preventDefault()
         doSend()
       }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
     >
+      {/* @mention autocomplete dropdown */}
+      {mentionMatches.length > 0 && (
+        <ul className="mention-dropdown" ref={dropdownRef} role="listbox" aria-label="Mention suggestions">
+          {mentionMatches.map((peer, i) => (
+            <li
+              key={peer.username}
+              className={`mention-dropdown-item${i === mentionIdx ? ' mention-dropdown-item--active' : ''}`}
+              role="option"
+              aria-selected={i === mentionIdx}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                insertMention(peer.username)
+              }}
+            >
+              @{peer.username}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <div className="chat-input-wrapper">
+        {/* Hidden file input — triggered by the attach button */}
+        {onSendFile && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="chat-file-input-hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={handleFileChange}
+          />
+        )}
+
         <div className="chat-input-toolbar" role="toolbar" aria-label="Formatting">
           {TOOLBAR.map((btn) => {
             const active = activeFormats.has(btn.command ?? btn.tag)
@@ -239,6 +375,17 @@ export default function ChatInput({ onSend }) {
           <button className="chat-send-btn" type="submit" disabled={!hasContent} title="Send message" aria-label="Send">
             ↑
           </button>
+          {onSendFile && (
+            <button
+              type="button"
+              className="chat-attach-btn"
+              title="Attach image (max 5 MB)"
+              aria-label="Attach image"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              📎
+            </button>
+          )}
         </div>
       </div>
     </form>

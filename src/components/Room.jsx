@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
+import { decryptDM, encryptDM } from '../p2p/dm-crypto.js'
+import { sendImageFile, FileReceiver } from '../p2p/file-transfer.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
 import {
   getLocalStream,
@@ -17,6 +19,8 @@ import ChatMessages from './ChatMessages.jsx'
 import ChatInput from './ChatInput.jsx'
 import VideoGrid from './VideoGrid.jsx'
 import VideoControls from './VideoControls.jsx'
+import ThreadPanel from './ThreadPanel.jsx'
+import { containsMention } from '../p2p/notifications.js'
 import '../styles/room.css'
 
 /**
@@ -26,11 +30,46 @@ import '../styles/room.css'
  * @param {object}   identity   { publicKey, secretKey, username }
  * @param {function} onLeave    Callback to return to the Home screen
  */
-export default function Room({ roomCode, identity, showStats, onLeave, onOpenSettings }) {
+export default function Room({
+  roomCode,
+  identity,
+  showStats,
+  mirrorVideo = true,
+  onLeave,
+  onOpenSettings,
+  embedded = false,
+  relayUrl = null,
+  onMessageSent,
+  onPeerMessage = null, // called when a message arrives from a remote peer
+  // Meta-swarm props (workspace rooms). When provided, no per-room swarm is created.
+  swarm: swarmProp = null, // RoomSwarm from useWorkspaceSync
+  channelName = null, // e.g. 'generale' — used to filter messages
+  isDM = false, // true when this Room is a DM conversation
+  dmPeerPublicKey = null, // Buffer: recipient's Ed25519 publicKey (DM only)
+  dmPeerPubkeyHex = null, // hex string of dmPeerPublicKey
+  // External call control (used by ChannelHeader in embedded / workspace mode)
+  startCallTrigger = 0, // increment to programmatically start a call
+  onCallActiveChange = null, // (isActive: boolean) => void
+}) {
   const [peers, setPeers] = useState([])
   const [messages, setMessages] = useState([])
   const [status, setStatus] = useState('connecting…')
   const [relayUnreachable, setRelayUnreachable] = useState(false)
+
+  // Typing indicators
+  const typingPeersRef = useRef(new Map()) // peerId → { username, timer }
+  const [typingUsers, setTypingUsers] = useState([]) // usernames currently typing
+  const typingThrottleRef = useRef(null) // throttle our own TYPING broadcasts
+
+  // Reactions: messageId → { emoji → Set<userPubkeyHex> }
+  const [reactions, setReactions] = useState(() => new Map())
+  const myPubkeyHexRef = useRef(
+    identity?.publicKey
+      ? Array.from(identity.publicKey)
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('')
+      : null
+  )
 
   // Panel collapse state (auto-reset on mobile)
   const isMobile = () => window.innerWidth <= 560
@@ -48,6 +87,8 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
 
   // Video call state
   const [callActive, setCallActive] = useState(false)
+  const [callStartedAt, setCallStartedAt] = useState(null) // timestamp when call started
+  const [callElapsed, setCallElapsed] = useState('') // formatted HH:MM:SS or MM:SS
   const [localStream, setLocalStream] = useState(null)
   const [remoteStreams, setRemoteStreams] = useState({}) // peerId → MediaStream
   const [audioMuted, setAudioMutedState] = useState(false)
@@ -62,10 +103,12 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   // Persistent refs (not re-rendered on change)
   const swarmRef = useRef(null)
   const msgStoreRef = useRef(null)
+  const swarmDetachRef = useRef(null) // cleanup fn returned by attachSwarmListeners
   const rtcPeersRef = useRef({}) // peerId → WebRTCPeer
   const callActiveRef = useRef(false)
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
   const retryTimerRef = useRef(null)
+  const fileReceiverRef = useRef(new FileReceiver()) // receives chunked file transfers
   const pipWindowRef = useRef(null) // Document PiP window
   const pipBtnsRef = useRef(null) // { aBtn, vBtn } for label sync
   const pipHandlersRef = useRef(null) // always-fresh toggle handlers
@@ -73,26 +116,64 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   const [pipActive, setPipActive] = useState(false)
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false)
 
+  // Thread state
+  const [activeThread, setActiveThread] = useState(null) // message object | null
+
+  const threadReplies = useMemo(
+    () => (activeThread ? messages.filter((m) => m.parentId === activeThread.id) : []),
+    [messages, activeThread]
+  )
+
   useEffect(() => {
     callActiveRef.current = callActive
   }, [callActive])
 
+  // Notify parent when call starts/ends (used by ChannelHeader in embedded mode)
+  useEffect(() => {
+    onCallActiveChange?.(callActive)
+  }, [callActive, onCallActiveChange])
+
+  // Start call when triggered externally (e.g. ChannelHeader 📹 button)
+  useEffect(() => {
+    if (startCallTrigger > 0 && !callActiveRef.current) handleStartCall()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startCallTrigger])
+
+  // ── Call duration timer ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!callStartedAt) return
+    function tick() {
+      const secs = Math.floor((Date.now() - callStartedAt) / 1000)
+      const h = Math.floor(secs / 3600)
+      const m = Math.floor((secs % 3600) / 60)
+      const s = secs % 60
+      const pad = (n) => String(n).padStart(2, '0')
+      setCallElapsed(h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => {
+      clearInterval(id)
+      setCallElapsed('')
+    }
+  }, [callStartedAt])
+
   // ── Attach swarm event listeners (reusable on reconnect) ──────────────────
+  // Returns a detach function that removes every listener — MUST be called on unmount.
   function attachSwarmListeners(swarm, msgStore) {
-    swarm.addEventListener('peer-joined', async (e) => {
+    async function onPeerJoined(e) {
       const { id } = e.detail
-      // Bidirectional delta sync: ask for messages we don't have yet
       const since = await msgStore.getLastTimestamp()
-      swarm.sendToPeer(id, { type: 'HISTORY_REQ', since })
+      swarm.sendToPeer(id, { type: 'HISTORY_REQ', channelName: channelName ?? roomCode, since })
       setPeers(swarm.getPeers())
       setStatus(`${swarm.getPeers().length} peer(s) connected`)
       if (callActiveRef.current) {
         await ensureRTCPeer(id, true)
         swarm.sendToPeer(id, { type: 'CALL_INIT' })
       }
-    })
+    }
 
-    swarm.addEventListener('peer-left', (e) => {
+    function onPeerLeft(e) {
       const { id } = e.detail
       cleanupRTCPeer(id)
       setPeers(swarm.getPeers())
@@ -105,25 +186,25 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       })
       setIncomingCall((prev) => (prev?.peerId === id ? null : prev))
       setSpotlightPeerId((prev) => (prev === id ? null : prev))
-    })
+      if (typingPeersRef.current.has(id)) {
+        clearTimeout(typingPeersRef.current.get(id)?.timer)
+        typingPeersRef.current.delete(id)
+        setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
+      }
+    }
 
-    swarm.addEventListener('call-init', async (e) => {
+    async function onCallInit(e) {
       const { peerId } = e.detail
       const callerName = swarmRef.current?.peers.get(peerId)?.username ?? peerId.slice(0, 8)
-
-      // Track that this peer is in a call
       setCallPeerIds((prev) => new Set([...prev, peerId]))
-
       if (callActiveRef.current) {
-        // Already in the call — connect directly
         await ensureRTCPeer(peerId, false)
       } else {
-        // Show modal only the first time (don't re-show if already dismissed)
         setIncomingCall((prev) => prev ?? { peerId, username: callerName })
       }
-    })
+    }
 
-    swarm.addEventListener('call-end', (e) => {
+    function onCallEnd(e) {
       const { peerId } = e.detail
       cleanupRTCPeer(peerId)
       setCallPeerIds((prev) => {
@@ -132,51 +213,172 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         return next
       })
       setIncomingCall((prev) => (prev?.peerId === peerId ? null : prev))
-    })
+    }
 
-    swarm.addEventListener('video-offer', async (e) => {
+    async function onVideoOffer(e) {
       if (!callActiveRef.current) return
       const peer = await ensureRTCPeer(e.detail.peerId, false)
       await peer.handleOffer(e.detail.sdp)
-    })
-    swarm.addEventListener('video-answer', async (e) => {
+    }
+    async function onVideoAnswer(e) {
       if (!callActiveRef.current) return
       rtcPeersRef.current[e.detail.peerId]?.handleAnswer(e.detail.sdp)
-    })
-    swarm.addEventListener('video-ice', async (e) => {
+    }
+    async function onVideoIce(e) {
       if (!callActiveRef.current) return
       rtcPeersRef.current[e.detail.peerId]?.handleIceCandidate(e.detail.candidate)
-    })
+    }
 
-    swarm.addEventListener('history-req', async (e) => {
-      const { peerId, since } = e.detail
+    async function onHistoryReq(e) {
+      const { peerId, since, channelName: reqChannel } = e.detail
+      const myKey = channelName ?? roomCode
+      if (reqChannel && reqChannel !== myKey) return
       const history = await msgStore.getHistory()
       const newer = history.filter((m) => m.timestamp > since)
       if (newer.length > 0) {
-        swarmRef.current.sendToPeer(peerId, { type: 'HISTORY_RES', messages: newer })
+        swarmRef.current.sendToPeer(peerId, { type: 'HISTORY_RES', channelName: myKey, messages: newer })
       }
-    })
+    }
 
-    swarm.addEventListener('chat-message', (e) => {
+    function onChatMessage(e) {
+      if (isDM) return
+      if (channelName && e.detail.channelName !== channelName) return
       msgStore.receiveMessage(e.detail.message)
-    })
+      if (onPeerMessage) {
+        const msg = e.detail.message
+        const mentioned = containsMention(msg.content, identity?.username)
+        onPeerMessage(mentioned ? { ...msg, mentioned: true } : msg)
+      }
+    }
 
-    swarm.addEventListener('screen-share-start', (e) => {
-      const { peerId } = e.detail
-      setSpotlightPeerId(peerId)
+    function onDMMessage(e) {
+      const { from, to, nonce, ciphertext } = e.detail
+      const myPubkeyHex = identity?.publicKey
+        ? Array.from(identity.publicKey)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+        : null
+      const isFromPeer = from === dmPeerPubkeyHex
+      const isToUs = to === myPubkeyHex
+      if (!isFromPeer || !isToUs) return
+      if (!dmPeerPublicKey || !identity?.secretKey) return
+      const message = decryptDM(nonce, ciphertext, identity.secretKey, dmPeerPublicKey)
+      if (message) msgStore.receiveMessage(message)
+    }
+
+    function onScreenShareStart(e) {
+      setSpotlightPeerId(e.detail.peerId)
       setLayout('spotlight')
-    })
-
-    swarm.addEventListener('screen-share-end', (e) => {
-      const { peerId } = e.detail
-      setSpotlightPeerId((prev) => (prev === peerId ? null : prev))
+    }
+    function onScreenShareEnd(e) {
+      setSpotlightPeerId((prev) => (prev === e.detail.peerId ? null : prev))
       setLayout('grid')
-    })
+    }
+    function onSwarmError(e) {
+      console.warn('[room] signaling lost, reconnecting…', e.detail)
+      setStatus('reconnecting…')
+    }
+    function onReaction(e) {
+      const { messageId, emoji, userPubkey, channelName: rxChannel, removed } = e.detail
+      // Filter by channel (same logic as chat-message)
+      if (!isDM && channelName && rxChannel !== channelName) return
+      setReactions((prev) => {
+        const next = new Map(prev)
+        if (!next.has(messageId)) next.set(messageId, new Map())
+        const emojiMap = new Map(next.get(messageId))
+        const users = new Set(emojiMap.get(emoji) ?? [])
+        if (removed) {
+          users.delete(userPubkey)
+          if (users.size === 0) emojiMap.delete(emoji)
+          else emojiMap.set(emoji, users)
+        } else {
+          users.add(userPubkey)
+          emojiMap.set(emoji, users)
+        }
+        next.set(messageId, emojiMap)
+        return next
+      })
+    }
+    function onMsgEdit(e) {
+      const { originalId, newContent, editedAt, channelName: rxChannel } = e.detail
+      if (!isDM && channelName && rxChannel !== channelName) return
+      msgStore.receiveEdit(originalId, newContent, editedAt)
+    }
+    function onMsgDelete(e) {
+      const { originalId, channelName: rxChannel } = e.detail
+      if (!isDM && channelName && rxChannel !== channelName) return
+      msgStore.receiveDelete(originalId)
+    }
+    function onTyping(e) {
+      const { peerId, username, stopped, channelName: typingChannel } = e.detail
+      // For channel rooms: ignore typing events from other channels
+      if (!isDM && channelName && typingChannel !== channelName) return
+      const existing = typingPeersRef.current.get(peerId)
+      if (existing?.timer) clearTimeout(existing.timer)
+      if (stopped) {
+        typingPeersRef.current.delete(peerId)
+      } else {
+        const timer = setTimeout(() => {
+          typingPeersRef.current.delete(peerId)
+          setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
+        }, 3000)
+        typingPeersRef.current.set(peerId, { username, timer })
+      }
+      setTypingUsers(Array.from(typingPeersRef.current.values()).map((p) => p.username))
+    }
 
-    swarm.addEventListener('error', (e) => {
-      console.error('[room] swarm error', e.detail)
-      setStatus('⚠ swarm error — check console')
-    })
+    function onFileMeta(e) {
+      const { channelName: rxChannel } = e.detail
+      if (!isDM && channelName && rxChannel !== channelName) return
+      fileReceiverRef.current.onMeta({ ...e.detail, identity: null })
+    }
+
+    function onFileChunk(e) {
+      const msg = fileReceiverRef.current.onChunk(e.detail)
+      if (msg) msgStore.receiveMessage(msg)
+    }
+
+    swarm.addEventListener('peer-joined', onPeerJoined)
+    swarm.addEventListener('peer-left', onPeerLeft)
+    swarm.addEventListener('call-init', onCallInit)
+    swarm.addEventListener('call-end', onCallEnd)
+    swarm.addEventListener('video-offer', onVideoOffer)
+    swarm.addEventListener('video-answer', onVideoAnswer)
+    swarm.addEventListener('video-ice', onVideoIce)
+    swarm.addEventListener('history-req', onHistoryReq)
+    swarm.addEventListener('chat-message', onChatMessage)
+    if (isDM) swarm.addEventListener('dm-message', onDMMessage)
+    swarm.addEventListener('screen-share-start', onScreenShareStart)
+    swarm.addEventListener('screen-share-end', onScreenShareEnd)
+    swarm.addEventListener('error', onSwarmError)
+    swarm.addEventListener('typing', onTyping)
+    swarm.addEventListener('reaction', onReaction)
+    swarm.addEventListener('msg-edit', onMsgEdit)
+    swarm.addEventListener('msg-delete', onMsgDelete)
+    swarm.addEventListener('file-meta', onFileMeta)
+    swarm.addEventListener('file-chunk', onFileChunk)
+
+    return function detach() {
+      swarm.removeEventListener('peer-joined', onPeerJoined)
+      swarm.removeEventListener('peer-left', onPeerLeft)
+      swarm.removeEventListener('call-init', onCallInit)
+      swarm.removeEventListener('call-end', onCallEnd)
+      swarm.removeEventListener('video-offer', onVideoOffer)
+      swarm.removeEventListener('video-answer', onVideoAnswer)
+      swarm.removeEventListener('video-ice', onVideoIce)
+      swarm.removeEventListener('history-req', onHistoryReq)
+      swarm.removeEventListener('chat-message', onChatMessage)
+      if (isDM) swarm.removeEventListener('dm-message', onDMMessage)
+      swarm.removeEventListener('screen-share-start', onScreenShareStart)
+      swarm.removeEventListener('screen-share-end', onScreenShareEnd)
+      swarm.removeEventListener('error', onSwarmError)
+      swarm.removeEventListener('typing', onTyping)
+      swarm.removeEventListener('reaction', onReaction)
+      swarm.removeEventListener('msg-edit', onMsgEdit)
+      swarm.removeEventListener('msg-delete', onMsgDelete)
+      swarm.removeEventListener('file-meta', onFileMeta)
+      swarm.removeEventListener('file-chunk', onFileChunk)
+    }
   }
 
   // ── Initialise P2P stack on mount ─────────────────────────────────────────
@@ -197,19 +399,39 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         const history = await msgStore.getHistory()
         if (!cancelled) setMessages(history)
 
-        // 2. Peer discovery via WebRTC swarm (with auto-retry on relay failure)
+        // 2. Peer discovery — use the meta swarm prop when available (workspace rooms),
+        //    otherwise create a per-room swarm (legacy direct rooms).
+        if (swarmProp) {
+          swarmRef.current = swarmProp
+          swarmDetachRef.current = attachSwarmListeners(swarmProp, msgStore)
+          setRelayUnreachable(false)
+          const connectedPeers = swarmProp.getPeers()
+          setStatus(connectedPeers.length > 0 ? `${connectedPeers.length} peer(s) connected` : 'waiting for peers…')
+          // Catch-up: peers already in the swarm when Room mounts won't fire 'peer-joined',
+          // so we send HISTORY_REQ to them directly.
+          if (connectedPeers.length > 0) {
+            const since = await msgStore.getLastTimestamp()
+            for (const p of connectedPeers) {
+              swarmProp.sendToPeer(p.id, { type: 'HISTORY_REQ', channelName: channelName ?? roomCode, since })
+            }
+          }
+          return
+        }
+
+        // 2b. Fallback: create a dedicated swarm (direct room join, no workspace)
         async function connectSwarm() {
           if (cancelled) return
           try {
             const swarm = await createRoomSwarm(roomCode, {
               messageCoreKey: msgStore.getLocalCoreKey(),
+              relayUrl,
             })
             if (cancelled) {
               swarm.leave()
               return
             }
             swarmRef.current = swarm
-            attachSwarmListeners(swarm, msgStore)
+            swarmDetachRef.current = attachSwarmListeners(swarm, msgStore)
             setRelayUnreachable(false)
             setStatus('waiting for peers…')
           } catch (err) {
@@ -240,7 +462,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       teardown()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode])
+  }, [roomCode, swarmProp])
 
   // ── Reconnect when app returns to foreground ───────────────────────────────
   useEffect(() => {
@@ -276,17 +498,22 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
       }
 
       const ws = swarmRef.current?._ws
+      // If we're using the shared meta swarm (swarmProp), its reconnection is
+      // handled by useWorkspaceSync — don't create a second swarm here.
+      if (swarmProp) return
       if (!ws || ws.readyState === WebSocket.OPEN) return
 
       console.info('[room] app foregrounded, reconnecting swarm…')
       setStatus('reconnecting…')
       try {
         await swarmRef.current.leave().catch(() => {})
+        swarmDetachRef.current?.()
         const swarm = await createRoomSwarm(roomCode, {
           messageCoreKey: msgStoreRef.current?.getLocalCoreKey(),
+          relayUrl,
         })
         swarmRef.current = swarm
-        attachSwarmListeners(swarm, msgStoreRef.current)
+        swarmDetachRef.current = attachSwarmListeners(swarm, msgStoreRef.current)
         setStatus('waiting for peers…')
       } catch (err) {
         console.error('[room] reconnect failed', err)
@@ -589,25 +816,166 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
   }
 
   async function teardown() {
+    swarmDetachRef.current?.()
+    swarmDetachRef.current = null
     Object.values(rtcPeersRef.current).forEach((p) => p.close())
     rtcPeersRef.current = {}
     stopLocalStream()
     await msgStoreRef.current?.close().catch(() => {})
-    await swarmRef.current?.leave().catch(() => {})
+    // Only leave the swarm if we created it (not the meta swarm managed by useWorkspaceSync)
+    if (!swarmProp) await swarmRef.current?.leave().catch(() => {})
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  const handleSendMessage = useCallback(async (content) => {
-    const msg = await msgStoreRef.current?.addMessage(content)
-    if (msg) swarmRef.current?.sendToAll({ type: 'MSG', message: msg })
-  }, [])
+  const handleSendMessage = useCallback(
+    async (content) => {
+      // Clear our typing state when we send + notify peers immediately
+      clearTimeout(typingThrottleRef.current)
+      typingThrottleRef.current = null
+      swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown', stopped: true })
+      const msg = await msgStoreRef.current?.addMessage(content)
+      if (msg) {
+        if (isDM) {
+          // Encrypt and send as DM — only the recipient can decrypt
+          if (dmPeerPublicKey && identity?.secretKey && dmPeerPubkeyHex) {
+            const { nonce, ciphertext } = encryptDM(msg, identity.secretKey, dmPeerPublicKey)
+            swarmRef.current?.sendToAll({ type: 'DM', to: dmPeerPubkeyHex, nonce, ciphertext })
+          }
+        } else {
+          // Channel message — in clear, includes channelName so peers can filter
+          swarmRef.current?.sendToAll({ type: 'MSG', channelName: channelName ?? roomCode, message: msg })
+        }
+        onMessageSent?.()
+      }
+    },
+    [
+      identity?.username,
+      identity?.secretKey,
+      isDM,
+      dmPeerPublicKey,
+      dmPeerPubkeyHex,
+      channelName,
+      roomCode,
+      onMessageSent,
+    ]
+  )
+
+  const handleSendFile = useCallback(
+    async (file) => {
+      try {
+        const msg = await sendImageFile(swarmRef.current, file, isDM ? null : (channelName ?? roomCode), identity)
+        // Add locally (sender doesn't receive own FILE_META/CHUNK)
+        msgStoreRef.current?.receiveMessage(msg)
+        onMessageSent?.()
+      } catch (err) {
+        console.error('[room] file send error', err)
+        alert(err.message)
+      }
+    },
+    [identity, isDM, channelName, roomCode, onMessageSent]
+  )
+
+  const handleEditMessage = useCallback(
+    async (originalId, newContent) => {
+      const myPubkey = myPubkeyHexRef.current
+      if (!myPubkey) return
+      const editedAt = Date.now()
+      // Optimistic local update
+      msgStoreRef.current?.receiveEdit(originalId, newContent, editedAt)
+      swarmRef.current?.sendToAll({
+        type: 'MSG_EDIT',
+        originalId,
+        newContent,
+        editedAt,
+        channelName: isDM ? null : (channelName ?? roomCode),
+      })
+    },
+    [isDM, channelName, roomCode]
+  )
+
+  const handleDeleteMessage = useCallback(
+    (originalId) => {
+      const myPubkey = myPubkeyHexRef.current
+      if (!myPubkey) return
+      // Optimistic local update
+      msgStoreRef.current?.receiveDelete(originalId)
+      swarmRef.current?.sendToAll({
+        type: 'MSG_DELETE',
+        originalId,
+        channelName: isDM ? null : (channelName ?? roomCode),
+      })
+    },
+    [isDM, channelName, roomCode]
+  )
+
+  const handleReaction = useCallback(
+    (messageId, emoji) => {
+      const myPubkey = myPubkeyHexRef.current
+      if (!myPubkey) return
+      // Toggle: if already reacted, remove; otherwise add
+      const alreadyReacted = reactions.get(messageId)?.get(emoji)?.has(myPubkey) ?? false
+      const removed = alreadyReacted
+      // Optimistic local update
+      setReactions((prev) => {
+        const next = new Map(prev)
+        if (!next.has(messageId)) next.set(messageId, new Map())
+        const emojiMap = new Map(next.get(messageId))
+        const users = new Set(emojiMap.get(emoji) ?? [])
+        if (removed) {
+          users.delete(myPubkey)
+          if (users.size === 0) emojiMap.delete(emoji)
+          else emojiMap.set(emoji, users)
+        } else {
+          users.add(myPubkey)
+          emojiMap.set(emoji, users)
+        }
+        next.set(messageId, emojiMap)
+        return next
+      })
+      swarmRef.current?.sendToAll({
+        type: 'REACTION',
+        messageId,
+        emoji,
+        userPubkey: myPubkey,
+        channelName: isDM ? null : (channelName ?? roomCode),
+        removed,
+      })
+    },
+    [reactions, isDM, channelName, roomCode]
+  )
+
+  const handleTypingNotification = useCallback(() => {
+    if (typingThrottleRef.current) return // already sent recently
+    swarmRef.current?.sendToAll({
+      type: 'TYPING',
+      username: identity?.username ?? 'unknown',
+      channelName: isDM ? null : (channelName ?? roomCode),
+    })
+    typingThrottleRef.current = setTimeout(() => {
+      typingThrottleRef.current = null
+    }, 2000)
+  }, [identity?.username, isDM, channelName, roomCode])
+
+  const handleSendThreadReply = useCallback(
+    async (content) => {
+      if (!activeThread) return
+      const msg = await msgStoreRef.current?.addMessage(content, { parentId: activeThread.id })
+      if (msg && !isDM) {
+        swarmRef.current?.sendToAll({ type: 'MSG', channelName: channelName ?? roomCode, message: msg })
+        onMessageSent?.()
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeThread?.id, isDM, channelName, roomCode, onMessageSent]
+  )
 
   async function handleStartCall() {
     try {
       const stream = await getLocalStream()
       setLocalStream(stream)
       setCallActive(true)
+      setCallStartedAt(Date.now())
 
       navigator.mediaDevices?.enumerateDevices().then((devices) => {
         const videoInputs = devices.filter((d) => d.kind === 'videoinput')
@@ -637,6 +1005,7 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
     stopLocalStream()
     setLocalStream(null)
     setCallActive(false)
+    setCallStartedAt(null)
     setAudioMutedState(false)
     setVideoMutedState(false)
     setScreenSharing(false)
@@ -762,8 +1131,8 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
           </div>
         </div>
       )}
-      {/* ── Mobile top bar (mounted only on small screens) ── */}
-      {mobileView && (
+      {/* ── Mobile top bar (mounted only on small screens, not in embedded mode) ── */}
+      {mobileView && !embedded && (
         <div className="room-mobile-header">
           <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
             <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
@@ -800,105 +1169,112 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
         </div>
       )}
 
-      {/* ── Left sidebar: participants + controls ── */}
-      <aside className={`room-sidebar ${sidebarOpen ? '' : 'room-sidebar--collapsed'}`}>
-        <div className="room-sidebar-header">
-          <div className="room-sidebar-header-top">
-            <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
-              <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
-            </button>
-            {sidebarOpen && <span className="room-beta-badge">beta</span>}
-            <div className="room-sidebar-header-spacer" />
-            {sidebarOpen && (
-              <button className="btn-collapse" onClick={onOpenSettings} title="Settings">
-                ⚙️
+      {/* ── Left sidebar: participants + controls (hidden when embedded in WorkspaceLayout) ── */}
+      {!embedded && (
+        <aside className={`room-sidebar ${sidebarOpen ? '' : 'room-sidebar--collapsed'}`}>
+          <div className="room-sidebar-header">
+            <div className="room-sidebar-header-top">
+              <button className="btn-icon-only" onClick={handleLeave} title="Leave room">
+                <img src="/icons/icon.svg" alt="Pipol" width="20" height="20" className="room-home-icon" />
               </button>
+              {sidebarOpen && <span className="room-beta-badge">beta</span>}
+              <div className="room-sidebar-header-spacer" />
+              {sidebarOpen && (
+                <button className="btn-collapse" onClick={onOpenSettings} title="Settings">
+                  ⚙️
+                </button>
+              )}
+              <button
+                className="btn-collapse"
+                onClick={() => setSidebarOpen((v) => !v)}
+                title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              >
+                {sidebarOpen ? '◀' : '▶'}
+              </button>
+            </div>
+            {sidebarOpen && (
+              <div className="room-code-display">
+                <span className="room-code-label">Room</span>
+                <span className="room-code-value">{roomCode}</span>
+              </div>
             )}
-            <button
-              className="btn-collapse"
-              onClick={() => setSidebarOpen((v) => !v)}
-              title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            >
-              {sidebarOpen ? '◀' : '▶'}
-            </button>
           </div>
-          {sidebarOpen && (
-            <div className="room-code-display">
-              <span className="room-code-label">Room</span>
-              <span className="room-code-value">{roomCode}</span>
-            </div>
-          )}
-        </div>
 
-        <div className="room-status">{status}</div>
+          <div className="room-status">{status}</div>
 
-        {/* Peer list */}
-        <div className="peer-list">
-          <div className="peer-list-title">Participants</div>
-          <div className="peer-item self">
-            <span className="peer-dot online" />
-            <span className="peer-name">{identity.username} (you)</span>
-          </div>
-          {peers.map((p) => (
-            <div key={p.id} className="peer-item">
+          {/* Peer list */}
+          <div className="peer-list">
+            <div className="peer-list-title">Participants</div>
+            <div className="peer-item self">
               <span className="peer-dot online" />
-              <span className="peer-name">{p.username}</span>
+              <span className="peer-name">{identity.username} (you)</span>
             </div>
-          ))}
-        </div>
-
-        {/* Call in progress indicator */}
-        {callInProgress && (
-          <div className="call-in-progress">
-            <span className="call-in-progress-dot" />
-            <span className="call-in-progress-text">Call in progress · {callPeerIds.size}</span>
-            <button className="call-in-progress-join" onClick={handleJoinCall}>
-              Join
-            </button>
+            {peers.map((p) => (
+              <div key={p.id} className="peer-item">
+                <span className="peer-dot online" />
+                <span className="peer-name">{p.username}</span>
+              </div>
+            ))}
           </div>
-        )}
 
-        {/* GitHub link */}
-        {sidebarOpen && (
-          <a
-            href="https://github.com/PaoloAlbano/Pipol"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="room-github-link"
-          >
-            <svg className="room-github-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.342-3.369-1.342-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
-            </svg>
-            View on GitHub
-          </a>
-        )}
-
-        {/* Call controls */}
-        <div className="room-sidebar-footer">
-          {!callActive ? (
-            <button className="btn btn-call-start" onClick={handleStartCall}>
-              📹 Start Video Call
-            </button>
-          ) : (
-            <VideoControls
-              audioMuted={audioMuted}
-              videoMuted={videoMuted}
-              screenSharing={screenSharing}
-              pipActive={pipActive}
-              onToggleAudio={handleToggleAudio}
-              onToggleVideo={handleToggleVideo}
-              onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
-              onToggleScreenShare={navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined}
-              onTogglePiP={handleTogglePiP}
-              onEndCall={handleEndCall}
-            />
+          {/* Call in progress indicator */}
+          {callInProgress && (
+            <div className="call-in-progress">
+              <span className="call-in-progress-dot" />
+              <span className="call-in-progress-text">Call in progress · {callPeerIds.size}</span>
+              <button className="call-in-progress-join" onClick={handleJoinCall}>
+                Join
+              </button>
+            </div>
           )}
-        </div>
-      </aside>
+
+          {/* GitHub link */}
+          {sidebarOpen && (
+            <a
+              href="https://github.com/PaoloAlbano/Pipol"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="room-github-link"
+            >
+              <svg className="room-github-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.342-3.369-1.342-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+              </svg>
+              View on GitHub
+            </a>
+          )}
+
+          {/* Call controls */}
+          <div className="room-sidebar-footer">
+            {!callActive ? (
+              <button className="btn btn-call-start" onClick={handleStartCall}>
+                📹 Start Video Call
+              </button>
+            ) : (
+              <VideoControls
+                audioMuted={audioMuted}
+                videoMuted={videoMuted}
+                screenSharing={screenSharing}
+                pipActive={pipActive}
+                onToggleAudio={handleToggleAudio}
+                onToggleVideo={handleToggleVideo}
+                onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
+                onToggleScreenShare={navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined}
+                onTogglePiP={handleTogglePiP}
+                onEndCall={handleEndCall}
+              />
+            )}
+          </div>
+        </aside>
+      )}
 
       {/* ── Center: video grid (only during call) ── */}
       {callActive && (
         <main className="room-main">
+          {callElapsed && (
+            <div className="room-call-timer" aria-label="Call duration" aria-live="off">
+              {callElapsed}
+            </div>
+          )}
           <VideoGrid
             localStream={localStream}
             remoteStreams={remoteStreams}
@@ -910,26 +1286,83 @@ export default function Room({ roomCode, identity, showStats, onLeave, onOpenSet
             spotlightPeerId={spotlightPeerId}
             onLayoutChange={setLayout}
             onSpotlightChange={setSpotlightPeerId}
+            mirrorVideo={mirrorVideo}
           />
         </main>
       )}
 
       {/* ── Right: chat (always visible) ── */}
       <section className={`room-chat ${chatOpen ? '' : 'room-chat--collapsed'}`}>
-        <button
-          className="btn-collapse-chat"
-          onClick={() => setChatOpen((v) => !v)}
-          title={chatOpen ? 'Collapse chat' : 'Expand chat'}
-        >
-          {chatOpen ? '▶' : '◀'}
-        </button>
+        {!embedded && (
+          <button
+            className="btn-collapse-chat"
+            onClick={() => setChatOpen((v) => !v)}
+            title={chatOpen ? 'Collapse chat' : 'Expand chat'}
+          >
+            {chatOpen ? '▶' : '◀'}
+          </button>
+        )}
         {chatOpen && (
           <>
-            <ChatMessages messages={messages} identity={identity} />
-            <ChatInput onSend={handleSendMessage} />
+            <ChatMessages
+              messages={messages}
+              identity={identity}
+              typingUsers={typingUsers}
+              peers={peers}
+              reactions={reactions}
+              onReact={handleReaction}
+              onEdit={handleEditMessage}
+              onDelete={handleDeleteMessage}
+              onOpenThread={setActiveThread}
+            />
+            <ChatInput
+              onSend={handleSendMessage}
+              onTyping={handleTypingNotification}
+              peers={peers}
+              onSendFile={handleSendFile}
+            />
           </>
         )}
       </section>
+
+      {/* ── Thread panel (right of chat, when a thread is active) ── */}
+      {activeThread && (
+        <ThreadPanel
+          parentMessage={activeThread}
+          replies={threadReplies}
+          identity={identity}
+          peers={peers}
+          onClose={() => setActiveThread(null)}
+          onSendReply={handleSendThreadReply}
+        />
+      )}
+
+      {/* ── Embedded call controls (workspace / channel mode) ─────────────────
+           In embedded mode there is no sidebar, so call controls float at the
+           bottom-left of the room layout.  The VideoGrid is already shown in
+           <main> above; this bar provides mute / end / PiP etc.
+      ── */}
+      {embedded && callActive && (
+        <div className="room-embedded-callbar">
+          {callElapsed && (
+            <span className="room-embedded-callbar__timer" aria-label="Call duration" aria-live="off">
+              {callElapsed}
+            </span>
+          )}
+          <VideoControls
+            audioMuted={audioMuted}
+            videoMuted={videoMuted}
+            screenSharing={screenSharing}
+            pipActive={pipActive}
+            onToggleAudio={handleToggleAudio}
+            onToggleVideo={handleToggleVideo}
+            onSwitchCamera={hasMultipleCameras ? handleSwitchCamera : undefined}
+            onToggleScreenShare={navigator.mediaDevices?.getDisplayMedia ? handleToggleScreenShare : undefined}
+            onTogglePiP={handleTogglePiP}
+            onEndCall={handleEndCall}
+          />
+        </div>
+      )}
     </div>
   )
 }
