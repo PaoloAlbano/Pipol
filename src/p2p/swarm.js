@@ -3,11 +3,18 @@
  * Peer discovery and P2P messaging via WebRTC DataChannels.
  *
  * Architecture:
- *   Browser ──── WebSocket ────▶ Relay /signal  (signaling only: SDP + ICE)
+ *   Browser ──── WebSocket ────▶ Relay /signal  (signaling: SDP + ICE)
  *   Browser ◀──── WebRTC DataChannel ────▶ Browser  (P2P: all messages)
  *
- * The relay sees only WebRTC handshake metadata (SDP/ICE), never message content.
- * After the initial handshake, all data flows directly peer-to-peer via DataChannel.
+ * When every peer's DataChannel is open, the relay only ever sees WebRTC
+ * handshake metadata (SDP/ICE) — never message content.
+ *
+ * Fallback: if a peer's DataChannel cannot be established (e.g. symmetric
+ * NAT with no TURN server — common on mobile networks), messages to that
+ * peer are relayed in clear-text through the signaling WebSocket
+ * (`relay-data` / `relay-data-to`). This trades the P2P-only privacy
+ * guarantee for delivery reliability in that specific case; sendToAll/
+ * sendToPeer only use this path for peers that actually need it.
  *
  * Events emitted (CustomEvent via EventTarget):
  *   peer-joined   { id, username, messageCoreKey }
@@ -644,10 +651,18 @@ export class RoomSwarm extends EventTarget {
   // ── Public API ──────────────────────────────────────────────────────────────
 
   sendToAll(msg) {
-    for (const peer of this.peers.values()) peer.sendControl?.(msg)
-    // Also relay via WebSocket so peers behind symmetric NAT (mobile) receive it.
-    // receiveMessage() deduplicates, so arriving via both paths is safe.
-    if (this._ws?.readyState === WebSocket.OPEN) {
+    // Prefer the DataChannel (true P2P, no server ever sees the payload).
+    // Only fall back to the WS relay for peers whose DataChannel isn't open —
+    // if every known peer already has an open DataChannel, skip the relay
+    // entirely so the relay server never sees message content in that case.
+    // (Also relay when no peers are known yet — a peer may exist in the room
+    // whose HELLO/registration hasn't completed on our side yet.)
+    let allHaveOpenDC = this.peers.size > 0
+    for (const peer of this.peers.values()) {
+      peer.sendControl?.(msg)
+      if (peer.dc?.readyState !== 'open') allHaveOpenDC = false
+    }
+    if (!allHaveOpenDC && this._ws?.readyState === WebSocket.OPEN) {
       this._ws.send(JSON.stringify({ type: 'relay-data', data: msg }))
     }
   }

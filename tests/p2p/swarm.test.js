@@ -6,6 +6,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { RoomSwarm, extractFingerprint } from '../../src/p2p/swarm.js'
 
+// Mock storage functions (hoisted by Vitest to the top of the file regardless
+// of where declared; placed at top level to avoid the nested vi.mock warning)
+vi.mock('../../src/p2p/storage.js', () => ({
+  getIdentity: () => ({
+    publicKey: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+    secretKey: new Uint8Array([8, 7, 6, 5, 4, 3, 2, 1]),
+    username: 'test-user',
+  }),
+  getRelayUrl: () => null,
+}))
+
 // Mock WebSocket
 class MockWebSocket {
   constructor(url) {
@@ -179,16 +190,6 @@ beforeEach(() => {
   global.RTCPeerConnection = MockRTCPeerConnection
   global.RTCSessionDescription = vi.fn((desc) => desc)
   global.RTCIceCandidate = vi.fn((candidate) => candidate)
-
-  // Mock storage functions
-  vi.mock('../../src/p2p/storage.js', () => ({
-    getIdentity: () => ({
-      publicKey: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
-      secretKey: new Uint8Array([8, 7, 6, 5, 4, 3, 2, 1]),
-      username: 'test-user',
-    }),
-    getRelayUrl: () => null,
-  }))
 })
 
 describe('RoomSwarm — DTLS fingerprint verification', () => {

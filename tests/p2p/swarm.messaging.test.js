@@ -766,3 +766,69 @@ describe('RoomSwarm two-peer — FILE_META + FILE_CHUNK', () => {
     expect(received[0].peerId).toBe(PEER_A)
   })
 })
+
+// ── sendToAll — WS relay is only used when needed ────────────────────────────
+// Regression test: sendToAll() must NOT leak message content to the WS relay
+// when every known peer already has an open DataChannel (true P2P delivery).
+// It must only fall back to the relay for peers whose DataChannel isn't open.
+
+describe('RoomSwarm — sendToAll relay fallback gating', () => {
+  it('does NOT send via WS relay when all peers have an open DataChannel', () => {
+    const swarmA = new RoomSwarm('test-room-gating')
+    const fakeWs = { readyState: 1 /* OPEN */, send: vi.fn() }
+    swarmA._ws = fakeWs
+    swarmA.peers.set(PEER_B, {
+      id: PEER_B,
+      username: 'bob',
+      dc: { readyState: 'open' },
+      sendControl: vi.fn(),
+    })
+
+    swarmA.sendToAll({ type: 'MSG', channelName: 'generale', message: { id: '1', content: 'p2p only' } })
+
+    expect(swarmA.peers.get(PEER_B).sendControl).toHaveBeenCalledTimes(1)
+    expect(fakeWs.send).not.toHaveBeenCalled()
+  })
+
+  it('DOES send via WS relay when a peer has no open DataChannel', () => {
+    const swarmA = new RoomSwarm('test-room-gating-2')
+    const fakeWs = { readyState: 1 /* OPEN */, send: vi.fn() }
+    swarmA._ws = fakeWs
+    swarmA.peers.set(PEER_B, {
+      id: PEER_B,
+      username: 'bob',
+      dc: { readyState: 'connecting' }, // not open — WebRTC still negotiating / failed
+      sendControl: vi.fn(),
+    })
+
+    swarmA.sendToAll({ type: 'MSG', channelName: 'generale', message: { id: '2', content: 'needs relay' } })
+
+    expect(fakeWs.send).toHaveBeenCalledTimes(1)
+    const sent = JSON.parse(fakeWs.send.mock.calls[0][0])
+    expect(sent.type).toBe('relay-data')
+    expect(sent.data.message.content).toBe('needs relay')
+  })
+
+  it('DOES send via WS relay when there are no known peers yet (bootstrap race)', () => {
+    const swarmA = new RoomSwarm('test-room-gating-3')
+    const fakeWs = { readyState: 1 /* OPEN */, send: vi.fn() }
+    swarmA._ws = fakeWs
+
+    swarmA.sendToAll({ type: 'MSG', channelName: 'generale', message: { id: '3', content: 'no peers yet' } })
+
+    expect(fakeWs.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not throw when WS is not connected and DataChannel is open', () => {
+    const swarmA = new RoomSwarm('test-room-gating-4')
+    swarmA.peers.set(PEER_B, {
+      id: PEER_B,
+      username: 'bob',
+      dc: { readyState: 'open' },
+      sendControl: vi.fn(),
+    })
+
+    expect(() => swarmA.sendToAll({ type: 'MSG', message: { id: '4', content: 'x' } })).not.toThrow()
+    expect(swarmA.peers.get(PEER_B).sendControl).toHaveBeenCalledTimes(1)
+  })
+})
