@@ -21,7 +21,7 @@ function buildPassphrase(emojis, pin) {
   return pin ? `${emojiPart}:${pin}` : emojiPart
 }
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin, preferGuest = false }) {
   const [storedMeta] = useState(() => getStoredIdentityMeta())
 
   // For existing accounts: method is fixed by what was used at creation
@@ -34,7 +34,13 @@ export default function LoginScreen({ onLogin }) {
   const isMethodA = storedMeta ? storedMeta.method === 'passphrase' : createMethod === 'passphrase'
 
   const hasBiometric = storedMeta && hasBiometricUnlock()
-  const [mode, setMode] = useState(() => (hasBiometric ? 'biometric' : 'identity'))
+  // A quick-room link should drop a brand-new visitor straight into the guest
+  // form (no passphrase setup) — but never override an existing account.
+  const [mode, setMode] = useState(() => {
+    if (hasBiometric) return 'biometric'
+    if (preferGuest && !storedMeta) return 'guest'
+    return 'identity'
+  })
   const [biometricAvailable, setBiometricAvailable] = useState(false)
 
   useEffect(() => {

@@ -458,7 +458,12 @@ export default function App() {
     return <OIDCCallback onLogin={handleLogin} />
   }
 
-  if (!identity) return <LoginScreen onLogin={handleLogin} />
+  if (!identity) {
+    // Quick-room links should skip straight to guest sign-in for brand-new
+    // visitors — no passphrase setup needed just to join a call.
+    const hasQuickRoomLink = new URLSearchParams(window.location.search).has('room')
+    return <LoginScreen onLogin={handleLogin} preferGuest={hasQuickRoomLink} />
+  }
 
   // Build channel list with unread counts.
   // unreadVersion changing forces a re-render so getUnreadCounts re-reads localStorage.

@@ -396,7 +396,10 @@ export async function getStore() {
 }
 
 /**
- * Generates a random human-readable room code (e.g. "cloud-river-stone").
+ * Generates a random room code (e.g. "cloud-x7q2p9-river").
+ * The words are for readability; the 6-char random middle segment is what
+ * actually prevents collisions and blind guessing — words alone only cover
+ * ~1.3k combinations, too small to be safe once this is the sole room secret.
  * @returns {string}
  */
 export function generateRoomCode() {
@@ -438,6 +441,11 @@ export function generateRoomCode() {
     'canyon',
     'meadow',
   ]
-  const pick = () => words[Math.floor(Math.random() * words.length)]
-  return `${pick()}-${pick()}-${pick()}`
+  const randomIndex = () => webcrypto.getRandomValues(new Uint32Array(1))[0] % words.length
+  const pick = () => words[randomIndex()]
+  const charset = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  const randomChars = Array.from(webcrypto.getRandomValues(new Uint8Array(6)), (b) => charset[b % charset.length]).join(
+    ''
+  )
+  return `${pick()}-${randomChars}-${pick()}`
 }
