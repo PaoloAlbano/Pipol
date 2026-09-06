@@ -26,8 +26,8 @@ export default function Home({
   const [inviteError, setInviteError] = useState('')
   const [invitePreview, setInvitePreview] = useState(null)
 
-  // Quick room flow
-  const [roomInput, setRoomInput] = useState('')
+  // Quick room flow — pre-filled so "Join" works even without pressing "Generate"
+  const [roomInput, setRoomInput] = useState(() => generateRoomCode())
   const [roomError, setRoomError] = useState('')
 
   // Install prompt
