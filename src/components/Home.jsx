@@ -26,8 +26,8 @@ export default function Home({
   const [inviteError, setInviteError] = useState('')
   const [invitePreview, setInvitePreview] = useState(null)
 
-  // Quick room flow
-  const [roomInput, setRoomInput] = useState('')
+  // Quick room flow — pre-filled so "Join" works even without pressing "Generate"
+  const [roomInput, setRoomInput] = useState(() => generateRoomCode())
   const [roomError, setRoomError] = useState('')
 
   // Install prompt
@@ -197,7 +197,7 @@ export default function Home({
             <input
               className="home-input"
               type="text"
-              placeholder="e.g. cloud-river-stone"
+              placeholder="e.g. cloud-x7q2p9-river"
               value={roomInput}
               onChange={(e) => {
                 setRoomInput(e.target.value)

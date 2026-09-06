@@ -481,15 +481,22 @@ describe('storage — generateRoomCode', () => {
     storage = await import('../../src/p2p/storage.js')
   })
 
-  it('generates a code with 3 hyphen-separated words', () => {
+  it('generates a code as word-random6-word', () => {
     const code = storage.generateRoomCode()
     const parts = code.split('-')
     expect(parts).toHaveLength(3)
-    parts.forEach((p) => expect(p.length).toBeGreaterThan(0))
+    expect(parts[0].length).toBeGreaterThan(0)
+    expect(parts[1]).toMatch(/^[a-z0-9]{6}$/)
+    expect(parts[2].length).toBeGreaterThan(0)
   })
 
   it('generates different codes on each call', () => {
     const codes = new Set(Array.from({ length: 10 }, () => storage.generateRoomCode()))
     expect(codes.size).toBeGreaterThan(1)
+  })
+
+  it('never repeats across many calls (suffix provides real entropy)', () => {
+    const codes = new Set(Array.from({ length: 500 }, () => storage.generateRoomCode()))
+    expect(codes.size).toBe(500)
   })
 })
