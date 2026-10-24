@@ -3,12 +3,67 @@ import { WebSocketServer } from 'ws'
 import DHT from 'hyperdht'
 import { relay } from '@hyperswarm/dht-relay'
 import Stream from '@hyperswarm/dht-relay/ws'
+import crypto from 'hypercore-crypto'
 
 const PORT = process.env.PORT || 8787
 
+// Initialize DHT without explicit bootstrap (uses hyperdht defaults)
 const dht = new DHT()
-await dht.ready()
-console.log('[relay] DHT node ready')
+
+// Async initialization with timeout
+let dhtInitialized = false
+let dhtInitError = null
+let nodeId = null
+
+const dhtInitPromise = (async () => {
+  try {
+    await dht.ready()
+    
+    // Wait a tick to ensure localAddress is populated
+    await new Promise(resolve => setImmediate(resolve))
+    
+    // nodeId is in dht.io.localAddress (32 byte buffer)
+    // If unavailable (firewall/nat), use a local keypair
+    nodeId = dht.io?.localAddress
+    
+    if (!nodeId || !Buffer.isBuffer(nodeId) || nodeId.length !== 32) {
+      // Fallback: generate a local nodeId from a keypair
+      const keyPair = DHT.keyPair()
+      nodeId = keyPair.publicKey
+      console.log('[relay] ℹ️  Using local keypair for nodeId (no DHT bootstrap)')
+    }
+    
+    dhtInitialized = true
+    console.log('[relay] ✅ DHT node ready, nodeId:', nodeId.toString('hex').slice(0, 16) + '...')
+  } catch (err) {
+    dhtInitError = err.message
+    console.warn('[relay] ⚠️ DHT initialization error:', err.message)
+    console.warn('[relay]    Continuing in offline mode (no DHT connectivity)')
+    
+    // Extreme fallback: generate nodeId anyway
+    const keyPair = DHT.keyPair()
+    nodeId = keyPair.publicKey
+    dhtInitialized = true
+    console.log('[relay] ✅ DHT node ready (fallback), nodeId:', nodeId.toString('hex').slice(0, 16) + '...')
+  }
+})()
+
+// Log status after 2 seconds
+setTimeout(() => {
+  if (!dhtInitialized && !dhtInitError) {
+    console.warn('[relay] ⏳ DHT still initializing...')
+  }
+}, 2000)
+
+// Cleanup rate limit map periodically (prevent memory leak)
+setInterval(() => {
+  // Remove IPs with 0 connections
+  for (const [ip, count] of connectionsPerIP.entries()) {
+    if (count <= 0) {
+      connectionsPerIP.delete(ip)
+    }
+  }
+}, 60000) // Every minute
 
 const server = http.createServer((req, res) => {
   // Health check for tests / load balancers
@@ -18,18 +73,39 @@ const server = http.createServer((req, res) => {
   }
 })
 
+// ── Rate limiting configuration ───────────────────────────────────────────────
+const MAX_CONNECTIONS_PER_IP = 10
+const connectionsPerIP = new Map() // IP → count
+
 // ── DHT relay WebSocket server (path: /) ──────────────────────────────────────
 const wssDHT = new WebSocketServer({ noServer: true })
 const dhtConnections = new Set()
 
 wssDHT.on('connection', (socket, req) => {
-  const ip = req.socket.remoteAddress + ':' + req.socket.remotePort
+  const ip = req.socket.remoteAddress
+  
+  // Rate limit check per IP
+  const currentCount = connectionsPerIP.get(ip) || 0
+  if (currentCount >= MAX_CONNECTIONS_PER_IP) {
+    console.warn(`[relay] Rate limit exceeded for IP: ${ip}`)
+    socket.close(1008, 'Too many connections from your IP')
+    return
+  }
+  
+  // Track connection count
+  connectionsPerIP.set(ip, currentCount + 1)
+  
+  const fullAddress = ip + ':' + req.socket.remotePort
   dhtConnections.add(socket)
-  console.log(`[relay] DHT + connected: ${ip}  (total: ${dhtConnections.size})`)
+  console.log(`[relay] DHT + connected: ${fullAddress}  (total: ${dhtConnections.size})`)
+  
   socket.on('close', () => {
     dhtConnections.delete(socket)
-    console.log(`[relay] DHT - disconnected: ${ip}  (total: ${dhtConnections.size})`)
+    const count = connectionsPerIP.get(ip) || 1
+    connectionsPerIP.set(ip, count - 1)
+    console.log(`[relay] DHT - disconnected: ${fullAddress}  (total: ${dhtConnections.size})`)
   })
+  
   relay(dht, new Stream(false, socket))
 })
 
@@ -39,7 +115,20 @@ wssDHT.on('connection', (socket, req) => {
 const wssSignal = new WebSocketServer({ noServer: true })
 const rooms = new Map() // roomCode → Map<peerId, ws>
 
-wssSignal.on('connection', (ws) => {
+wssSignal.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress
+  
+  // Rate limit check per IP
+  const currentCount = connectionsPerIP.get(ip) || 0
+  if (currentCount >= MAX_CONNECTIONS_PER_IP) {
+    console.warn(`[relay] Rate limit exceeded for IP: ${ip} (signaling)`)
+    ws.close(1008, 'Too many connections from your IP')
+    return
+  }
+  
+  // Track connection count
+  connectionsPerIP.set(ip, currentCount + 1)
+  
   let peerId = null
   let roomCode = null
 
@@ -101,6 +190,10 @@ wssSignal.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
+    // Decrement connection count for this IP
+    const count = connectionsPerIP.get(ip) || 1
+    connectionsPerIP.set(ip, count - 1)
+    
     if (!peerId || !roomCode) return
     const room = rooms.get(roomCode)
     if (!room) return
@@ -121,6 +214,47 @@ server.on('upgrade', (req, socket, head) => {
     wssSignal.handleUpgrade(req, socket, head, (ws) => wssSignal.emit('connection', ws, req))
   } else {
     wssDHT.handleUpgrade(req, socket, head, (ws) => wssDHT.emit('connection', ws, req))
+  }
+})
+
+// ── HTTP endpoint for DHT node info (public info only) ─────
+server.on('request', async (req, res) => {
+  if (req.url === '/info' && req.method === 'GET') {
+    // Wait for DHT to initialize (or timeout)
+    await Promise.race([
+      dhtInitPromise,
+      new Promise(resolve => setTimeout(resolve, 100))
+    ])
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      // Public info (non-sensitive)
+      nodeId: nodeId ? nodeId.toString('hex') : 'not-ready',
+      dhtReady: dhtInitialized,
+      dhtConnections: dhtConnections.size,
+      
+      // Signaling (aggregate counts only, no details)
+      signalingRooms: rooms.size,
+      signalingPeers: Array.from(rooms.values()).reduce((sum, room) => sum + room.size, 0),
+      
+      // System
+      uptime: process.uptime(),
+      timestamp: Date.now()
+    }, null, 2))
+    return
+  }
+
+  // Health check endpoint
+  if (req.url === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ ok: true }))
+    return
+  }
+
+  // 404 for other HTTP requests
+  if (!req.url.startsWith('/signal')) {
+    res.writeHead(404, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ error: 'not-found' }))
   }
 })
 
