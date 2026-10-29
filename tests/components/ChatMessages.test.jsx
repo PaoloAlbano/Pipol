@@ -231,6 +231,69 @@ describe('ChatMessages — inline edit flow', () => {
 
 // ── ReactionPicker ────────────────────────────────────────────────────────────
 
+describe('ChatMessages — links', () => {
+  const renderLink = (content) => {
+    const { container } = render(<ChatMessages messages={[makeMsg({ content })]} identity={identity} />)
+    return container
+  }
+
+  it('renders a bare URL as a clickable link', () => {
+    const a = renderLink('guarda https://example.com/a?b=1&c=2 ora').querySelector('.message-content a')
+    expect(a).toHaveAttribute('href', 'https://example.com/a?b=1&c=2')
+    expect(a.textContent).toBe('https://example.com/a?b=1&c=2')
+  })
+
+  it('links www.* URLs over http(s)', () => {
+    const a = renderLink('www.example.com').querySelector('.message-content a')
+    expect(a.getAttribute('href')).toMatch(/^https?:\/\/www\.example\.com\/?$/)
+  })
+
+  it('opens links in a new tab without opener/referrer', () => {
+    const a = renderLink('https://example.com').querySelector('.message-content a')
+    expect(a).toHaveAttribute('target', '_blank')
+    expect(a.getAttribute('rel')).toEqual(expect.stringContaining('noopener'))
+    expect(a.getAttribute('rel')).toEqual(expect.stringContaining('noreferrer'))
+  })
+
+  it('does not turn javascript: links into anchors', () => {
+    const c = renderLink('[click](javascript:alert(1))')
+    expect(c.querySelector('a')).toBeNull()
+    expect(c.innerHTML).not.toContain('javascript:')
+  })
+
+  it('does not link mailto: addresses', () => {
+    expect(renderLink('scrivi a me@example.com').querySelector('a')).toBeNull()
+  })
+
+  it('cannot break out of the href attribute', () => {
+    const c = renderLink('[p](https://e.com/"onmouseover=alert(1)>)')
+    c.querySelectorAll('a').forEach((a) => {
+      expect(a.hasAttribute('onmouseover')).toBe(false)
+    })
+  })
+
+  it('shows the real host when the label names a different site', () => {
+    const c = renderLink('[google.com](https://evil.example/login)')
+    expect(c.querySelector('a')).toHaveAttribute('href', 'https://evil.example/login')
+    expect(c.querySelector('.link-host').textContent).toContain('evil.example')
+  })
+
+  it('omits the host hint when the label already shows it', () => {
+    const c = renderLink('[docs on example.com](https://example.com/docs)')
+    expect(c.querySelector('.link-host')).toBeNull()
+  })
+
+  it('does not render markdown images (no remote loads)', () => {
+    expect(renderLink('![x](https://example.com/p.png)').querySelector('img')).toBeNull()
+  })
+
+  it('keeps @mention highlighting inside text with a link', () => {
+    const c = renderLink('ciao @swift-fox vedi https://example.com')
+    expect(c.querySelector('mark.mention')).toBeInTheDocument()
+    expect(c.querySelector('a')).toBeInTheDocument()
+  })
+})
+
 describe('ChatMessages — ReactionPicker', () => {
   it('opens reaction picker when 😊 trigger is clicked', async () => {
     const user = userEvent.setup()
