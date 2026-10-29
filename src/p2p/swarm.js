@@ -451,7 +451,9 @@ export class RoomSwarm extends EventTarget {
         this.dispatchEvent(new CustomEvent('call-end', { detail: { peerId: remoteId } }))
         break
       case 'SCREEN_SHARE_START':
-        this.dispatchEvent(new CustomEvent('screen-share-start', { detail: { peerId: remoteId } }))
+        this.dispatchEvent(
+          new CustomEvent('screen-share-start', { detail: { peerId: remoteId, streamId: msg.streamId } })
+        )
         break
       case 'SCREEN_SHARE_END':
         this.dispatchEvent(new CustomEvent('screen-share-end', { detail: { peerId: remoteId } }))

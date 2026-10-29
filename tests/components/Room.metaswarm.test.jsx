@@ -53,6 +53,7 @@ vi.mock('../../src/webrtc/media.js', () => ({
   switchCamera: vi.fn(),
   startScreenShare: vi.fn(),
   stopScreenShare: vi.fn(),
+  getActiveScreenStream: vi.fn(() => null),
 }))
 
 vi.mock('../../src/p2p/dm-crypto.js', () => ({

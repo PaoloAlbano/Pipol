@@ -5,10 +5,14 @@ import '../styles/video.css'
  * Responsive video grid with two layout modes:
  *   'grid'      — symmetric grid, all peers equal size
  *   'spotlight' — one large tile in center, others in a sidebar column on the right
+ *
+ * A peer sharing their screen has two tiles: their camera and their screen.
+ * In spotlight the screen takes the main slot while the camera moves to the sidebar.
  */
 export default function VideoGrid({
   localStream,
   remoteStreams,
+  remoteScreens = {},
   peers,
   localUsername,
   showStats,
@@ -23,14 +27,26 @@ export default function VideoGrid({
   const remoteEntries = Object.entries(remoteStreams)
   const count = remoteEntries.length
 
+  // Camera tiles first, then one extra tile per active screen share
+  const tiles = [
+    ...remoteEntries.map(([peerId, stream]) => ({ key: peerId, peerId, stream, screen: false })),
+    ...Object.entries(remoteScreens).map(([peerId, stream]) => ({
+      key: `${peerId}:screen`,
+      peerId,
+      stream,
+      screen: true,
+    })),
+  ]
+
   // Resolve which peer is in the spotlight
   const resolvedSpotlightId =
     spotlightPeerId && remoteStreams[spotlightPeerId] ? spotlightPeerId : (remoteEntries[0]?.[0] ?? null)
 
   const isSpotlight = layout === 'spotlight' && count > 0
 
-  function getLabel(peerId) {
-    return peerById[peerId]?.username ?? peerId.slice(0, 8)
+  function getLabel(peerId, screen = false) {
+    const name = peerById[peerId]?.username ?? peerId.slice(0, 8)
+    return screen ? `${name} (screen)` : name
   }
 
   function getStats(peerId) {
@@ -50,38 +66,49 @@ export default function VideoGrid({
 
   // ── Spotlight layout ───────────────────────────────────────────────────────
   if (isSpotlight && resolvedSpotlightId) {
-    const sidebarEntries = [...remoteEntries.filter(([id]) => id !== resolvedSpotlightId), ['__local__', localStream]]
+    const mainTile =
+      tiles.find((t) => t.peerId === resolvedSpotlightId && t.screen) ??
+      tiles.find((t) => t.peerId === resolvedSpotlightId && !t.screen)
+    const sidebarTiles = tiles.filter((t) => t !== mainTile)
 
     return (
       <div className="video-container video-container--spotlight">
         {layoutToggle}
         <div className="video-spotlight-main">
           <VideoTile
-            stream={remoteStreams[resolvedSpotlightId]}
-            label={getLabel(resolvedSpotlightId)}
-            stats={getStats(resolvedSpotlightId)}
+            stream={mainTile.stream}
+            label={getLabel(mainTile.peerId, mainTile.screen)}
+            stats={mainTile.screen ? null : getStats(mainTile.peerId)}
+            contain={mainTile.screen}
           />
         </div>
         <div className="video-spotlight-sidebar">
-          {sidebarEntries.map(([id, stream]) => (
+          {sidebarTiles.map((t) => (
             <VideoTile
-              key={id}
-              stream={stream}
-              label={id === '__local__' ? `${localUsername} (you)` : getLabel(id)}
-              muted={id === '__local__'}
-              mirror={id === '__local__' && mirrorVideo}
-              stats={id === '__local__' ? null : getStats(id)}
+              key={t.key}
+              stream={t.stream}
+              label={getLabel(t.peerId, t.screen)}
+              stats={t.screen ? null : getStats(t.peerId)}
+              contain={t.screen}
               sidebar
-              onClick={id !== '__local__' ? () => onSpotlightChange(id) : undefined}
+              onClick={() => onSpotlightChange(t.peerId)}
             />
           ))}
+          <VideoTile
+            key="__local__"
+            stream={localStream}
+            label={`${localUsername} (you)`}
+            muted
+            mirror={mirrorVideo}
+            sidebar
+          />
         </div>
       </div>
     )
   }
 
   // ── Grid layout ────────────────────────────────────────────────────────────
-  const { cols, rows } = getGridDimensions(count)
+  const { cols, rows } = getGridDimensions(tiles.length)
 
   return (
     <div className="video-container">
@@ -90,8 +117,14 @@ export default function VideoGrid({
         {count === 0 ? (
           <VideoTile stream={localStream} label={`${localUsername} (you)`} muted mirror={mirrorVideo} />
         ) : (
-          remoteEntries.map(([peerId, stream]) => (
-            <VideoTile key={peerId} stream={stream} label={getLabel(peerId)} stats={getStats(peerId)} />
+          tiles.map((t) => (
+            <VideoTile
+              key={t.key}
+              stream={t.stream}
+              label={getLabel(t.peerId, t.screen)}
+              stats={t.screen ? null : getStats(t.peerId)}
+              contain={t.screen}
+            />
           ))
         )}
       </div>
@@ -141,6 +174,7 @@ function VideoTile({
   stats = null,
   onClick,
   mirror = false,
+  contain = false,
 }) {
   const videoRef = useRef(null)
 
@@ -164,7 +198,7 @@ function VideoTile({
       {stream ? (
         <video
           ref={videoRef}
-          className={`video-element${mirror ? ' video-element--mirror' : ''}`}
+          className={`video-element${mirror ? ' video-element--mirror' : ''}${contain ? ' video-element--contain' : ''}`}
           autoPlay
           playsInline
           muted={muted}

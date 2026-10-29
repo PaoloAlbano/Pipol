@@ -55,6 +55,7 @@ vi.mock('../../src/webrtc/media.js', () => ({
   switchCamera: vi.fn(),
   startScreenShare: vi.fn(),
   stopScreenShare: vi.fn(),
+  getActiveScreenStream: vi.fn(() => null),
 }))
 
 // ── jsdom stubs ───────────────────────────────────────────────────────────────
@@ -540,6 +541,28 @@ describe('Room — in-call button actions', () => {
       expect(swarmMock.sendToAll).toHaveBeenCalledWith(expect.objectContaining({ type: 'SCREEN_SHARE_START' }))
     )
     expect(screen.getByTitle(/stop screen share/i)).toBeInTheDocument()
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
+  })
+
+  it('announces the screen stream id and leaves the camera untouched', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getDisplayMedia: vi.fn(), enumerateDevices: vi.fn().mockResolvedValue([]) },
+      configurable: true,
+    })
+    const fakeTrack = Object.assign(new EventTarget(), { kind: 'video', stop: vi.fn() })
+    const fakeStream = { id: 'screen-stream-1' }
+    media.startScreenShare.mockResolvedValueOnce({ stream: fakeStream, screenTrack: fakeTrack })
+    await setupWithCall()
+    await userEvent.click(screen.getByTitle(/share screen/i))
+    await waitFor(() =>
+      expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'SCREEN_SHARE_START', streamId: 'screen-stream-1' })
+    )
+    expect(media.setVideoMuted).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByTitle(/stop screen share/i))
+    expect(media.stopScreenShare).toHaveBeenCalled()
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'SCREEN_SHARE_END' })
+    expect(screen.getByTitle(/share screen/i)).toBeInTheDocument()
     Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
   })
 })

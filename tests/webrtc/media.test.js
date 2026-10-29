@@ -210,15 +210,55 @@ describe('startScreenShare', () => {
 // ── stopScreenShare ────────────────────────────────────────────────────────────
 
 describe('stopScreenShare', () => {
-  it('restituisce null se non si sta condividendo', async () => {
-    const result = await media.stopScreenShare()
-    expect(result).toBeNull()
+  it('does nothing when not sharing', () => {
+    expect(() => media.stopScreenShare()).not.toThrow()
+    expect(media.isScreenSharing()).toBe(false)
   })
 
   it('isScreenSharing torna false dopo stopScreenShare', async () => {
     await media.getLocalStream()
     await media.startScreenShare()
-    await media.stopScreenShare()
+    media.stopScreenShare()
+    expect(media.isScreenSharing()).toBe(false)
+  })
+
+  it('stops the screen track on stopScreenShare', async () => {
+    await media.getLocalStream()
+    const { screenTrack } = await media.startScreenShare()
+    media.stopScreenShare()
+    expect(screenTrack.stop).toHaveBeenCalled()
+    expect(media.getActiveScreenStream()).toBeNull()
+  })
+})
+
+describe('screen share alongside the camera', () => {
+  it('keeps the camera stream and tracks untouched while sharing', async () => {
+    const local = await media.getLocalStream()
+    await media.startScreenShare()
+    expect(media.getActiveLocalStream()).toBe(local)
+    expect(fakeVideoTrack.stop).not.toHaveBeenCalled()
+  })
+
+  it('exposes the screen as a separate stream', async () => {
+    const local = await media.getLocalStream()
+    const { stream } = await media.startScreenShare()
+    expect(stream).not.toBe(local)
+    expect(media.getActiveScreenStream()).toBe(stream)
+  })
+
+  it('setVideoMuted only affects the camera while sharing', async () => {
+    await media.getLocalStream()
+    const { screenTrack } = await media.startScreenShare()
+    media.setVideoMuted(true)
+    expect(fakeVideoTrack.enabled).toBe(false)
+    expect(screenTrack.enabled).toBe(true)
+  })
+
+  it('stopLocalStream also stops the screen share', async () => {
+    await media.getLocalStream()
+    const { screenTrack } = await media.startScreenShare()
+    media.stopLocalStream()
+    expect(screenTrack.stop).toHaveBeenCalled()
     expect(media.isScreenSharing()).toBe(false)
   })
 })

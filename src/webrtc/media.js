@@ -30,6 +30,7 @@ const QUALITY_CONSTRAINTS = {
 let _localStream = null
 let _currentFacingMode = 'user'
 let _screenTrack = null
+let _screenStream = null
 
 /**
  * Request camera and/or microphone access.
@@ -132,6 +133,7 @@ export function resumeVideoTracks() {
  * Call this when the user ends the call or leaves the room.
  */
 export function stopLocalStream() {
+  stopScreenShare()
   if (_localStream) {
     _localStream.getTracks().forEach((track) => track.stop())
     _localStream = null
@@ -167,13 +169,14 @@ export function setVideoMuted(muted) {
 }
 
 /**
- * Start screen sharing. Replaces the video track in the local stream with
- * the screen capture track, keeping the existing microphone audio.
+ * Start screen sharing. The screen is captured as a separate video-only stream
+ * so the camera + microphone stream keeps running untouched.
  * The browser's native picker lets the user choose window or full screen.
  * @returns {Promise<{ stream: MediaStream, screenTrack: MediaStreamTrack } | null>}
  */
 export async function startScreenShare() {
   if (!_localStream) return null
+  if (_screenStream) return { stream: _screenStream, screenTrack: _screenTrack }
 
   const screenStream = await navigator.mediaDevices.getDisplayMedia({
     video: { width: 1920, height: 1080, frameRate: 30 },
@@ -182,43 +185,25 @@ export async function startScreenShare() {
   const [screenTrack] = screenStream.getVideoTracks()
   if (!screenTrack) return null
 
-  _localStream.getVideoTracks().forEach((t) => t.stop())
-  const audioTracks = _localStream.getAudioTracks()
-  _localStream = new MediaStream([screenTrack, ...audioTracks])
+  _screenStream = screenStream
   _screenTrack = screenTrack
 
-  return { stream: _localStream, screenTrack }
+  return { stream: screenStream, screenTrack }
+}
+
+/** Stop screen sharing. The camera stream is unaffected. */
+export function stopScreenShare() {
+  _screenTrack?.stop()
+  _screenTrack = null
+  _screenStream = null
 }
 
 /**
- * Stop screen sharing and restore the camera video track.
- * @returns {Promise<{ stream: MediaStream, videoTrack: MediaStreamTrack } | null>}
+ * Returns the active screen-share stream, if any.
+ * @returns {MediaStream | null}
  */
-export async function stopScreenShare() {
-  if (!_screenTrack) return null
-
-  _screenTrack.stop()
-  _screenTrack = null
-
-  const quality = getVideoQuality()
-  let newCamStream
-  try {
-    newCamStream = await navigator.mediaDevices.getUserMedia({
-      video: { ...QUALITY_CONSTRAINTS[quality], facingMode: _currentFacingMode },
-      audio: false,
-    })
-  } catch (err) {
-    console.warn('[media] stopScreenShare: could not restore camera', err)
-    return null
-  }
-
-  const [newVideoTrack] = newCamStream.getVideoTracks()
-  if (!newVideoTrack) return null
-
-  const audioTracks = _localStream?.getAudioTracks() ?? []
-  _localStream = new MediaStream([newVideoTrack, ...audioTracks])
-
-  return { stream: _localStream, videoTrack: newVideoTrack }
+export function getActiveScreenStream() {
+  return _screenStream
 }
 
 /** Returns true if screen sharing is currently active. */

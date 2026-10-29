@@ -529,3 +529,76 @@ describe('ChatInput — drag and drop', () => {
     expect(form.className).not.toContain('chat-input-form--dragover')
   })
 })
+
+describe('ChatInput — pasting images', () => {
+  beforeEach(() => {
+    URL.createObjectURL = vi.fn(() => 'blob:fake')
+    URL.revokeObjectURL = vi.fn()
+  })
+
+  function setupWithFiles() {
+    const onSend = vi.fn()
+    const onSendFile = vi.fn()
+    render(<ChatInput onSend={onSend} onSendFile={onSendFile} />)
+    const editor = screen.getByRole('textbox')
+    const button = screen.getByRole('button', { name: /send/i })
+    return { onSend, onSendFile, editor, button }
+  }
+
+  function pasteImage(editor, { type = 'image/png', text = '' } = {}) {
+    const file = new File(['x'], 'image.png', { type })
+    fireEvent.paste(editor, {
+      clipboardData: { files: [file], getData: (t) => (t === 'text/plain' ? text : '') },
+    })
+    return file
+  }
+
+  it('shows a preview and enables send when an image is pasted', () => {
+    const { editor, button } = setupWithFiles()
+    pasteImage(editor)
+    expect(screen.getByAltText('image.png')).toBeInTheDocument()
+    expect(button).not.toBeDisabled()
+  })
+
+  it('sends the pasted image as a file attachment on submit', () => {
+    const { editor, button, onSend, onSendFile } = setupWithFiles()
+    const file = pasteImage(editor)
+    fireEvent.click(button)
+    expect(onSendFile).toHaveBeenCalledWith(file)
+    expect(onSend).not.toHaveBeenCalled()
+    expect(screen.queryByAltText('image.png')).toBeNull()
+  })
+
+  it('sends text and image together', async () => {
+    const user = userEvent.setup()
+    const { editor, onSend, onSendFile } = setupWithFiles()
+    editor.focus()
+    await user.type(editor, 'look')
+    const file = pasteImage(editor)
+    await user.keyboard('{Enter}')
+    expect(onSend).toHaveBeenCalledWith('look')
+    expect(onSendFile).toHaveBeenCalledWith(file)
+  })
+
+  it('lets the user remove a pasted image before sending', () => {
+    const { editor, button, onSendFile } = setupWithFiles()
+    pasteImage(editor)
+    fireEvent.click(screen.getByRole('button', { name: /remove image/i }))
+    expect(screen.queryByAltText('image.png')).toBeNull()
+    expect(button).toBeDisabled()
+    expect(onSendFile).not.toHaveBeenCalled()
+  })
+
+  it('ignores the image when the clipboard also carries text', () => {
+    const { editor, button } = setupWithFiles()
+    pasteImage(editor, { text: 'a\tb' })
+    expect(screen.queryByAltText('image.png')).toBeNull()
+    expect(button).toBeDisabled()
+  })
+
+  it('ignores unsupported image types', () => {
+    const { editor } = setupWithFiles()
+    pasteImage(editor, { type: 'image/bmp' })
+    expect(screen.queryByAltText('image.png')).toBeNull()
+  })
+})
