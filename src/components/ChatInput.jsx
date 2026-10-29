@@ -44,6 +44,15 @@ function serializeNode(node) {
       return `\`\`\`\n${children}\n\`\`\``
     case 'br':
       return '\n'
+    case 'a': {
+      // Pasted hyperlinks keep their URL; non-http(s) hrefs fall back to plain text
+      const href = node.getAttribute('href') ?? ''
+      if (!/^https?:\/\//i.test(href)) return children
+      const text = children.trim()
+      if (!text || text === href) return href
+      const safeHref = href.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\s/g, '%20')
+      return `[${text.replace(/[[\]]/g, '')}](${safeHref})`
+    }
     case 'div':
       return '\n' + children
     default:

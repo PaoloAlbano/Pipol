@@ -211,3 +211,52 @@ describe('ThreadPanel — interactions', () => {
     expect(onSendReply).toHaveBeenCalledWith('my reply')
   })
 })
+
+// ── Links and markdown ───────────────────────────────────────────────────────
+
+describe('ThreadPanel — links and markdown', () => {
+  const renderPanel = (parent, replies = []) =>
+    render(
+      <ThreadPanel
+        parentMessage={parent}
+        replies={replies}
+        identity={identity}
+        onClose={vi.fn()}
+        onSendReply={vi.fn()}
+      />
+    )
+
+  it('renders a URL in a reply as a safe clickable link', () => {
+    const { container } = renderPanel(parentMsg, [makeMsg({ content: 'vedi https://example.com/x' })])
+    const a = container.querySelector('.thread-reply__content a')
+    expect(a).toHaveAttribute('href', 'https://example.com/x')
+    expect(a).toHaveAttribute('target', '_blank')
+    expect(a.getAttribute('rel')).toEqual(expect.stringContaining('noopener'))
+  })
+
+  it('renders a URL in the parent message as a link', () => {
+    const { container } = renderPanel(makeMsg({ id: 'p', content: 'https://example.com' }))
+    expect(container.querySelector('.thread-panel__parent-content a')).toHaveAttribute('href', 'https://example.com/')
+  })
+
+  it('does not create anchors for javascript: links', () => {
+    const { container } = renderPanel(parentMsg, [makeMsg({ content: '[x](javascript:alert(1))' })])
+    expect(container.querySelector('.thread-reply__content a')).toBeNull()
+  })
+
+  it('shows the real host when a label names another site', () => {
+    const { container } = renderPanel(parentMsg, [makeMsg({ content: '[google.com](https://evil.example)' })])
+    expect(container.querySelector('.link-host').textContent).toContain('evil.example')
+  })
+
+  it('renders markdown formatting instead of raw symbols', () => {
+    const { container } = renderPanel(parentMsg, [makeMsg({ content: '**forte**' })])
+    expect(container.querySelector('.thread-reply__content strong').textContent).toBe('forte')
+    expect(screen.queryByText('**forte**')).toBeNull()
+  })
+
+  it('does not execute HTML injected in content', () => {
+    const { container } = renderPanel(parentMsg, [makeMsg({ content: '<img src=x onerror=alert(1)>' })])
+    expect(container.querySelector('img')).toBeNull()
+  })
+})

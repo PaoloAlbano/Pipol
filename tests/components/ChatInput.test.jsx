@@ -295,6 +295,26 @@ describe('ChatInput — markdown serialization on send', () => {
     const onSend = await sendWithHTML('ciao <b>mondo</b>!')
     expect(onSend).toHaveBeenCalledWith('ciao **mondo**!')
   })
+
+  it('pasted hyperlink keeps its URL as [text](url)', async () => {
+    const onSend = await sendWithHTML('<a href="https://example.com/x">Esempio</a>')
+    expect(onSend).toHaveBeenCalledWith('[Esempio](https://example.com/x)')
+  })
+
+  it('hyperlink whose text is the URL stays a plain URL', async () => {
+    const onSend = await sendWithHTML('<a href="https://example.com">https://example.com</a>')
+    expect(onSend).toHaveBeenCalledWith('https://example.com')
+  })
+
+  it('non-http(s) hyperlink falls back to its text', async () => {
+    const onSend = await sendWithHTML('<a href="javascript:alert(1)">clic</a>')
+    expect(onSend).toHaveBeenCalledWith('clic')
+  })
+
+  it('escapes parentheses in a pasted hyperlink URL', async () => {
+    const onSend = await sendWithHTML('<a href="https://example.com/a_(b)">w</a>')
+    expect(onSend).toHaveBeenCalledWith('[w](https://example.com/a_%28b%29)')
+  })
 })
 
 describe('ChatInput — message length validation', () => {

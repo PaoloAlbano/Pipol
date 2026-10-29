@@ -1,43 +1,7 @@
 import { useEffect, useRef, useMemo, useState } from 'react'
 import b4a from 'b4a'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { renderMarkdown } from '../markdown.js'
 import '../styles/chat.css'
-
-// Configure marked once: GFM (~~strike~~, `code`) + single newline → <br>
-marked.use({ breaks: true, gfm: true })
-
-// Allow mark tag for @mention highlighting
-const PURIFY_CONFIG = {
-  ALLOWED_TAGS: [
-    'p',
-    'br',
-    'strong',
-    'b',
-    'em',
-    'i',
-    'del',
-    's',
-    'code',
-    'pre',
-    'ul',
-    'ol',
-    'li',
-    'blockquote',
-    'mark',
-  ],
-  ALLOWED_ATTR: ['class'],
-}
-
-function renderMarkdown(content) {
-  const raw = marked.parse(content)
-  const sanitized = DOMPurify.sanitize(raw, PURIFY_CONFIG)
-  // Highlight @mentions — safe to do after DOMPurify since < in text is already &lt;
-  return sanitized.replace(/>([^<]+)</g, (match, text) => {
-    const highlighted = text.replace(/\B@([\w-]+)/g, '<mark class="mention">@$1</mark>')
-    return `>${highlighted}<`
-  })
-}
 
 /**
  * Renders the scrollable list of chat messages.

@@ -72,7 +72,6 @@
 .thread-panel__parent-content {
   font-size: 13px;
   color: var(--text);
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -123,7 +122,6 @@
   padding: 6px 10px;
   border-radius: 12px;
   max-width: 100%;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -170,4 +168,67 @@
 .message-thread-btn--has-replies {
   color: var(--primary);
   font-weight: 500;
+}
+
+/* ── Markdown inside thread content ───────────────────────────────────────── */
+
+.thread-panel__parent-content p,
+.thread-reply__content p {
+  margin: 0 0 4px;
+}
+.thread-panel__parent-content p:last-child,
+.thread-reply__content p:last-child {
+  margin-bottom: 0;
+}
+
+.thread-panel__parent-content code,
+.thread-reply__content code {
+  font-family: var(--font-mono, 'JetBrains Mono', 'Fira Mono', monospace);
+  font-size: 0.85em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.thread-panel__parent-content pre,
+.thread-reply__content pre {
+  margin: 6px 0 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  overflow-x: auto;
+  font-size: 12px;
+}
+
+.thread-panel__parent-content pre code,
+.thread-reply__content pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.thread-panel__parent-content ul,
+.thread-panel__parent-content ol,
+.thread-reply__content ul,
+.thread-reply__content ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.thread-panel__parent-content a,
+.thread-reply__content a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.thread-reply--own .thread-reply__content a {
+  color: #fff;
+}
+
+.thread-panel__parent-content .link-host,
+.thread-reply__content .link-host {
+  opacity: 0.75;
+  font-size: 0.9em;
 }

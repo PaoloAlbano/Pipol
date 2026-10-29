@@ -865,3 +865,25 @@ mark.mention {
 .lightbox-close:hover {
   background: rgba(255, 255, 255, 0.25);
 }
+
+/* ── Links in messages ─────────────────────────────────────────────────────── */
+
+.message-content a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.message-row--own .message-content a {
+  color: #fff;
+}
+
+.message-content a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.message-content .link-host {
+  opacity: 0.75;
+  font-size: 0.9em;
+}

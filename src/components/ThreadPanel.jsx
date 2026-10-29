@@ -1,7 +1,13 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useMemo } from 'react'
 import b4a from 'b4a'
 import ChatInput from './ChatInput.jsx'
+import { renderMarkdown } from '../markdown.js'
 import '../styles/thread.css'
+
+function RichText({ content, className }) {
+  const html = useMemo(() => renderMarkdown(content ?? ''), [content])
+  return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />
+}
 
 /**
  * ThreadPanel — right-side panel showing replies to a parent message.
@@ -39,7 +45,7 @@ export default function ThreadPanel({ parentMessage, replies = [], identity, pee
           <span className="thread-panel__parent-sender">
             {parentMessage.publicKey === myPubkey ? identity.username : parentMessage.username}
           </span>
-          <span className="thread-panel__parent-content">{parentMessage.content}</span>
+          <RichText className="thread-panel__parent-content" content={parentMessage.content} />
           <span className="thread-panel__parent-time">{formatTime(parentMessage.timestamp)}</span>
         </div>
 
@@ -60,7 +66,7 @@ export default function ThreadPanel({ parentMessage, replies = [], identity, pee
             return (
               <div key={msg.id} className={`thread-reply ${isOwn ? 'thread-reply--own' : 'thread-reply--remote'}`}>
                 <span className="thread-reply__sender">{isOwn ? identity.username : msg.username}</span>
-                <span className="thread-reply__content">{msg.content}</span>
+                <RichText className="thread-reply__content" content={msg.content} />
                 <span className="thread-reply__time">{formatTime(msg.timestamp)}</span>
               </div>
             )
