@@ -217,7 +217,13 @@ describe('ThreadPanel — interactions', () => {
 describe('ThreadPanel — links and markdown', () => {
   const renderPanel = (parent, replies = []) =>
     render(
-      <ThreadPanel parentMessage={parent} replies={replies} identity={identity} onClose={vi.fn()} onSendReply={vi.fn()} />
+      <ThreadPanel
+        parentMessage={parent}
+        replies={replies}
+        identity={identity}
+        onClose={vi.fn()}
+        onSendReply={vi.fn()}
+      />
     )
 
   it('renders a URL in a reply as a safe clickable link', () => {
