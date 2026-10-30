@@ -9,6 +9,6 @@
     "@hyperswarm/dht-relay": "^0.4.3",
     "hyperdht": "*",
     "selfsigned": "^5.5.0",
-    "ws": "^8.0.0"
+    "ws": "^8.22.0"
   }
 }
