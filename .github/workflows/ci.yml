@@ -40,6 +40,14 @@ jobs:
         run: pnpm run test
         working-directory: auth
 
+      - name: Install relay dependencies
+        run: npm ci
+        working-directory: relay
+
+      - name: Test relay
+        run: npm test
+        working-directory: relay
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v7
         with:
