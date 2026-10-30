@@ -141,4 +141,32 @@ describe('WebRTCPeer — screen share', () => {
     pcs[0].ontrack({ track: track('video'), streams: [s] })
     expect(received[0].stream).toBe(s)
   })
+
+  it('the polite side rolls back and answers a colliding offer', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio'), track('video')), null, true)
+    const answers = []
+    peer.addEventListener('answer', (e) => answers.push(e.detail.sdp))
+    await peer.init() // sends its own offer -> have-local-offer
+    await peer.handleOffer({ type: 'offer', sdp: 'x' })
+    expect(answers).toHaveLength(1)
+    expect(peer.established).toBe(true)
+  })
+
+  it('the impolite side wins even when it is not the initiator', async () => {
+    const peer = new WebRTCPeer('p', false, stream(track('audio')), null, false)
+    await peer.init()
+    pcs[0].signalingState = 'have-local-offer'
+    const answers = []
+    peer.addEventListener('answer', (e) => answers.push(e.detail.sdp))
+    await peer.handleOffer({ type: 'offer', sdp: 'x' })
+    expect(answers).toHaveLength(0)
+  })
+
+  it('is established only after the first answer', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio')))
+    await peer.init()
+    expect(peer.established).toBe(false)
+    await peer.handleAnswer({ type: 'answer', sdp: 'a' })
+    expect(peer.established).toBe(true)
+  })
 })

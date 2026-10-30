@@ -201,7 +201,14 @@ export default function Room({
       const callerName = swarmRef.current?.peers.get(peerId)?.username ?? peerId.slice(0, 8)
       setCallPeerIds((prev) => new Set([...prev, peerId]))
       if (callActiveRef.current) {
-        await ensureRTCPeer(peerId, false)
+        // Our own offer was sent while they were not in the call yet, so they dropped it.
+        // Start over with a fresh offer now that they have joined.
+        if (rtcPeersRef.current[peerId] && !rtcPeersRef.current[peerId].established) {
+          cleanupRTCPeer(peerId)
+          await ensureRTCPeer(peerId, true)
+        } else {
+          await ensureRTCPeer(peerId, false)
+        }
       } else {
         setIncomingCall((prev) => prev ?? { peerId, username: callerName })
       }
@@ -771,7 +778,10 @@ export default function Room({
 
     // Create new WebRTC peer connection
     const screenStream = getActiveScreenStream()
-    const rtcPeer = new WebRTCPeer(peerId, isInitiator, stream, screenStream)
+    // Deterministic tie-break so exactly one side yields if both send an offer at once
+    const myId = myPubkeyHexRef.current
+    const polite = myId ? myId < peerId : !isInitiator
+    const rtcPeer = new WebRTCPeer(peerId, isInitiator, stream, screenStream, polite)
     rtcPeersRef.current[peerId] = rtcPeer
 
     // Late joiner while we are sharing: announce the screen stream before the SDP exchange
