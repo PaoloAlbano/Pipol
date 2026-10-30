@@ -12,12 +12,12 @@
   },
   "packageManager": "pnpm@10.5.0",
   "dependencies": {
-    "jose": "^5.9.6"
+    "jose": "^5.10.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.0.0",
-    "eslint": "^9.0.0",
-    "prettier": "^3.0.0",
-    "vitest": "^3.0.0"
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.10",
+    "vitest": "^3.2.7"
   }
 }
