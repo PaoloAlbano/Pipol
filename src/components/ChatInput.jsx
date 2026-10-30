@@ -117,23 +117,13 @@ export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) 
   const [mentionQuery, setMentionQuery] = useState(null) // string | null
   const [mentionIdx, setMentionIdx] = useState(0)
   const [dragOver, setDragOver] = useState(false)
-  const [pendingImages, setPendingImages] = useState([]) // [{ id, file, url }]
-  const pendingImagesRef = useRef([])
+  const [pendingImages, setPendingImages] = useState([]) // [{ id, file, url (data URL) }]
   const editorRef = useRef(null)
   const dropdownRef = useRef(null)
   const fileInputRef = useRef(null)
 
   const mentionMatches =
     mentionQuery !== null ? peers.filter((p) => p.username?.toLowerCase().startsWith(mentionQuery.toLowerCase())) : []
-
-  useEffect(() => {
-    pendingImagesRef.current = pendingImages
-  }, [pendingImages])
-
-  // Release object URLs of any images still staged on unmount
-  useEffect(() => {
-    return () => pendingImagesRef.current.forEach((img) => img.url && URL.revokeObjectURL(img.url))
-  }, [])
 
   // Clear dropdown on outside click
   useEffect(() => {
@@ -250,20 +240,17 @@ export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) 
     const files = Array.from(clipboard.files ?? []).filter((f) => PASTEABLE_IMAGE_TYPES.includes(f.type))
     if (files.length === 0) return
     e.preventDefault()
-    const staged = files.map((file) => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      file,
-      url: typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null,
-    }))
-    setPendingImages((prev) => [...prev, ...staged])
+    for (const file of files) {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      // Preview as a data URL: the CSP allows img-src data: but not blob:
+      const reader = new FileReader()
+      reader.onload = () => setPendingImages((prev) => [...prev, { id, file, url: reader.result }])
+      reader.readAsDataURL(file)
+    }
   }
 
   function removePendingImage(id) {
-    setPendingImages((prev) => {
-      const removed = prev.find((img) => img.id === id)
-      if (removed?.url) URL.revokeObjectURL(removed.url)
-      return prev.filter((img) => img.id !== id)
-    })
+    setPendingImages((prev) => prev.filter((img) => img.id !== id))
   }
 
   function doSend() {
@@ -276,10 +263,7 @@ export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) 
       return
     }
     if (content.trim()) onSend(content)
-    pendingImages.forEach((img) => {
-      onSendFile?.(img.file)
-      if (img.url) URL.revokeObjectURL(img.url)
-    })
+    pendingImages.forEach((img) => onSendFile?.(img.file))
     setPendingImages([])
     el.innerHTML = ''
     setHasContent(false)

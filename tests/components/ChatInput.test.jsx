@@ -531,11 +531,6 @@ describe('ChatInput — drag and drop', () => {
 })
 
 describe('ChatInput — pasting images', () => {
-  beforeEach(() => {
-    URL.createObjectURL = vi.fn(() => 'blob:fake')
-    URL.revokeObjectURL = vi.fn()
-  })
-
   function setupWithFiles() {
     const onSend = vi.fn()
     const onSendFile = vi.fn()
@@ -553,16 +548,18 @@ describe('ChatInput — pasting images', () => {
     return file
   }
 
-  it('shows a preview and enables send when an image is pasted', () => {
+  it('shows a data-URL preview (CSP blocks blob:) and enables send when an image is pasted', async () => {
     const { editor, button } = setupWithFiles()
     pasteImage(editor)
-    expect(screen.getByAltText('image.png')).toBeInTheDocument()
+    const preview = await screen.findByAltText('image.png')
+    expect(preview.getAttribute('src')).toMatch(/^data:/)
     expect(button).not.toBeDisabled()
   })
 
-  it('sends the pasted image as a file attachment on submit', () => {
+  it('sends the pasted image as a file attachment on submit', async () => {
     const { editor, button, onSend, onSendFile } = setupWithFiles()
     const file = pasteImage(editor)
+    await screen.findByAltText('image.png')
     fireEvent.click(button)
     expect(onSendFile).toHaveBeenCalledWith(file)
     expect(onSend).not.toHaveBeenCalled()
@@ -575,14 +572,16 @@ describe('ChatInput — pasting images', () => {
     editor.focus()
     await user.type(editor, 'look')
     const file = pasteImage(editor)
+    await screen.findByAltText('image.png')
     await user.keyboard('{Enter}')
     expect(onSend).toHaveBeenCalledWith('look')
     expect(onSendFile).toHaveBeenCalledWith(file)
   })
 
-  it('lets the user remove a pasted image before sending', () => {
+  it('lets the user remove a pasted image before sending', async () => {
     const { editor, button, onSendFile } = setupWithFiles()
     pasteImage(editor)
+    await screen.findByAltText('image.png')
     fireEvent.click(screen.getByRole('button', { name: /remove image/i }))
     expect(screen.queryByAltText('image.png')).toBeNull()
     expect(button).toBeDisabled()
