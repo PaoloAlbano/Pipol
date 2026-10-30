@@ -48,6 +48,7 @@ vi.mock('../../src/webrtc/media.js', () => ({
   switchCamera: vi.fn(),
   startScreenShare: vi.fn(),
   stopScreenShare: vi.fn(),
+  getActiveScreenStream: vi.fn(() => null),
 }))
 
 // ── jsdom stubs ───────────────────────────────────────────────────────────────

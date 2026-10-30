@@ -395,3 +395,40 @@ describe('VideoGrid — mirrorVideo prop', () => {
     expect(allLabels.length).toBeGreaterThan(0)
   })
 })
+
+// ── Screen share tiles ───────────────────────────────────────────────────────
+
+describe('VideoGrid — screen share', () => {
+  const peers = [{ id: 'peer-a', username: 'alice' }]
+
+  it('shows the camera and the screen of a presenting peer as separate tiles', () => {
+    setup({
+      peers,
+      remoteStreams: { 'peer-a': makeFakeStream() },
+      remoteScreens: { 'peer-a': makeFakeStream() },
+    })
+    expect(screen.getByText('alice')).toBeInTheDocument()
+    expect(screen.getByText('alice (screen)')).toBeInTheDocument()
+  })
+
+  it('puts the screen in the spotlight and the camera in the sidebar', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-a': makeFakeStream() }}
+        remoteScreens={{ 'peer-a': makeFakeStream() }}
+        peers={peers}
+        localUsername="swift-fox"
+        layout="spotlight"
+        spotlightPeerId="peer-a"
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+      />
+    )
+    const main = container.querySelector('.video-spotlight-main')
+    const sidebar = container.querySelector('.video-spotlight-sidebar')
+    expect(main.textContent).toContain('alice (screen)')
+    expect(sidebar.textContent).toContain('alice')
+    expect(sidebar.textContent).not.toContain('(screen)')
+  })
+})

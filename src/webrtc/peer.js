@@ -28,14 +28,20 @@ export class WebRTCPeer extends EventTarget {
    * @param {string}       peerId       Remote peer identifier (hex public key)
    * @param {boolean}      isInitiator  True if this peer sends the SDP offer
    * @param {MediaStream}  localStream  Our camera/mic stream
+   * @param {MediaStream|null} screenStream  Active screen-share stream, sent alongside the camera
    */
-  constructor(peerId, isInitiator, localStream) {
+  constructor(peerId, isInitiator, localStream, screenStream = null) {
     super()
     this.peerId = peerId
     this.isInitiator = isInitiator
     this.localStream = localStream
+    this.screenStream = screenStream
 
     this._pc = null
+    this._senders = { video: null, audio: null, screen: null }
+    this._initialDone = false // first offer/answer exchange completed
+    this._needsNegotiation = false // tracks added/removed after the first exchange
+    this._makingOffer = false
     this._pendingCandidates = [] // ICE candidates queued before remoteDescription is set
     this._closed = false
   }
@@ -47,8 +53,13 @@ export class WebRTCPeer extends EventTarget {
     // Add all local tracks (audio + video)
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
-        this._pc.addTrack(track, this.localStream)
+        const sender = this._pc.addTrack(track, this.localStream)
+        this._senders[track.kind === 'audio' ? 'audio' : 'video'] = sender
       }
+    }
+    if (this.screenStream) {
+      const [screenTrack] = this.screenStream.getVideoTracks()
+      if (screenTrack) this._senders.screen = this._pc.addTrack(screenTrack, this.screenStream)
     }
 
     // Remote track received → expose via 'remote-stream' event
@@ -56,7 +67,7 @@ export class WebRTCPeer extends EventTarget {
       if (this._closed) return
       this.dispatchEvent(
         new CustomEvent('remote-stream', {
-          detail: { stream: event.streams[0] ?? new MediaStream([event.track]) },
+          detail: { stream: event.streams[0] ?? new MediaStream([event.track]), track: event.track },
         })
       )
     }
@@ -91,34 +102,105 @@ export class WebRTCPeer extends EventTarget {
   }
 
   async _sendOffer() {
-    const offer = await this._pc.createOffer()
-    await this._pc.setLocalDescription(offer)
-    this.dispatchEvent(new CustomEvent('offer', { detail: { sdp: this._pc.localDescription } }))
+    this._makingOffer = true
+    try {
+      const offer = await this._pc.createOffer()
+      await this._pc.setLocalDescription(offer)
+      this.dispatchEvent(new CustomEvent('offer', { detail: { sdp: this._pc.localDescription } }))
+    } finally {
+      this._makingOffer = false
+    }
   }
 
   /**
-   * Handle an SDP offer from the remote peer (responder side).
-   * Creates and emits an answer.
+   * Handle an SDP offer from the remote peer (responder side, or a
+   * renegotiation initiated by either side). Creates and emits an answer.
+   * On glare the non-initiator is "polite" and yields; the initiator ignores the offer.
    * @param {RTCSessionDescriptionInit} sdp
    */
   async handleOffer(sdp) {
     if (this._closed) return
+    const collision = this._makingOffer || this._pc.signalingState !== 'stable'
+    if (collision && this.isInitiator) return
+    // Our own pending offer is rolled back by the incoming one — send it again afterwards
+    if (collision && this._initialDone) this._needsNegotiation = true
+
+    // Setting a remote offer while we have a local one implicitly rolls ours back
     await this._pc.setRemoteDescription(new RTCSessionDescription(sdp))
     await this._flushPendingCandidates()
 
     const answer = await this._pc.createAnswer()
     await this._pc.setLocalDescription(answer)
     this.dispatchEvent(new CustomEvent('answer', { detail: { sdp: this._pc.localDescription } }))
+    this._initialDone = true
+    await this._flushRenegotiation()
   }
 
   /**
-   * Handle an SDP answer from the remote peer (initiator side).
+   * Handle an SDP answer from the remote peer.
    * @param {RTCSessionDescriptionInit} sdp
    */
   async handleAnswer(sdp) {
     if (this._closed) return
+    if (this._pc.signalingState !== 'have-local-offer') return
     await this._pc.setRemoteDescription(new RTCSessionDescription(sdp))
     await this._flushPendingCandidates()
+    this._initialDone = true
+    await this._flushRenegotiation()
+  }
+
+  /** Sends a new offer if tracks changed and the connection is idle. */
+  async _flushRenegotiation() {
+    if (this._closed || !this._needsNegotiation || !this._initialDone) return
+    if (this._makingOffer || this._pc.signalingState !== 'stable') return
+    this._needsNegotiation = false
+    await this._sendOffer()
+  }
+
+  /**
+   * Swap the camera video track without renegotiating.
+   * @param {MediaStreamTrack} track
+   */
+  async replaceVideoTrack(track) {
+    await this._senders.video?.replaceTrack(track).catch(() => {})
+  }
+
+  /**
+   * Swap the microphone track without renegotiating.
+   * @param {MediaStreamTrack} track
+   */
+  async replaceAudioTrack(track) {
+    await this._senders.audio?.replaceTrack(track).catch(() => {})
+  }
+
+  /**
+   * Start sending a screen-share stream next to the camera (renegotiates).
+   * @param {MediaStream} stream
+   */
+  async addScreenStream(stream) {
+    if (this._closed || !this._pc || this._senders.screen) return
+    const [track] = stream.getVideoTracks()
+    if (!track) return
+    this.screenStream = stream
+    this._senders.screen = this._pc.addTrack(track, stream)
+    this._needsNegotiation = true
+    await this._flushRenegotiation()
+  }
+
+  /** Stop sending the screen-share stream (renegotiates). */
+  async removeScreenStream() {
+    this.screenStream = null
+    const sender = this._senders.screen
+    if (this._closed || !this._pc || !sender) return
+    this._senders.screen = null
+    try {
+      this._pc.removeTrack(sender)
+    } catch (err) {
+      console.warn('[webrtc] removeTrack error', err)
+      return
+    }
+    this._needsNegotiation = true
+    await this._flushRenegotiation()
   }
 
   /**

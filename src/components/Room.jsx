@@ -14,6 +14,7 @@ import {
   switchCamera,
   startScreenShare,
   stopScreenShare,
+  getActiveScreenStream,
 } from '../webrtc/media.js'
 import ChatMessages from './ChatMessages.jsx'
 import ChatInput from './ChatInput.jsx'
@@ -90,7 +91,8 @@ export default function Room({
   const [callStartedAt, setCallStartedAt] = useState(null) // timestamp when call started
   const [callElapsed, setCallElapsed] = useState('') // formatted HH:MM:SS or MM:SS
   const [localStream, setLocalStream] = useState(null)
-  const [remoteStreams, setRemoteStreams] = useState({}) // peerId → MediaStream
+  const [remoteStreams, setRemoteStreams] = useState({}) // peerId → camera/mic MediaStream
+  const [remoteScreens, setRemoteScreens] = useState({}) // peerId → screen-share MediaStream
   const [audioMuted, setAudioMutedState] = useState(false)
   const [videoMuted, setVideoMutedState] = useState(false)
   const [screenSharing, setScreenSharing] = useState(false)
@@ -105,6 +107,7 @@ export default function Room({
   const msgStoreRef = useRef(null)
   const swarmDetachRef = useRef(null) // cleanup fn returned by attachSwarmListeners
   const rtcPeersRef = useRef({}) // peerId → WebRTCPeer
+  const remoteScreenIdsRef = useRef({}) // peerId → id of the MediaStream carrying their screen
   const callActiveRef = useRef(false)
   const prevStatsRef = useRef({}) // peerId → { bytesSent, bytesReceived, ts }
   const retryTimerRef = useRef(null)
@@ -267,10 +270,19 @@ export default function Room({
     }
 
     function onScreenShareStart(e) {
+      // Announced before the renegotiation so ontrack can tell screen from camera
+      remoteScreenIdsRef.current[e.detail.peerId] = e.detail.streamId
       setSpotlightPeerId(e.detail.peerId)
       setLayout('spotlight')
     }
     function onScreenShareEnd(e) {
+      delete remoteScreenIdsRef.current[e.detail.peerId]
+      setRemoteScreens((prev) => {
+        if (!prev[e.detail.peerId]) return prev
+        const next = { ...prev }
+        delete next[e.detail.peerId]
+        return next
+      })
       setSpotlightPeerId((prev) => (prev === e.detail.peerId ? null : prev))
       setLayout('grid')
     }
@@ -483,14 +495,8 @@ export default function Room({
           const [newVideoTrack] = newStream.getVideoTracks()
           const [newAudioTrack] = newStream.getAudioTracks()
           for (const rtcPeer of Object.values(rtcPeersRef.current)) {
-            const senders = rtcPeer._pc?.getSenders() ?? []
-            for (const sender of senders) {
-              if (sender.track?.kind === 'video' && newVideoTrack) {
-                await sender.replaceTrack(newVideoTrack).catch(() => {})
-              } else if (sender.track?.kind === 'audio' && newAudioTrack) {
-                await sender.replaceTrack(newAudioTrack).catch(() => {})
-              }
-            }
+            if (newVideoTrack) await rtcPeer.replaceVideoTrack(newVideoTrack)
+            if (newAudioTrack) await rtcPeer.replaceAudioTrack(newAudioTrack)
           }
         } catch (err) {
           console.warn('[room] could not restart video after wake', err)
@@ -764,8 +770,14 @@ export default function Room({
     const stream = localStream || (await getLocalStream())
 
     // Create new WebRTC peer connection
-    const rtcPeer = new WebRTCPeer(peerId, isInitiator, stream)
+    const screenStream = getActiveScreenStream()
+    const rtcPeer = new WebRTCPeer(peerId, isInitiator, stream, screenStream)
     rtcPeersRef.current[peerId] = rtcPeer
+
+    // Late joiner while we are sharing: announce the screen stream before the SDP exchange
+    if (screenStream) {
+      swarmRef.current?.sendToPeer(peerId, { type: 'SCREEN_SHARE_START', streamId: screenStream.id })
+    }
 
     // ── Event handlers for WebRTC signaling ────────────────────────────────
 
@@ -788,12 +800,23 @@ export default function Room({
 
     // When remote stream is available, update React state to trigger re-render
     rtcPeer.addEventListener('remote-stream', (e) => {
-      setRemoteStreams((prev) => ({ ...prev, [peerId]: e.detail.stream }))
+      const { stream } = e.detail
+      if (remoteScreenIdsRef.current[peerId] === stream.id) {
+        setRemoteScreens((prev) => ({ ...prev, [peerId]: stream }))
+      } else {
+        setRemoteStreams((prev) => ({ ...prev, [peerId]: stream }))
+      }
     })
 
-    // When connection closes, remove the remote stream from state
+    // When connection closes, remove the remote streams from state
     rtcPeer.addEventListener('closed', () => {
+      delete remoteScreenIdsRef.current[peerId]
       setRemoteStreams((prev) => {
+        const next = { ...prev }
+        delete next[peerId]
+        return next
+      })
+      setRemoteScreens((prev) => {
         const next = { ...prev }
         delete next[peerId]
         return next
@@ -808,7 +831,13 @@ export default function Room({
   function cleanupRTCPeer(peerId) {
     rtcPeersRef.current[peerId]?.close()
     delete rtcPeersRef.current[peerId]
+    delete remoteScreenIdsRef.current[peerId]
     setRemoteStreams((prev) => {
+      const next = { ...prev }
+      delete next[peerId]
+      return next
+    })
+    setRemoteScreens((prev) => {
       const next = { ...prev }
       delete next[peerId]
       return next
@@ -1001,7 +1030,9 @@ export default function Room({
     swarmRef.current?.sendToAll({ type: 'CALL_END' })
     Object.values(rtcPeersRef.current).forEach((p) => p.close())
     rtcPeersRef.current = {}
+    remoteScreenIdsRef.current = {}
     setRemoteStreams({})
+    setRemoteScreens({})
     stopLocalStream()
     setLocalStream(null)
     setCallActive(false)
@@ -1039,12 +1070,16 @@ export default function Room({
     if (!result) return
     setLocalStream(result.stream)
     for (const rtcPeer of Object.values(rtcPeersRef.current)) {
-      const senders = rtcPeer._pc?.getSenders() ?? []
-      for (const sender of senders) {
-        if (sender.track?.kind === 'video') {
-          await sender.replaceTrack(result.videoTrack).catch(() => {})
-        }
-      }
+      await rtcPeer.replaceVideoTrack(result.videoTrack)
+    }
+  }
+
+  async function handleStopScreenShare() {
+    stopScreenShare()
+    setScreenSharing(false)
+    swarmRef.current?.sendToAll({ type: 'SCREEN_SHARE_END' })
+    for (const rtcPeer of Object.values(rtcPeersRef.current)) {
+      await rtcPeer.removeScreenStream()
     }
   }
 
@@ -1060,44 +1095,19 @@ export default function Room({
       }
       if (!result) return
 
-      setLocalStream(result.stream)
       setScreenSharing(true)
-      swarmRef.current?.sendToAll({ type: 'SCREEN_SHARE_START' })
+      // Announce the stream id first so peers can tell it apart from the camera
+      swarmRef.current?.sendToAll({ type: 'SCREEN_SHARE_START', streamId: result.stream.id })
 
-      // Replace video track in all active RTCPeerConnections
+      // The camera keeps flowing; the screen is an additional video stream
       for (const rtcPeer of Object.values(rtcPeersRef.current)) {
-        const senders = rtcPeer._pc?.getSenders() ?? []
-        for (const sender of senders) {
-          if (sender.track?.kind === 'video') {
-            await sender.replaceTrack(result.screenTrack).catch(() => {})
-          }
-        }
+        await rtcPeer.addScreenStream(result.stream)
       }
 
       // Handle user clicking "Stop sharing" in the browser's native bar
-      result.screenTrack.addEventListener(
-        'ended',
-        () => {
-          handleToggleScreenShare()
-        },
-        { once: true }
-      )
+      result.screenTrack.addEventListener('ended', handleStopScreenShare, { once: true })
     } else {
-      const result = await stopScreenShare()
-      setScreenSharing(false)
-      swarmRef.current?.sendToAll({ type: 'SCREEN_SHARE_END' })
-      if (!result) return
-
-      setLocalStream(result.stream)
-
-      for (const rtcPeer of Object.values(rtcPeersRef.current)) {
-        const senders = rtcPeer._pc?.getSenders() ?? []
-        for (const sender of senders) {
-          if (sender.track?.kind === 'video') {
-            await sender.replaceTrack(result.videoTrack).catch(() => {})
-          }
-        }
-      }
+      await handleStopScreenShare()
     }
   }
 
@@ -1278,6 +1288,7 @@ export default function Room({
           <VideoGrid
             localStream={localStream}
             remoteStreams={remoteStreams}
+            remoteScreens={remoteScreens}
             peers={peers}
             localUsername={identity.username}
             showStats={showStats}

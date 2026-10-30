@@ -4,6 +4,9 @@ import '../styles/chat.css'
 // Maximum message length (prevents DoS and abuse)
 const MAX_MESSAGE_LENGTH = 10000
 
+// Same types accepted by the attach button / sendImageFile
+const PASTEABLE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
 // execCommand-based commands toggle a "pending format" mode — subsequent typing
 // is wrapped automatically. For code/pre there is no native command, so we
 // insert an empty element and place the cursor inside.
@@ -114,6 +117,7 @@ export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) 
   const [mentionQuery, setMentionQuery] = useState(null) // string | null
   const [mentionIdx, setMentionIdx] = useState(0)
   const [dragOver, setDragOver] = useState(false)
+  const [pendingImages, setPendingImages] = useState([]) // [{ id, file, url (data URL) }]
   const editorRef = useRef(null)
   const dropdownRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -227,16 +231,40 @@ export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) 
     }
   }
 
+  function handlePaste(e) {
+    if (!onSendFile) return
+    const clipboard = e.clipboardData
+    if (!clipboard) return
+    // Prefer text when both are present (e.g. spreadsheet cells also expose an image)
+    if (clipboard.getData('text/plain')) return
+    const files = Array.from(clipboard.files ?? []).filter((f) => PASTEABLE_IMAGE_TYPES.includes(f.type))
+    if (files.length === 0) return
+    e.preventDefault()
+    for (const file of files) {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      // Preview as a data URL: the CSP allows img-src data: but not blob:
+      const reader = new FileReader()
+      reader.onload = () => setPendingImages((prev) => [...prev, { id, file, url: reader.result }])
+      reader.readAsDataURL(file)
+    }
+  }
+
+  function removePendingImage(id) {
+    setPendingImages((prev) => prev.filter((img) => img.id !== id))
+  }
+
   function doSend() {
     const el = editorRef.current
     if (!el) return
     const content = editorToMarkdown(el)
-    if (!content.trim()) return
+    if (!content.trim() && pendingImages.length === 0) return
     if (content.length > MAX_MESSAGE_LENGTH) {
       alert(`Message too long (${content.length}/${MAX_MESSAGE_LENGTH} characters). Please shorten it.`)
       return
     }
-    onSend(content)
+    if (content.trim()) onSend(content)
+    pendingImages.forEach((img) => onSendFile?.(img.file))
+    setPendingImages([])
     el.innerHTML = ''
     setHasContent(false)
     setActiveFormats(new Set())
@@ -366,6 +394,25 @@ export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) 
           })}
         </div>
 
+        {pendingImages.length > 0 && (
+          <div className="chat-pending-images" aria-label="Images to send">
+            {pendingImages.map((img) => (
+              <div key={img.id} className="chat-pending-image">
+                {img.url && <img src={img.url} alt={img.file.name || 'Pasted image'} />}
+                <button
+                  type="button"
+                  className="chat-pending-image__remove"
+                  title="Remove image"
+                  aria-label="Remove image"
+                  onClick={() => removePendingImage(img.id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="chat-input-row">
           <div
             ref={editorRef}
@@ -376,12 +423,19 @@ export default function ChatInput({ onSend, onTyping, peers = [], onSendFile }) 
             aria-label="Message input"
             data-placeholder={placeholder}
             onInput={handleInput}
+            onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             onKeyUp={updateActiveFormats}
             onClick={updateActiveFormats}
             suppressContentEditableWarning
           />
-          <button className="chat-send-btn" type="submit" disabled={!hasContent} title="Send message" aria-label="Send">
+          <button
+            className="chat-send-btn"
+            type="submit"
+            disabled={!hasContent && pendingImages.length === 0}
+            title="Send message"
+            aria-label="Send"
+          >
             ↑
           </button>
           {onSendFile && (
