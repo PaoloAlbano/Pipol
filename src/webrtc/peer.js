@@ -29,11 +29,14 @@ export class WebRTCPeer extends EventTarget {
    * @param {boolean}      isInitiator  True if this peer sends the SDP offer
    * @param {MediaStream}  localStream  Our camera/mic stream
    * @param {MediaStream|null} screenStream  Active screen-share stream, sent alongside the camera
+   * @param {boolean}      [polite]     Who yields when both sides send an offer at once. Must differ
+   *                                    between the two ends; defaults to the non-initiator.
    */
-  constructor(peerId, isInitiator, localStream, screenStream = null) {
+  constructor(peerId, isInitiator, localStream, screenStream = null, polite = !isInitiator) {
     super()
     this.peerId = peerId
     this.isInitiator = isInitiator
+    this.polite = polite
     this.localStream = localStream
     this.screenStream = screenStream
 
@@ -44,6 +47,11 @@ export class WebRTCPeer extends EventTarget {
     this._makingOffer = false
     this._pendingCandidates = [] // ICE candidates queued before remoteDescription is set
     this._closed = false
+  }
+
+  /** True once the first offer/answer exchange has completed. */
+  get established() {
+    return this._initialDone
   }
 
   /** Initialise the RTCPeerConnection and, if initiator, create+send an offer. */
@@ -115,13 +123,13 @@ export class WebRTCPeer extends EventTarget {
   /**
    * Handle an SDP offer from the remote peer (responder side, or a
    * renegotiation initiated by either side). Creates and emits an answer.
-   * On glare the non-initiator is "polite" and yields; the initiator ignores the offer.
+   * On glare the polite side yields (its own offer is rolled back); the other side ignores the offer.
    * @param {RTCSessionDescriptionInit} sdp
    */
   async handleOffer(sdp) {
     if (this._closed) return
     const collision = this._makingOffer || this._pc.signalingState !== 'stable'
-    if (collision && this.isInitiator) return
+    if (collision && !this.polite) return
     // Our own pending offer is rolled back by the incoming one — send it again afterwards
     if (collision && this._initialDone) this._needsNegotiation = true
 

@@ -1,0 +1,47 @@
+# Dependabot is used for security updates only.
+# `open-pull-requests-limit: 0` disables routine version bumps, so the version
+# ranges in package.json stay under our control. Security PRs (which need
+# "Dependabot security updates" enabled in the repo settings) are still opened,
+# grouped into a single PR per directory.
+# Note: GitHub raises security PRs as soon as an advisory is published; the
+# weekly schedule below only applies to version updates.
+version: 2
+updates:
+  - package-ecosystem: npm # also covers pnpm lockfiles
+    directory: /
+    schedule:
+      interval: weekly
+      day: sunday
+      time: '00:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /auth
+    schedule:
+      interval: weekly
+      day: sunday
+      time: '00:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /relay
+    schedule:
+      interval: weekly
+      day: sunday
+      time: '00:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ['*']

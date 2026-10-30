@@ -7,6 +7,7 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
 COPY server.js providers.json ./
+COPY src ./src
 
 ENV PORT=8080
 EXPOSE 8080

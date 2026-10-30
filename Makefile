@@ -1,4 +1,4 @@
-.PHONY: install dev dev-tunnel build check-key expose start-relay start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed
+.PHONY: install dev dev-tunnel build check-key expose start-relay relay-test start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed
 
 SERVEO_SUBDOMAIN ?= pipol
 SERVEO_KEY       ?= ./serveo_key
@@ -24,6 +24,9 @@ expose: check-key
 
 start-relay:
 	cd relay && npm run start
+
+relay-test:
+	cd relay && npm test
 
 start-auth:
 	cd auth && pnpm run start
