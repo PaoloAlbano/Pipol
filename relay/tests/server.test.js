@@ -32,7 +32,14 @@ before(async () => {
   port = await freePort()
   child = spawn(process.execPath, ['server.js'], {
     cwd: relayDir,
-    env: { ...process.env, PORT: String(port) },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      CF_TURN_KEY_ID: '',
+      CF_TURN_API_TOKEN: '',
+      TURN_URLS: 'turn:turn.test:3478',
+      TURN_SECRET: 'test-secret',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
@@ -122,6 +129,22 @@ test('answers HTTP health checks', async () => {
   const res = await fetch(`http://127.0.0.1:${port}/`)
   assert.equal(res.status, 200)
   assert.equal(await res.text(), 'OK')
+})
+
+test('serves short-lived TURN credentials on /ice with CORS', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/ice`)
+  assert.equal(res.status, 200)
+  assert.equal(res.headers.get('access-control-allow-origin'), '*')
+  const body = await res.json()
+  assert.deepEqual(body.iceServers[0].urls, ['turn:turn.test:3478'])
+  assert.match(body.iceServers[0].username, /^\d+:pipol$/)
+  assert.ok(body.iceServers[0].credential)
+})
+
+test('answers CORS preflight on /ice', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/ice`, { method: 'OPTIONS' })
+  assert.equal(res.status, 204)
+  assert.equal(res.headers.get('access-control-allow-origin'), '*')
 })
 
 test('accepts WebSocket upgrades on the DHT relay path', async () => {
