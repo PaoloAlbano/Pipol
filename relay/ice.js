@@ -12,15 +12,17 @@
 //                   TURN_CREDENTIAL
 //   http            TURN_API_URL                          a service that returns ICE servers over HTTP:
 //                   [TURN_API_AUTHORIZATION]              Metered, Xirsys, Twilio proxy, your own API…
-//   cloudflare      CF_TURN_KEY_ID, CF_TURN_API_TOKEN     Cloudflare Realtime TURN
+//   cloudflare      CF_TURN_KEY_ID, CF_TURN_API_TOKEN     Cloudflare Realtime TURN (one credential per request,
+//                                                         so usage can be attributed: see usage-guard.js)
 //
-// Common: TURN_TTL (seconds, default 86400) for the providers that mint credentials.
+// Common: TURN_TTL (seconds, default 3600) for the providers that mint credentials. Clients renew them
+// before they expire, so a short lifetime limits how long copied credentials stay usable.
 // With nothing configured the list is empty and clients fall back to public STUN.
 
 import crypto from 'node:crypto'
 
-const DEFAULT_TTL_SECONDS = 86400
-const CLOUDFLARE_API = 'https://rtc.live.cloudflare.com/v1/turn/keys'
+const DEFAULT_TTL_SECONDS = 3600
+const CLOUDFLARE_API = 'https://rtc.live.cloudflare.com/v1/turn/keys' // CF_TURN_API_URL overrides it (tests)
 
 const splitList = (value) =>
   String(value ?? '')
@@ -35,9 +37,19 @@ function dropBlockedPorts(iceServers) {
     .filter((server) => server.urls.length > 0)
 }
 
-/** TURN REST API (draft-uberti-behave-turn-rest): username = "<expiry>:<id>", credential = HMAC-SHA1. */
-export function sharedSecretCredentials(secret, urls, ttlSeconds, nowMs = Date.now()) {
-  const username = `${Math.floor(nowMs / 1000) + ttlSeconds}:pipol`
+/**
+ * TURN REST API (draft-uberti-behave-turn-rest): username = "<expiry>:<id>", credential = HMAC-SHA1.
+ * `id` must not contain ":"; by default every call gets a fresh random one, which makes each
+ * issuance attributable in the TURN logs and lets coturn's `user-quota` apply per issuance.
+ */
+export function sharedSecretCredentials(
+  secret,
+  urls,
+  ttlSeconds,
+  nowMs = Date.now(),
+  id = crypto.randomBytes(8).toString('hex')
+) {
+  const username = `${Math.floor(nowMs / 1000) + ttlSeconds}:${id}`
   const credential = crypto.createHmac('sha1', secret).update(username).digest('base64')
   return { urls, username, credential }
 }
@@ -50,6 +62,8 @@ export function sharedSecretCredentials(secret, urls, ttlSeconds, nowMs = Date.n
  */
 export const providers = {
   coturn: {
+    // Minting is a local HMAC (free), so nothing is cached: every client gets its own username
+    cacheable: false,
     configured: (env) => Boolean(env.TURN_URLS && env.TURN_SECRET),
     async fetch({ env, ttl, now }) {
       const server = sharedSecretCredentials(env.TURN_SECRET, splitList(env.TURN_URLS), ttl, now())
@@ -81,9 +95,11 @@ export const providers = {
   },
 
   cloudflare: {
+    // A credential per request: usage is reported per credential, so an abusive one can be revoked alone
+    cacheable: false,
     configured: (env) => Boolean(env.CF_TURN_KEY_ID && env.CF_TURN_API_TOKEN),
     async fetch({ env, ttl, fetchImpl }) {
-      const res = await fetchImpl(`${CLOUDFLARE_API}/${env.CF_TURN_KEY_ID}/credentials/generate-ice-servers`, {
+      const res = await fetchImpl(`${env.CF_TURN_API_URL || CLOUDFLARE_API}/${env.CF_TURN_KEY_ID}/credentials/generate-ice-servers`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.CF_TURN_API_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ ttl }),
@@ -117,7 +133,13 @@ export function selectProvider(env = process.env) {
 export function createIceProvider({ env = process.env, fetchImpl = globalThis.fetch, now = Date.now } = {}) {
   const ttl = Number(env.TURN_TTL) > 0 ? Number(env.TURN_TTL) : DEFAULT_TTL_SECONDS
   const selection = selectProvider(env)
-  let cached = null // { value, expiresAt }
+  let cached = null // { iceServers, expiresAt, reuseUntil }
+
+  // `ttl` in the answer is the time left, so clients know when to renew whatever the age of the cache
+  const remaining = (entry) => ({
+    iceServers: entry.iceServers,
+    ttl: Math.max(Math.floor((entry.expiresAt - now()) / 1000), 0),
+  })
 
   return {
     /** Name of the active provider, or null when TURN is not configured. */
@@ -125,15 +147,22 @@ export function createIceProvider({ env = process.env, fetchImpl = globalThis.fe
     /** Why TURN is not configured although the user tried to (misspelt or incomplete setup). */
     error: selection.error ?? null,
 
-    /** Credentials are fetched once and reused until half of their lifetime has passed. */
+    /** Providers that call an external API reuse the credentials until half of their lifetime has passed. */
     async get() {
       if (!selection.name) return { iceServers: [], ttl: 0 }
-      if (cached && cached.expiresAt > now()) return cached.value
+      const provider = providers[selection.name]
+      const cacheable = provider.cacheable !== false
+      if (cacheable && cached && cached.reuseUntil > now()) return remaining(cached)
 
-      const result = await providers[selection.name].fetch({ env, ttl, now, fetchImpl })
-      const value = { iceServers: dropBlockedPorts(result.iceServers), ttl: result.ttl }
-      cached = { value, expiresAt: now() + (value.ttl * 1000) / 2 }
-      return value
+      const result = await provider.fetch({ env, ttl, now, fetchImpl })
+      const issuedAt = now()
+      const entry = {
+        iceServers: dropBlockedPorts(result.iceServers),
+        expiresAt: issuedAt + result.ttl * 1000,
+        reuseUntil: issuedAt + (result.ttl * 1000) / 2,
+      }
+      if (cacheable) cached = entry
+      return remaining(entry)
     },
   }
 }

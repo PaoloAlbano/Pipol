@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY server.js ice.js ./
+COPY server.js ice.js ice-guard.js turnstile.js usage-guard.js ./
 
 ENV PORT=8787
 EXPOSE 8787

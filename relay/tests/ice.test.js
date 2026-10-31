@@ -24,9 +24,28 @@ test('builds TURN REST credentials from a shared secret (coturn / eturnal)', asy
 
   const [server] = iceServers
   assert.deepEqual(server.urls, ['turn:turn.example.com:3478', 'turns:turn.example.com:5349'])
-  assert.equal(server.username, `${1_700_000_000 + 3600}:pipol`)
+  assert.match(server.username, new RegExp(`^${1_700_000_000 + 3600}:[0-9a-f]{16}$`))
   const expected = crypto.createHmac('sha1', 's3cret').update(server.username).digest('base64')
   assert.equal(server.credential, expected)
+})
+
+test('the default credential lifetime is one hour', async () => {
+  const provider = createIceProvider({ env: { TURN_URLS: 'turn:x', TURN_SECRET: 's' } })
+  assert.equal((await provider.get()).ttl, 3600)
+})
+
+test('coturn credentials are minted per request, each with its own opaque id', async () => {
+  const provider = createIceProvider({ env: { TURN_URLS: 'turn:x', TURN_SECRET: 's' } })
+  const first = (await provider.get()).iceServers[0]
+  const second = (await provider.get()).iceServers[0]
+  assert.notEqual(first.username, second.username)
+  assert.notEqual(first.credential, second.credential)
+  for (const { username } of [first, second]) assert.equal(username.split(':').length, 2) // id has no ":"
+})
+
+test('sharedSecretCredentials accepts a fixed id', () => {
+  const { username } = sharedSecretCredentials('k', ['turn:x'], 60, 2_000_000, 'abc')
+  assert.equal(username, '2060:abc')
 })
 
 test('sharedSecretCredentials expires after the requested ttl', () => {
@@ -57,7 +76,7 @@ test('asks Cloudflare for credentials and strips the browser-blocked port 53', a
 
   assert.match(calls[0].url, /\/turn\/keys\/KEY\/credentials\/generate-ice-servers$/)
   assert.equal(calls[0].init.headers.Authorization, 'Bearer TOKEN')
-  assert.equal(JSON.parse(calls[0].init.body).ttl, 86400)
+  assert.equal(JSON.parse(calls[0].init.body).ttl, 3600)
   assert.deepEqual(iceServers[1].urls, ['turn:turn.cloudflare.com:3478?transport=udp'])
   assert.equal(iceServers[1].username, 'u')
 })
@@ -141,15 +160,15 @@ test('strips the browser-blocked port 53 whatever the provider', async () => {
   assert.deepEqual((await provider.get()).iceServers[0].urls, ['turn:a:3478'])
 })
 
-test('reuses credentials until half of their lifetime has passed', async () => {
+test('an HTTP ICE API is called once and reused until half of the credentials lifetime has passed', async () => {
   let nowMs = 0
   let fetches = 0
   const fetchImpl = async () => {
     fetches++
-    return { ok: true, json: async () => ({ iceServers: [] }) }
+    return { ok: true, json: async () => ({ iceServers: [], ttl: 1000 }) }
   }
   const provider = createIceProvider({
-    env: { CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T', TURN_TTL: '1000' },
+    env: { TURN_API_URL: 'https://api.example.com/turn' },
     fetchImpl,
     now: () => nowMs,
   })
@@ -169,4 +188,50 @@ test('propagates upstream failures without caching them', async () => {
   await assert.rejects(provider.get(), /500/)
   ok = true
   assert.deepEqual((await provider.get()).iceServers, [])
+})
+
+test('ttl in the answer is the time left on the credentials, not their full lifetime', async () => {
+  let nowMs = 0
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ iceServers: [{ urls: ['stun:s'] }], ttl: 1000 }) })
+  const provider = createIceProvider({
+    env: { TURN_API_URL: 'https://api.example.com/turn' },
+    fetchImpl,
+    now: () => nowMs,
+  })
+  assert.equal((await provider.get()).ttl, 1000)
+  nowMs = 300_000 // served from the cache, 700 s left
+  assert.equal((await provider.get()).ttl, 700)
+  nowMs = 600_000 // cache expired: new credentials, full lifetime again
+  assert.equal((await provider.get()).ttl, 1000)
+})
+
+test('Cloudflare mints a credential per request so usage can be attributed and an abuser revoked alone', async () => {
+  let n = 0
+  const calls = []
+  const fetchImpl = async (url, init) => {
+    calls.push(url)
+    return {
+      ok: true,
+      json: async () => ({ iceServers: [{ urls: ['turn:t:3478'], username: `u${++n}`, credential: 'c' }] }),
+    }
+  }
+  const provider = createIceProvider({ env: { CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T' }, fetchImpl })
+  const first = (await provider.get()).iceServers[0].username
+  const second = (await provider.get()).iceServers[0].username
+  assert.notEqual(first, second)
+  assert.equal(calls.length, 2)
+})
+
+test('the Cloudflare API base URL can be overridden (used by the integration tests)', async () => {
+  let url
+  const fetchImpl = async (u) => {
+    url = u
+    return { ok: true, json: async () => ({ iceServers: [] }) }
+  }
+  const provider = createIceProvider({
+    env: { CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T', CF_TURN_API_URL: 'http://127.0.0.1:9/keys' },
+    fetchImpl,
+  })
+  await provider.get()
+  assert.equal(url, 'http://127.0.0.1:9/keys/K/credentials/generate-ice-servers')
 })
