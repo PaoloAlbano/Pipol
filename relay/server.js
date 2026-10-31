@@ -3,7 +3,10 @@ import { WebSocketServer } from 'ws'
 import DHT from 'hyperdht'
 import { relay } from '@hyperswarm/dht-relay'
 import Stream from '@hyperswarm/dht-relay/ws'
-import { createIceProvider } from './ice.js'
+import { createIceProvider, isIceDisabled } from './ice.js'
+import { createIceGuard } from './ice-guard.js'
+import { createTurnstile } from './turnstile.js'
+import { createUsageGuard } from './usage-guard.js'
 
 const PORT = process.env.PORT || 8787
 
@@ -11,23 +14,75 @@ const dht = new DHT()
 await dht.ready()
 console.log('[relay] DHT node ready')
 
+const iceDisabled = isIceDisabled()
+if (iceDisabled) console.log('[relay] /ice endpoint: DISABLED (ICE_DISABLED=true), it answers 404')
+
 const iceProvider = createIceProvider()
 if (iceProvider.name) console.log(`[relay] TURN credentials: provider "${iceProvider.name}"`)
 else if (iceProvider.error) console.warn(`[relay] TURN disabled: ${iceProvider.error}`)
 else console.log('[relay] TURN credentials: not configured (clients use public STUN)')
+
+const iceGuard = createIceGuard()
+const guardSummary = iceGuard.describe()
+console.log(`[relay] /ice access: ${guardSummary.text}`)
+if (guardSummary.invalid.length > 0) {
+  console.warn(`[relay] ICE_ALLOWED_ORIGINS: ignored invalid entries: ${guardSummary.invalid.join(', ')}`)
+}
+
+const turnstile = createTurnstile()
+console.log(`[relay] /ice human check (Turnstile): ${turnstile.enabled ? 'required' : 'off (set TURNSTILE_SECRET to require it)'}`)
+
+const usageGuard = createUsageGuard()
+if (iceProvider.name === 'cloudflare' && !iceDisabled) {
+  console.log(`[relay] TURN usage guard: ${usageGuard.describe()}`)
+  usageGuard.start()
+}
+
+const rateLimitLogged = new Set()
 
 const server = http.createServer(async (req, res) => {
   if (req.headers.upgrade) return
 
   // TURN credentials for browsers (any origin: the app and the relay are usually on different hosts)
   if (req.url?.split('?')[0] === '/ice') {
-    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' }
+    if (iceDisabled) {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'not-found' }))
+      return
+    }
+    const verdict = iceGuard.check(req, { rateLimit: req.method !== 'OPTIONS' })
+    if (!verdict.ok) {
+      // Log each blocked client once so the proxy setting (TRUST_PROXY_HOPS) can be checked against a known IP
+      if (verdict.status === 429 && !rateLimitLogged.has(verdict.ip)) {
+        rateLimitLogged.add(verdict.ip)
+        console.warn(`[relay] /ice rate limit hit for ${verdict.ip}`)
+      }
+      res.writeHead(verdict.status, { ...verdict.headers, 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: verdict.error }))
+      return
+    }
+    const cors = verdict.headers
     if (req.method === 'OPTIONS') {
       res.writeHead(204, cors)
       res.end()
       return
     }
+    if (turnstile.enabled) {
+      const human = await turnstile.verify(req.headers['x-turnstile-token'], iceGuard.clientIp(req))
+      if (!human.ok) {
+        if (human.codes?.length) console.warn(`[relay] /ice Turnstile refused: ${human.codes.join(', ')}`)
+        res.writeHead(human.status, { ...cors, 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: human.error }))
+        return
+      }
+    }
     try {
+      // Monthly budget used up: issue nothing, clients fall back to public STUN
+      if (usageGuard.exhausted) {
+        res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({ iceServers: [], ttl: 0 }))
+        return
+      }
       const { iceServers, ttl } = await iceProvider.get()
       res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify({ iceServers, ttl }))

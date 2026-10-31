@@ -35,8 +35,8 @@ before(async () => {
     env: {
       ...process.env,
       PORT: String(port),
-      CF_TURN_KEY_ID: '',
-      CF_TURN_API_TOKEN: '',
+      CLOUDFLARE_TURN_KEY_ID: '',
+      CLOUDFLARE_TURN_API_TOKEN: '',
       TURN_URLS: 'turn:turn.test:3478',
       TURN_SECRET: 'test-secret',
     },
@@ -137,7 +137,7 @@ test('serves short-lived TURN credentials on /ice with CORS', async () => {
   assert.equal(res.headers.get('access-control-allow-origin'), '*')
   const body = await res.json()
   assert.deepEqual(body.iceServers[0].urls, ['turn:turn.test:3478'])
-  assert.match(body.iceServers[0].username, /^\d+:pipol$/)
+  assert.match(body.iceServers[0].username, /^\d+:[0-9a-f]{16}$/)
   assert.ok(body.iceServers[0].credential)
 })
 
