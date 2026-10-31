@@ -70,6 +70,7 @@ export function createUsageGuard({
   const hourlyLimitGb = env.CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB === undefined || env.CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB === '' ? 8 : Number(env.CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB)
   const intervalMin = Number(env.CLOUDFLARE_GUARD_INTERVAL_MIN) > 0 ? Number(env.CLOUDFLARE_GUARD_INTERVAL_MIN) : 5
 
+  const hideSensitive = env.LOG_HIDE_SENSITIVE === 'true' // do not log credential ids
   const enabled = Boolean(accountId && analyticsToken && keyId && turnToken)
 
   const state = { exhausted: false, monthBytes: null, lastCheckAt: null, lastError: null }
@@ -126,9 +127,9 @@ export function createUsageGuard({
       try {
         await revoke(username)
         revoked.set(username, t)
-        log.warn(`[relay] TURN credential ${username.slice(0, 8)}… revoked: ${(bytes / GB).toFixed(1)} GB in the last hour`)
+        log.warn(`[relay] TURN credential ${hideSensitive ? '' : `${username.slice(0, 8)}… `}revoked: ${(bytes / GB).toFixed(1)} GB in the last hour`)
       } catch (err) {
-        log.warn(`[relay] TURN credential ${username.slice(0, 8)}… could not be revoked: ${err.message}`)
+        log.warn(`[relay] TURN credential ${hideSensitive ? '' : `${username.slice(0, 8)}… `}could not be revoked: ${err.message}`)
       }
     }
   }

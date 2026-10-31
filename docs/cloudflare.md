@@ -134,7 +134,7 @@ Once the web app is released, the same check is **Settings → Connection (TURN)
 
 The relay counts requests per client IP. Behind a hosting platform it does not see the client directly: it reads the IP from the `X-Forwarded-For` header, where every proxy on the way appends the address it received the request from. `TRUST_PROXY_HOPS` (default `1`) says which entry to trust, **counted from the right**: `1` is the last entry, `2` the one before it, and so on. If it is wrong, either everybody shares one counter (a private `10.x` address, the platform's own proxy) or the limit can be dodged by sending a fake header.
 
-To set it from real data:
+To set it from real data (if you use `LOG_HIDE_SENSITIVE=true`, switch it off for this step: the rate-limit line is not written otherwise):
 
 1. Call `/ice` with an allowed origin more than `ICE_RATE_LIMIT` times in a minute until you get `429` (`curl -s -o /dev/null -w "%{http_code} " -H "Origin: https://pipol.dev" https://<relay>/ice`, in a loop).
 2. In the relay log find the line (it is written once per blocked IP):
