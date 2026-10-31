@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws'
 import DHT from 'hyperdht'
 import { relay } from '@hyperswarm/dht-relay'
 import Stream from '@hyperswarm/dht-relay/ws'
+import { createIceProvider } from './ice.js'
 
 const PORT = process.env.PORT || 8787
 
@@ -10,12 +11,37 @@ const dht = new DHT()
 await dht.ready()
 console.log('[relay] DHT node ready')
 
-const server = http.createServer((req, res) => {
-  // Health check for tests / load balancers
-  if (!req.headers.upgrade) {
-    res.writeHead(200, { 'Content-Type': 'text/plain' })
-    res.end('OK')
+const iceProvider = createIceProvider()
+if (iceProvider.name) console.log(`[relay] TURN credentials: provider "${iceProvider.name}"`)
+else if (iceProvider.error) console.warn(`[relay] TURN disabled: ${iceProvider.error}`)
+else console.log('[relay] TURN credentials: not configured (clients use public STUN)')
+
+const server = http.createServer(async (req, res) => {
+  if (req.headers.upgrade) return
+
+  // TURN credentials for browsers (any origin: the app and the relay are usually on different hosts)
+  if (req.url?.split('?')[0] === '/ice') {
+    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, cors)
+      res.end()
+      return
+    }
+    try {
+      const { iceServers, ttl } = await iceProvider.get()
+      res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({ iceServers, ttl }))
+    } catch (err) {
+      console.warn('[relay] /ice failed:', err.message)
+      res.writeHead(502, { ...cors, 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'ice-unavailable' }))
+    }
+    return
   }
+
+  // Health check for tests / load balancers
+  res.writeHead(200, { 'Content-Type': 'text/plain' })
+  res.end('OK')
 })
 
 // ── DHT relay WebSocket server (path: /) ──────────────────────────────────────

@@ -44,8 +44,9 @@ jobs:
         run: npm ci
         working-directory: relay
 
-      - name: Test relay
-        run: npm test
+      # Coverage is only printed in the log; it is deliberately not uploaded to Codecov
+      - name: Test relay (with coverage report)
+        run: npm run test:coverage
         working-directory: relay
 
       - name: Upload coverage reports to Codecov
