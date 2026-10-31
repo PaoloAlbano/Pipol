@@ -199,3 +199,28 @@ test('describe() summarises the effective policy', () => {
   const g = guard({ CLOUDFLARE_MONTHLY_BUDGET_GB: '800', CLOUDFLARE_GUARD_INTERVAL_MIN: '10' }, fakeCloudflare())
   assert.equal(g.describe(), '800 GB/month budget, 8 GB/hour per credential, checked every 10 min')
 })
+
+test('LOG_HIDE_SENSITIVE leaves the credential id out of the revoke log, and the credential is still revoked', async () => {
+  const cf = fakeCloudflare({
+    buckets: [{ username: 'secret-credential-id', at: '2026-10-31T11:50:00Z', bytes: 20 * GB }],
+  })
+  const warnings = []
+  const g = createUsageGuard({
+    env: { ...ENV, LOG_HIDE_SENSITIVE: 'true' },
+    fetchImpl: cf.fetchImpl,
+    now: () => NOW,
+    log: { ...quiet, warn: (m) => warnings.push(m) },
+  })
+  await g.tick()
+  const line = warnings.find((m) => m.includes('revoked'))
+  assert.equal(line, '[relay] TURN credential revoked: 20.0 GB in the last hour')
+  assert.equal(cf.calls.revoked.length, 1)
+})
+
+test('the credential id is shown in the revoke log by default', async () => {
+  const cf = fakeCloudflare({ buckets: [{ username: 'secret-credential-id', at: '2026-10-31T11:50:00Z', bytes: 20 * GB }] })
+  const warnings = []
+  const g = createUsageGuard({ env: ENV, fetchImpl: cf.fetchImpl, now: () => NOW, log: { ...quiet, warn: (m) => warnings.push(m) } })
+  await g.tick()
+  assert.match(warnings.join('\n'), /TURN credential secret-c… revoked/)
+})

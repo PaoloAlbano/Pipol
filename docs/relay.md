@@ -22,6 +22,7 @@ The relay is configured only through environment variables. Nothing is required:
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `PORT` | `8787` | Listening port |
+| `LOG_HIDE_SENSITIVE` | off | `true` stops the relay from logging who connects: the lines with client IPs, room names and peer ids are not written. See [Logs and privacy](#logs-and-privacy) |
 
 ### TURN provider
 
@@ -70,6 +71,8 @@ Only with the `cloudflare` provider. See [Cloudflare usage guard](#cloudflare-us
 ## Recipes
 
 ### Cloudflare Realtime TURN
+
+The complete walkthrough, with verification and troubleshooting, is in [Setting up the relay with Cloudflare](cloudflare.md). In short:
 
 1. Cloudflare dashboard → Realtime → TURN: create a **TURN key** (any name). You get a **Token ID** and an **API token** (the token is shown once).
 2. On the relay set `CLOUDFLARE_TURN_KEY_ID=<Token ID>` and `CLOUDFLARE_TURN_API_TOKEN=<API token>` (optionally `TURN_PROVIDER=cloudflare`). The API token here is the one of the TURN key, **not** a general Cloudflare API token.
@@ -137,6 +140,23 @@ The guard **fails open**: if analytics cannot be read it keeps its last state an
 
 The guard exists only for Cloudflare. For coturn use its native limits (`max-bps` per session, `user-quota`, `total-quota`, `bps-capacity`, see the example configuration) and the bandwidth of your server plan; for Metered/Xirsys, the limits of your plan.
 
+## Logs and privacy
+
+By default the relay logs enough to operate it, and that includes identifiers: the address of each DHT connection, the first characters of a peer id and the **name of the room** being joined or left (for a quick room that name is the room's secret), the IP and proxy chain of the first client that hits the rate limit, and the first characters of a revoked credential's id.
+
+Set `LOG_HIDE_SENSITIVE=true` and those lines are **not written at all**:
+
+| Not logged | Still logged |
+|------------|--------------|
+| `DHT + connected` / `DHT - disconnected` (client address) | Startup lines, TURN provider, `/ice` policy |
+| `joined room` / `left room` (peer id, room name) | `/ice` errors, Turnstile refusals |
+| `/ice rate limit hit for …` (IP and proxy chain) | Usage guard lines (budget reached, usage this month, errors) |
+| The first characters of a credential id (the line `TURN credential revoked: N GB in the last hour` is still written, without the id) | Unexpected errors |
+
+At startup the relay writes `log: client IPs, room names and peer ids are not logged (LOG_HIDE_SENSITIVE)`. Only the exact value `true` turns it on.
+
+The switch only changes the relay's own log. The hosting platform keeps its own request logs, and the relay process still holds IP addresses in memory while it counts requests for the rate limit (never written anywhere). Since the rate-limit line is not written, turn the switch off temporarily when you need it, for instance to set `TRUST_PROXY_HOPS` from the logged proxy chain ([Cloudflare setup](cloudflare.md#44-the-rate-limit-and-trust_proxy_hops)).
+
 ## Verifying
 
 1. **Startup log** (every line starts with `[relay]`):
@@ -151,12 +171,13 @@ The guard exists only for Cloudflare. For coturn use its native limits (`max-bps
    | `TURN usage guard: …` and `TURN usage this month: … GB` | Guard enabled and able to read analytics |
    | `TURN usage guard could not read Cloudflare analytics: …` | Wrong token, permissions or query |
    | `/ice endpoint: DISABLED (ICE_DISABLED=true)` | The endpoint is off |
+   | `log: client IPs, room names and peer ids are not logged` | `LOG_HIDE_SENSITIVE` is on |
 
 2. **The endpoint**: `curl https://<relay>/ice` (with an `Origin` header if you set an allow-list). A healthy answer is `{"iceServers":[…],"ttl":3600}` with a `username` and `credential` on the TURN entry. `{"iceServers":[],"ttl":0}` means no provider is configured (or the budget is used up).
 
 3. **In the app**: Settings → Connection (TURN) → **Test connection** must say a relayed address was allocated. During a call with diagnostics on, the tile shows **direct** or **via TURN (udp/tcp/tls)**; "Always relay" forces the second.
 
-During operation the log also shows `/ice rate limit hit for <ip>` (once per client; compare it with your own IP to check `TRUST_PROXY_HOPS`), `/ice Turnstile refused: <codes>`, `/ice failed: <reason>`, `TURN budget reached …` and `TURN credential xxxxxxxx… revoked: N GB in the last hour`.
+During operation the log also shows `/ice rate limit hit for <ip> (TRUST_PROXY_HOPS=…, X-Forwarded-For: …, socket: …)` (once per client; the proxy chain it prints is what you need to set `TRUST_PROXY_HOPS`, see [Cloudflare setup](cloudflare.md#44-the-rate-limit-and-trust_proxy_hops)), `/ice Turnstile refused: <codes>`, `/ice failed: <reason>`, `TURN budget reached …` and `TURN credential xxxxxxxx… revoked: N GB in the last hour`.
 
 ## Disabling
 

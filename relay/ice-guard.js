@@ -89,6 +89,9 @@ export function createIceGuard({ env = process.env, now = Date.now } = {}) {
     /** Client IP as this guard sees it (honours TRUST_PROXY_HOPS). */
     clientIp: (req) => clientIp(req, hops),
 
+    /** Number of trusted reverse proxies (TRUST_PROXY_HOPS). */
+    hops,
+
     /** Human readable summary for the startup log. */
     describe() {
       const originPart = origins.open

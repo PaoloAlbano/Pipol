@@ -14,6 +14,10 @@ const dht = new DHT()
 await dht.ready()
 console.log('[relay] DHT node ready')
 
+// LOG_HIDE_SENSITIVE=true: do not log who connects, to which room, or from which address
+const hideSensitive = process.env.LOG_HIDE_SENSITIVE === 'true'
+if (hideSensitive) console.log('[relay] log: client IPs, room names and peer ids are not logged (LOG_HIDE_SENSITIVE)')
+
 const iceDisabled = isIceDisabled()
 if (iceDisabled) console.log('[relay] /ice endpoint: DISABLED (ICE_DISABLED=true), it answers 404')
 
@@ -52,10 +56,14 @@ const server = http.createServer(async (req, res) => {
     }
     const verdict = iceGuard.check(req, { rateLimit: req.method !== 'OPTIONS' })
     if (!verdict.ok) {
-      // Log each blocked client once so the proxy setting (TRUST_PROXY_HOPS) can be checked against a known IP
-      if (verdict.status === 429 && !rateLimitLogged.has(verdict.ip)) {
+      // Log each blocked client once, with the proxy chain, so TRUST_PROXY_HOPS can be set from real data
+      if (verdict.status === 429 && !hideSensitive && !rateLimitLogged.has(verdict.ip)) {
+        if (rateLimitLogged.size >= 5000) rateLimitLogged.clear()
         rateLimitLogged.add(verdict.ip)
-        console.warn(`[relay] /ice rate limit hit for ${verdict.ip}`)
+        const chain = req.headers['x-forwarded-for'] ?? 'none'
+        console.warn(
+          `[relay] /ice rate limit hit for ${verdict.ip} (TRUST_PROXY_HOPS=${iceGuard.hops}, X-Forwarded-For: ${chain}, socket: ${req.socket.remoteAddress})`
+        )
       }
       res.writeHead(verdict.status, { ...verdict.headers, 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: verdict.error }))
@@ -106,10 +114,10 @@ const dhtConnections = new Set()
 wssDHT.on('connection', (socket, req) => {
   const ip = req.socket.remoteAddress + ':' + req.socket.remotePort
   dhtConnections.add(socket)
-  console.log(`[relay] DHT + connected: ${ip}  (total: ${dhtConnections.size})`)
+  if (!hideSensitive) console.log(`[relay] DHT + connected: ${ip}  (total: ${dhtConnections.size})`)
   socket.on('close', () => {
     dhtConnections.delete(socket)
-    console.log(`[relay] DHT - disconnected: ${ip}  (total: ${dhtConnections.size})`)
+    if (!hideSensitive) console.log(`[relay] DHT - disconnected: ${ip}  (total: ${dhtConnections.size})`)
   })
   relay(dht, new Stream(false, socket))
 })
@@ -144,7 +152,9 @@ wssSignal.on('connection', (ws) => {
 
       room.set(peerId, ws)
       ws.send(JSON.stringify({ type: 'joined', peerId }))
-      console.log(`[signal] ${peerId.slice(0, 8)}… joined room "${roomCode}"  (room size: ${room.size})`)
+      if (!hideSensitive) {
+        console.log(`[signal] ${peerId.slice(0, 8)}… joined room "${roomCode}"  (room size: ${room.size})`)
+      }
       return
     }
 
@@ -192,7 +202,7 @@ wssSignal.on('connection', (ws) => {
         peerWs.send(JSON.stringify({ type: 'peer-left', peerId }))
       }
     }
-    console.log(`[signal] ${peerId.slice(0, 8)}… left room "${roomCode}"  (room size: ${room.size})`)
+    if (!hideSensitive) console.log(`[signal] ${peerId.slice(0, 8)}… left room "${roomCode}"  (room size: ${room.size})`)
   })
 })
 
