@@ -11,7 +11,7 @@
 //                        Note: Origin can be forged outside a browser, so this stops other websites
 //                        and casual use, not a determined attacker.
 //   ICE_RATE_LIMIT       Max requests per minute per client IP (default 30, 0 disables).
-//   TRUST_PROXY_HOPS     Reverse proxies in front of the relay (default 1, e.g. Render). The client IP is
+//   TRUST_PROXY_HOPS     Reverse proxies in front of the relay (default 1; 3 on Render). The client IP is
 //                        read from X-Forwarded-For skipping that many entries from the right; 0 uses the
 //                        socket address. Set it right or everybody shares one bucket.
 

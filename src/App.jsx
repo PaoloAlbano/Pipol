@@ -736,15 +736,35 @@ export default function App() {
 // ── InviteConfirmModal ────────────────────────────────────────────────────────
 
 function InviteConfirmModal({ workspace, onConfirm, onDismiss }) {
+  const config = workspace.config
+  const customServers = [
+    config?.relayUrl && ['Relay', config.relayUrl],
+    config?.authUrl && ['Auth', config.authUrl],
+    config?.ice?.url && ['ICE endpoint', config.ice.url],
+    ...(config?.ice?.servers ?? []).map((srv) => ['TURN/STUN', srv.urls.join(', ')]),
+  ].filter(Boolean)
+
   return (
     <div style={overlayStyle}>
       <div style={modalStyle}>
         <h2 style={{ marginBottom: 8, fontSize: 18 }}>Join workspace</h2>
         <p style={{ color: 'var(--text-muted)', marginBottom: 4, fontSize: 14 }}>You have been invited to:</p>
         <p style={{ fontWeight: 700, fontSize: 20, marginBottom: 8 }}>{workspace.name}</p>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 24 }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: customServers.length ? 12 : 24 }}>
           {workspace.channels.length} channels · P2P E2E encrypted connection
         </p>
+        {customServers.length > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 24 }}>
+            <p style={{ marginBottom: 4 }}>This invite uses custom servers:</p>
+            <ul style={{ paddingLeft: 18, margin: 0, wordBreak: 'break-all' }}>
+              {customServers.map(([label, value]) => (
+                <li key={label}>
+                  {label}: {value}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-secondary" onClick={onDismiss}>
             Cancel

@@ -92,6 +92,20 @@ pnpm run build
 pnpm run preview
 ```
 
+## TURN server (calls behind strict NATs and firewalls)
+
+Direct connections work on most networks. Behind symmetric NATs, mobile carriers or strict firewalls a TURN server relays the traffic; it only sees packets that are already end-to-end encrypted, though it does see IP addresses. TURN is used for **video calls only**, and only as a last resort.
+
+Everyone can choose their own TURN (user setting, then the workspace, then the app default served by the relay's `GET /ice`), and it can be switched off per user (Settings), per app build (`VITE_TURN_DISABLED=true`) or on the relay (`ICE_DISABLED=true`). The relay works with Cloudflare Realtime TURN, coturn, any TURN with a fixed login, and services such as Metered or Xirsys, and protects `/ice` with an origin allow-list, a rate limit, optional Cloudflare Turnstile and, with Cloudflare, a usage guard.
+
+- [Relay server](docs/relay.md): every environment variable, how to configure each TURN provider, verify it and disable it.
+- [TURN and calls](docs/turn.md): how the app uses STUN/TURN, settings, build variables, diagnostics, security model.
+- Hardened coturn example: [`relay/turnserver.example.conf`](relay/turnserver.example.conf).
+
+## Running in a closed network
+
+The goal is to run everything on a private network with no calls to third parties. It is not fully supported yet: a few outgoing requests are still built in (public STUN, emoji images, the relay's DHT node). See [Closed networks](docs/closed-network.md) for what to set and what is still pending.
+
 ## Development
 
 ```bash
@@ -110,6 +124,6 @@ make format        # Prettier
 | **Browser P2P** | Hyperswarm requires the Holepunch DHT relay for browser peers (no raw UDP in browsers). Data is still E2E encrypted; relay nodes only assist with discovery.
 | **Multi-writer convergence** | Messages are merged by timestamp — concurrent writes with identical timestamps may appear in non-deterministic order. | Integrate [Autobase v6](https://github.com/holepunchto/autobase) for true causal-order convergence. |
 | **Group video (large rooms)** | WebRTC mesh means N×(N-1)/2 connections. Practical limit ≈ 4–6 peers. | Integrate a Selective Forwarding Unit (SFU) such as [LiveKit](https://livekit.io). |
-| **ICE / STUN only** | Only public STUN servers are configured. Connections behind symmetric NATs may fail. | Add a TURN server (e.g. self-hosted `coturn`). |
+| **TURN is optional** | Without a configured TURN server only public STUN is used and connections behind symmetric NATs may fail. | See [TURN server](#turn-server-calls-behind-strict-nats-and-firewalls). |
 | **OPFS availability** | OPFS requires HTTPS or localhost and is not available in all browsers. Falls back to RAM with a console warning. | Show a persistent UI warning if persistence is unavailable. |
 | **Key storage** | Identity keypair is stored in `localStorage`. | Encrypt with a user passphrase via Web Crypto (`SubtleCrypto` + AES-GCM). |

@@ -1,4 +1,4 @@
-.PHONY: install dev dev-tunnel build check-key expose start-relay relay-test start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed
+.PHONY: install dev dev-tunnel build check-key expose start-relay relay-test start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed turn-e2e
 
 SERVEO_SUBDOMAIN ?= pipol
 SERVEO_KEY       ?= ./serveo_key
@@ -71,3 +71,7 @@ e2e:
 
 e2e-headed:
 	pnpm exec playwright test --headed
+
+# Needs Docker: runs a real coturn and checks the TURN setup end to end
+turn-e2e:
+	TURN_E2E=1 pnpm exec playwright test e2e/turn.test.js

@@ -209,6 +209,9 @@ function VideoTile({
       <span className="video-label">{label}</span>
       {stats && (
         <div className="video-stats-badge">
+          <span className={`video-stats-route${stats.relayed ? ' video-stats-route--relay' : ''}`}>
+            {stats.relayed ? `via TURN${stats.relayProtocol ? ` (${stats.relayProtocol})` : ''}` : 'direct'}
+          </span>
           <span className="video-stats-path">
             {stats.localType} ↔ {stats.remoteType}
           </span>

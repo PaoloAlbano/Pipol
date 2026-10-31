@@ -28,6 +28,8 @@ vi.mock('../../src/p2p/storage.js', () => ({
   setRelayUrl: vi.fn(),
   getMirrorVideo: vi.fn(() => true),
   setMirrorVideo: vi.fn(),
+  getIceSettings: vi.fn(() => ({ mode: 'default', servers: [], forceRelay: false, chatTurn: false })),
+  setIceSettings: vi.fn(),
   getPassphrase: () => mockGetPassphrase(),
   clearPassphrase: vi.fn(),
   getStoredIdentityMeta: () => mockGetStoredIdentityMeta(),
@@ -45,6 +47,7 @@ vi.mock('../../src/webrtc/media.js', () => ({
 }))
 
 import SettingsModal from '../../src/components/SettingsModal.jsx'
+import * as storage from '../../src/p2p/storage.js'
 
 const DEFAULT_IDENTITY = {
   username: 'swift-fox',
@@ -513,5 +516,101 @@ describe('SettingsModal — workspace section', () => {
     const confirmCancel = document.querySelector('.btn.btn-secondary.btn-xs')
     if (confirmCancel) await user.click(confirmCancel)
     expect(screen.queryByText(/sure\?/i)).not.toBeInTheDocument()
+  })
+})
+
+// ── TURN / connection ─────────────────────────────────────────────────────────
+
+describe('SettingsModal — connection (TURN)', () => {
+  it('defaults to the workspace/app TURN and saves the choice', async () => {
+    const user = userEvent.setup()
+    setup()
+    expect(screen.getByRole('radio', { name: /default/i })).toBeChecked()
+    await user.click(screen.getByRole('radio', { name: /off/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(storage.setIceSettings).toHaveBeenCalledWith({
+      mode: 'off',
+      servers: [],
+      forceRelay: false,
+      chatTurn: false,
+    })
+  })
+
+  it('saves custom TURN servers (e.g. coturn)', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole('radio', { name: /custom/i }))
+    await user.type(screen.getByLabelText('TURN server URLs'), 'turn:turn.example.com:3478')
+    await user.type(screen.getByLabelText('TURN username'), 'alice')
+    await user.type(screen.getByLabelText('TURN password'), 'secret')
+    await user.click(screen.getByRole('checkbox', { name: /always relay/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(storage.setIceSettings).toHaveBeenCalledWith({
+      mode: 'custom',
+      servers: [{ urls: ['turn:turn.example.com:3478'], username: 'alice', credential: 'secret' }],
+      forceRelay: true,
+      chatTurn: false,
+    })
+  })
+
+  it('uses TURN for calls only unless the user opts in for chat', async () => {
+    const user = userEvent.setup()
+    setup()
+    const chatToggle = screen.getByRole('checkbox', { name: /also use turn for chat/i })
+    expect(chatToggle).not.toBeChecked()
+    await user.click(chatToggle)
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(storage.setIceSettings).toHaveBeenLastCalledWith(expect.objectContaining({ chatTurn: true }))
+  })
+
+  it('always relays chat too when "always relay" is on', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole('checkbox', { name: /always relay/i }))
+    const chatToggle = screen.getByRole('checkbox', { name: /also use turn for chat/i })
+    expect(chatToggle).toBeChecked()
+    expect(chatToggle).toBeDisabled()
+  })
+
+  it('does not save custom servers without credentials', async () => {
+    const user = userEvent.setup()
+    storage.setIceSettings.mockClear()
+    setup()
+    await user.click(screen.getByRole('radio', { name: /custom/i }))
+    await user.type(screen.getByLabelText('TURN server URLs'), 'turn:turn.example.com:3478')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(screen.getByText(/turn also needs a username and password/i)).toBeInTheDocument()
+    expect(storage.setIceSettings).not.toHaveBeenCalled()
+  })
+
+  it('hides the relay option when TURN is off', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole('radio', { name: /off/i }))
+    expect(screen.queryByRole('checkbox', { name: /always relay/i })).toBeNull()
+  })
+
+  it('explains when no TURN server is in use', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole('radio', { name: /off/i }))
+    await user.click(screen.getByRole('button', { name: /test connection/i }))
+    expect(await screen.findByText(/no turn server in use/i)).toBeInTheDocument()
+  })
+})
+
+describe('SettingsModal — TURN disabled in this build', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('says so, and keeps Custom available', () => {
+    vi.stubEnv('VITE_TURN_DISABLED', 'true')
+    setup()
+    expect(screen.getByText(/turn is disabled in this version of the app/i)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /custom/i })).toBeEnabled()
+  })
+
+  it('shows no notice when TURN is enabled', () => {
+    setup()
+    expect(screen.queryByText(/turn is disabled in this version/i)).toBeNull()
   })
 })

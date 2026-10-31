@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { buildInviteUrl } from '../p2p/workspace.js'
+import { buildWorkspaceIce, isTurnDisabled } from '../webrtc/ice.js'
 import '../styles/create-workspace-modal.css'
 
 /**
@@ -19,6 +20,7 @@ import '../styles/create-workspace-modal.css'
  */
 export default function CreateWorkspaceModal({ workspace: existingWorkspace, createdWorkspace, onCreated, onClose }) {
   const isShareMode = existingWorkspace !== null && existingWorkspace !== undefined
+  const turnDisabled = isTurnDisabled() // build-level kill switch: no TURN settings to offer
 
   // ── Create flow state ──────────────────────────────────────────────────────
   const [step, setStep] = useState(1) // 1 | 2 | 3
@@ -30,6 +32,11 @@ export default function CreateWorkspaceModal({ workspace: existingWorkspace, cre
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [relayUrl, setRelayUrl] = useState('')
   const [authUrl, setAuthUrl] = useState('')
+  const [turnUrls, setTurnUrls] = useState('')
+  const [turnUsername, setTurnUsername] = useState('')
+  const [turnCredential, setTurnCredential] = useState('')
+  const [iceEndpoint, setIceEndpoint] = useState('')
+  const [iceError, setIceError] = useState('')
 
   const [copied, setCopied] = useState(false)
 
@@ -106,9 +113,30 @@ export default function CreateWorkspaceModal({ workspace: existingWorkspace, cre
       return
     }
 
+    let ice = null
+    try {
+      if (!turnDisabled) {
+        ice = buildWorkspaceIce({
+          urls: turnUrls,
+          username: turnUsername,
+          credential: turnCredential,
+          endpoint: iceEndpoint,
+        })
+      }
+    } catch {
+      setIceError('Check the TURN settings: use turn:/turns:/stun: URLs, with username and password for TURN.')
+      setAdvancedOpen(true)
+      return
+    }
+    setIceError('')
+
     const config =
-      relayUrl.trim() || authUrl.trim()
-        ? { relayUrl: relayUrl.trim() || undefined, authUrl: authUrl.trim() || undefined }
+      relayUrl.trim() || authUrl.trim() || ice
+        ? {
+            relayUrl: relayUrl.trim() || undefined,
+            authUrl: authUrl.trim() || undefined,
+            ice: ice ?? undefined,
+          }
         : null
 
     onCreated(name.trim(), channels, config)
@@ -304,9 +332,68 @@ export default function CreateWorkspaceModal({ workspace: existingWorkspace, cre
                       autoComplete="off"
                     />
                   </div>
+                  {!turnDisabled && (
+                    <>
+                      <div>
+                        <label className="cwm__label" htmlFor="cwm-turn-urls">
+                          TURN server URL(s)
+                        </label>
+                        <input
+                          id="cwm-turn-urls"
+                          className="cwm__input"
+                          placeholder="turn:turn.example.com:3478, turns:turn.example.com:5349"
+                          value={turnUrls}
+                          onChange={(e) => setTurnUrls(e.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                      <div>
+                        <label className="cwm__label" htmlFor="cwm-turn-user">
+                          TURN username
+                        </label>
+                        <input
+                          id="cwm-turn-user"
+                          className="cwm__input"
+                          value={turnUsername}
+                          onChange={(e) => setTurnUsername(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div>
+                        <label className="cwm__label" htmlFor="cwm-turn-pass">
+                          TURN password
+                        </label>
+                        <input
+                          id="cwm-turn-pass"
+                          className="cwm__input"
+                          value={turnCredential}
+                          onChange={(e) => setTurnCredential(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div>
+                        <label className="cwm__label" htmlFor="cwm-ice-endpoint">
+                          Or ICE endpoint URL
+                        </label>
+                        <input
+                          id="cwm-ice-endpoint"
+                          className="cwm__input"
+                          type="url"
+                          placeholder="https://relay.example.com/ice"
+                          value={iceEndpoint}
+                          onChange={(e) => setIceEndpoint(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+                      {iceError && <p className="cwm__error">{iceError}</p>}
+                    </>
+                  )}
                   <p className="cwm__hint">
-                    Leave empty to use the app defaults. These URLs are embedded in the invite link so joiners pick them
-                    up automatically.
+                    Leave empty to use the app defaults. These settings are embedded in the invite link so joiners pick
+                    them up automatically.
+                    {!turnDisabled &&
+                      ' A TURN username and password in the link are visible to everyone who has it: prefer an ICE endpoint that issues short-lived credentials. Each member can still override or disable TURN in their own Settings.'}
                   </p>
                 </div>
               )}

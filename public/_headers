@@ -24,9 +24,10 @@
   #     wss:/ws: — relay WebSocket (URL is user-configurable)
   #   media-src blob:             — getUserMedia / RTCPeerConnection produce blob: stream URLs
   #   img-src 'self' data: https: — own icons, data URIs, and external OIDC provider avatars
+  #   challenges.cloudflare.com   — Cloudflare Turnstile (script + frame), only used when VITE_TURNSTILE_SITE_KEY is set
   #   worker-src 'self'           — service worker registration
   #   child-src blob:             — Document Picture-in-Picture API (PiP window = child context)
   #   object-src 'none'           — no Flash / plugins
   #   base-uri 'self'             — block <base href> injection attacks
   #   frame-ancestors 'none'      — belt-and-suspenders with X-Frame-Options
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: ws:; media-src 'self' blob:; img-src 'self' data: https:; worker-src 'self'; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: ws:; media-src 'self' blob:; img-src 'self' data: https:; worker-src 'self'; child-src 'self' blob:; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'

@@ -49,7 +49,7 @@ The relay is configured only through environment variables. Nothing is required:
 |----------|---------|---------|
 | `ICE_ALLOWED_ORIGINS` | unset (open) | Comma-separated web origins allowed to call `/ice`, e.g. `https://pipol.pages.dev,https://*.pipol.pages.dev,http://localhost:5173`. A leading `*.` matches any subdomain; `*` allows everything. When set, other sites **and requests without an `Origin` header** (curl, scripts) get `403` |
 | `ICE_RATE_LIMIT` | `30` | Requests per minute per client IP; `0` disables. Beyond it: `429` with `Retry-After` |
-| `TRUST_PROXY_HOPS` | `1` | Reverse proxies in front of the relay (`1` on Render). The client IP is read from `X-Forwarded-For` counting entries from the right; `0` uses the socket address |
+| `TRUST_PROXY_HOPS` | `1` | Reverse proxies in front of the relay: **`3` on Render** (Cloudflare, then Render's own proxy, then the relay; measured, see [Cloudflare setup](cloudflare.md#44-the-rate-limit-and-trust_proxy_hops)), `1` behind a single proxy of your own. The client IP is read from `X-Forwarded-For` counting entries from the right; `0` uses the socket address |
 | `TURNSTILE_SECRET` | unset (off) | Requires a valid Cloudflare Turnstile token on every `/ice` request. Works with any TURN provider |
 
 ### Cloudflare usage guard (variables)
@@ -189,7 +189,7 @@ During operation the log also shows `/ice rate limit hit for <ip> (TRUST_PROXY_H
 ## Deploying
 
 - **Docker**: `docker build -t pipol-relay relay` then run it with the variables above (`-e NAME=value`). The image runs as the unprivileged `node` user and exposes `8787`.
-- **Render** or similar: build from `relay/Dockerfile`, set the variables under Environment and redeploy (the relay caches credentials in memory, so a restart clears them). Keep `TRUST_PROXY_HOPS=1` unless you know your proxy chain is different, and check the rate-limit log line as described above. A free instance sleeps when idle: the first `/ice` after a pause can be slow, and after 4 seconds the app falls back to public STUN.
+- **Render** or similar: build from `relay/Dockerfile`, set the variables under Environment and redeploy (the relay caches credentials in memory, so a restart clears them). Set `TRUST_PROXY_HOPS=3` on Render (the default `1` would count Render's internal proxies, of which there are several, instead of your users) and check it as described in [Cloudflare setup](cloudflare.md#44-the-rate-limit-and-trust_proxy_hops). A free instance sleeps when idle: the first `/ice` after a pause can be slow, and after 4 seconds the app falls back to public STUN.
 - Never commit secrets (`CLOUDFLARE_TURN_API_TOKEN`, `TURN_SECRET`, `TURNSTILE_SECRET`, …). If one leaks, revoke it at the provider and replace it.
 
 ## Tests
