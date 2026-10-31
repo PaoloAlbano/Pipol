@@ -109,8 +109,12 @@ test('forging X-Forwarded-For does not reset the limit (the last hop is trusted)
   assert.deepEqual(results, [200, 200, 200, 429, 429])
 })
 
-test('the first rate-limited client is logged once, to help check TRUST_PROXY_HOPS', async () => {
+test('the first rate-limited client is logged once, with the proxy chain, to help set TRUST_PROXY_HOPS', async () => {
   assert.match(restricted.output(), /rate limit hit for 198\.51\.100\.50/)
+  assert.match(
+    restricted.output(),
+    /rate limit hit for 198\.51\.100\.50 \(TRUST_PROXY_HOPS=1, X-Forwarded-For: 198\.51\.100\.50, socket: [^)]+\)/
+  )
   assert.equal((restricted.output().match(/rate limit hit for 198\.51\.100\.50/g) ?? []).length, 1)
 })
 

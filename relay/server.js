@@ -55,7 +55,11 @@ const server = http.createServer(async (req, res) => {
       // Log each blocked client once so the proxy setting (TRUST_PROXY_HOPS) can be checked against a known IP
       if (verdict.status === 429 && !rateLimitLogged.has(verdict.ip)) {
         rateLimitLogged.add(verdict.ip)
-        console.warn(`[relay] /ice rate limit hit for ${verdict.ip}`)
+        // The whole proxy chain is logged so TRUST_PROXY_HOPS can be set from what the proxies really send
+        const chain = req.headers['x-forwarded-for'] ?? 'none'
+        console.warn(
+          `[relay] /ice rate limit hit for ${verdict.ip} (TRUST_PROXY_HOPS=${iceGuard.hops}, X-Forwarded-For: ${chain}, socket: ${req.socket.remoteAddress})`
+        )
       }
       res.writeHead(verdict.status, { ...verdict.headers, 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: verdict.error }))

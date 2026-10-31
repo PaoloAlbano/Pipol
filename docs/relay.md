@@ -71,6 +71,8 @@ Only with the `cloudflare` provider. See [Cloudflare usage guard](#cloudflare-us
 
 ### Cloudflare Realtime TURN
 
+The complete walkthrough, with verification and troubleshooting, is in [Setting up the relay with Cloudflare](cloudflare.md). In short:
+
 1. Cloudflare dashboard → Realtime → TURN: create a **TURN key** (any name). You get a **Token ID** and an **API token** (the token is shown once).
 2. On the relay set `CLOUDFLARE_TURN_KEY_ID=<Token ID>` and `CLOUDFLARE_TURN_API_TOKEN=<API token>` (optionally `TURN_PROVIDER=cloudflare`). The API token here is the one of the TURN key, **not** a general Cloudflare API token.
 3. Redeploy or restart the relay and check the log: `[relay] TURN credentials: provider "cloudflare"`.
@@ -156,7 +158,7 @@ The guard exists only for Cloudflare. For coturn use its native limits (`max-bps
 
 3. **In the app**: Settings → Connection (TURN) → **Test connection** must say a relayed address was allocated. During a call with diagnostics on, the tile shows **direct** or **via TURN (udp/tcp/tls)**; "Always relay" forces the second.
 
-During operation the log also shows `/ice rate limit hit for <ip>` (once per client; compare it with your own IP to check `TRUST_PROXY_HOPS`), `/ice Turnstile refused: <codes>`, `/ice failed: <reason>`, `TURN budget reached …` and `TURN credential xxxxxxxx… revoked: N GB in the last hour`.
+During operation the log also shows `/ice rate limit hit for <ip> (TRUST_PROXY_HOPS=…, X-Forwarded-For: …, socket: …)` (once per client; the proxy chain it prints is what you need to set `TRUST_PROXY_HOPS`, see [Cloudflare setup](cloudflare.md#44-the-rate-limit-and-trust_proxy_hops)), `/ice Turnstile refused: <codes>`, `/ice failed: <reason>`, `TURN budget reached …` and `TURN credential xxxxxxxx… revoked: N GB in the last hour`.
 
 ## Disabling
 
