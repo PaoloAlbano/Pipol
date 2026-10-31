@@ -19,6 +19,7 @@ const QUALITY_KEY = 'p2p-chat:video-quality'
 const SHOW_STATS_KEY = 'p2p-chat:show-stats'
 const RELAY_URL_KEY = 'p2p-chat:relay-url'
 const MIRROR_VIDEO_KEY = 'p2p-chat:mirror-video'
+const ICE_SETTINGS_KEY = 'p2p-chat:ice-settings'
 
 export function getVideoQuality() {
   return localStorage.getItem(QUALITY_KEY) || '1080p'
@@ -53,6 +54,34 @@ export function setRelayUrl(url) {
   } else {
     localStorage.removeItem(RELAY_URL_KEY)
   }
+}
+
+/**
+ * ICE (STUN/TURN) preferences.
+ *   mode 'default' — use the workspace / app TURN
+ *   mode 'custom'  — use `servers` ([{ urls: string[], username?, credential? }])
+ *   mode 'off'     — public STUN only, no TURN
+ *   forceRelay     — only use relayed candidates (hides this device's IP from other participants)
+ *   chatTurn       — also use TURN for chat connections (by default TURN is for calls only)
+ */
+export function getIceSettings() {
+  const defaults = { mode: 'default', servers: [], forceRelay: false, chatTurn: false }
+  try {
+    const stored = JSON.parse(localStorage.getItem(ICE_SETTINGS_KEY) || 'null')
+    if (!stored || typeof stored !== 'object') return defaults
+    return {
+      mode: ['default', 'custom', 'off'].includes(stored.mode) ? stored.mode : 'default',
+      servers: Array.isArray(stored.servers) ? stored.servers : [],
+      forceRelay: stored.forceRelay === true,
+      chatTurn: stored.chatTurn === true,
+    }
+  } catch {
+    return defaults
+  }
+}
+
+export function setIceSettings(settings) {
+  localStorage.setItem(ICE_SETTINGS_KEY, JSON.stringify(settings))
 }
 
 const ADJECTIVES = [

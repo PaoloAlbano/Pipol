@@ -142,6 +142,31 @@ export default function Room({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startCallTrigger])
 
+  // ── Keep TURN credentials valid during a call ─────────────────────────────
+  // Credentials expire (the relay's /ice endpoint hands out short-lived ones): renew them on the live
+  // connections before that happens, otherwise the TURN allocation of a long call would be dropped.
+  useEffect(() => {
+    if (!callActive) return
+    let timer = null
+    let cancelled = false
+
+    async function renew() {
+      const swarm = swarmRef.current
+      if (!swarm?.refreshIceConfig) return
+      const config = await swarm.refreshIceConfig().catch(() => null)
+      if (cancelled || !config) return
+      for (const peer of Object.values(rtcPeersRef.current)) peer.updateIceServers?.(config)
+      if (config.refreshInMs) timer = setTimeout(renew, config.refreshInMs)
+    }
+
+    const first = swarmRef.current?.rtcConfiguration?.refreshInMs
+    if (first) timer = setTimeout(renew, first)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [callActive])
+
   // ── Call duration timer ───────────────────────────────────────────────────
   useEffect(() => {
     if (!callStartedAt) return
@@ -781,7 +806,14 @@ export default function Room({
     // Deterministic tie-break so exactly one side yields if both send an offer at once
     const myId = myPubkeyHexRef.current
     const polite = myId ? myId < peerId : !isInitiator
-    const rtcPeer = new WebRTCPeer(peerId, isInitiator, stream, screenStream, polite)
+    const rtcPeer = new WebRTCPeer(
+      peerId,
+      isInitiator,
+      stream,
+      screenStream,
+      polite,
+      swarmRef.current?.rtcConfiguration
+    )
     rtcPeersRef.current[peerId] = rtcPeer
 
     // Late joiner while we are sharing: announce the screen stream before the SDP exchange
@@ -1013,6 +1045,8 @@ export default function Room({
     try {
       const stream = await getLocalStream()
       setLocalStream(stream)
+      // Start from fresh TURN credentials (a tab can stay open for days)
+      await swarmRef.current?.refreshIceConfig?.().catch(() => {})
       setCallActive(true)
       setCallStartedAt(Date.now())
 

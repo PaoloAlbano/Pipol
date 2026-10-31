@@ -216,6 +216,7 @@
   z-index: 5;
 }
 
+.video-stats-route,
 .video-stats-path,
 .video-stats-rtt,
 .video-stats-bytes {
@@ -226,6 +227,13 @@
   white-space: nowrap;
 }
 
+.video-stats-route {
+  color: #7adf8c;
+  font-weight: 600;
+}
+.video-stats-route--relay {
+  color: #ffb454;
+}
 .video-stats-rtt {
   color: #7adf8c;
 }

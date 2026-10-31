@@ -266,6 +266,49 @@ describe('VideoGrid — autopictureinpicture attribute', () => {
 
 // ── Stats overlay ─────────────────────────────────────────────────────────────
 
+describe('VideoGrid — stats overlay: connection route', () => {
+  function renderWithStats(stats) {
+    return render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-a': makeFakeStream() }}
+        peers={[{ id: 'peer-a', username: 'alice' }]}
+        localUsername="swift-fox"
+        showStats
+        peerStats={{ 'peer-a': { rtt: 20, bytesSentPerSec: 1, bytesReceivedPerSec: 1, ...stats } }}
+        layout="grid"
+        spotlightPeerId={null}
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+      />
+    )
+  }
+
+  it('labels a direct connection', () => {
+    const { container } = renderWithStats({ localType: 'host', remoteType: 'srflx', relayed: false })
+    const route = container.querySelector('.video-stats-route')
+    expect(route.textContent).toBe('direct')
+    expect(route.className).not.toContain('--relay')
+  })
+
+  it('highlights a connection relayed through TURN, with its protocol', () => {
+    const { container } = renderWithStats({
+      localType: 'relay',
+      remoteType: 'host',
+      relayed: true,
+      relayProtocol: 'tls',
+    })
+    const route = container.querySelector('.video-stats-route')
+    expect(route.textContent).toBe('via TURN (tls)')
+    expect(route.className).toContain('--relay')
+  })
+
+  it('also flags the case where only the remote side relays', () => {
+    const { container } = renderWithStats({ localType: 'host', remoteType: 'relay', relayed: true })
+    expect(container.querySelector('.video-stats-route').textContent).toBe('via TURN')
+  })
+})
+
 describe('VideoGrid — stats overlay', () => {
   const peer1 = { id: 'peer-1', username: 'alice' }
 

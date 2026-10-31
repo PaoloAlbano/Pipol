@@ -109,6 +109,7 @@ function makeFakePeer(...args) {
   peer.handleOffer = vi.fn().mockResolvedValue(undefined)
   peer.handleAnswer = vi.fn().mockResolvedValue(undefined)
   peer.handleIceCandidate = vi.fn().mockResolvedValue(undefined)
+  peer.updateIceServers = vi.fn()
   peer.replaceVideoTrack = vi.fn().mockResolvedValue(undefined)
   peer.replaceAudioTrack = vi.fn().mockResolvedValue(undefined)
   peer.addScreenStream = vi.fn().mockResolvedValue(undefined)
@@ -183,6 +184,14 @@ describe('Room — call signaling', () => {
       ['peer-2', true],
     ])
     rtcPeers.forEach((p) => expect(p.init).toHaveBeenCalled())
+  })
+
+  it('creates peer connections with the ICE configuration resolved by the swarm', async () => {
+    const rtcConfiguration = { iceServers: [{ urls: ['turn:t:3478'], username: 'u', credential: 'p' }] }
+    swarmMock.rtcConfiguration = rtcConfiguration
+    setPeers('peer-1')
+    await startCall()
+    expect(rtcPeers[0].args[5]).toBe(rtcConfiguration)
   })
 
   it('relays offer, answer and ICE candidates through the swarm', async () => {
@@ -799,5 +808,82 @@ describe('Room — connection stats', () => {
       rtcPeers[0].dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: { id: 's' } } }))
     })
     await waitFor(() => expect(screen.getByText(/host ↔ srflx/)).toBeInTheDocument(), { timeout: 4000 })
+  })
+})
+
+// ── TURN credential renewal ───────────────────────────────────────────────────
+
+describe('Room — TURN credentials', () => {
+  const first = { iceServers: [{ urls: ['turn:t:3478'], username: 'u', credential: 'one' }], refreshInMs: 60_000 }
+  const second = { iceServers: [{ urls: ['turn:t:3478'], username: 'u', credential: 'two' }], refreshInMs: 60_000 }
+
+  afterEach(() => vi.useRealTimers())
+
+  it('starts a call from freshly renewed credentials', async () => {
+    swarmMock.refreshIceConfig = vi.fn().mockResolvedValue(first)
+    await startCall()
+    expect(swarmMock.refreshIceConfig).toHaveBeenCalled()
+  })
+
+  it('renews credentials on the live connections before they expire, and keeps doing so', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    swarmMock.rtcConfiguration = first
+    swarmMock.refreshIceConfig = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    setPeers('peer-1')
+    await startCall()
+    swarmMock.refreshIceConfig.mockClear()
+    swarmMock.refreshIceConfig.mockResolvedValue(second)
+
+    await act(async () => {
+      vi.advanceTimersByTime(61_000)
+    })
+    expect(swarmMock.refreshIceConfig).toHaveBeenCalledTimes(1)
+    expect(rtcPeers[0].updateIceServers).toHaveBeenCalledWith(second)
+
+    await act(async () => {
+      vi.advanceTimersByTime(61_000)
+    })
+    expect(swarmMock.refreshIceConfig).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops renewing when the call ends', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    swarmMock.rtcConfiguration = first
+    swarmMock.refreshIceConfig = vi.fn().mockResolvedValue(first)
+    await startCall()
+    swarmMock.refreshIceConfig.mockClear()
+
+    await userEvent.click(screen.getByTitle(/leave video call/i))
+    await act(async () => {
+      vi.advanceTimersByTime(10 * 60_000)
+    })
+    expect(swarmMock.refreshIceConfig).not.toHaveBeenCalled()
+  })
+
+  it('does not schedule anything when the credentials never expire (static or no TURN)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    swarmMock.rtcConfiguration = { iceServers: [] }
+    swarmMock.refreshIceConfig = vi.fn().mockResolvedValue({ iceServers: [] })
+    await startCall()
+    swarmMock.refreshIceConfig.mockClear()
+
+    await act(async () => {
+      vi.advanceTimersByTime(10 * 60_000)
+    })
+    expect(swarmMock.refreshIceConfig).not.toHaveBeenCalled()
+  })
+
+  it('keeps working if renewing fails', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    swarmMock.rtcConfiguration = first
+    swarmMock.refreshIceConfig = vi.fn().mockResolvedValueOnce(first).mockRejectedValue(new Error('offline'))
+    setPeers('peer-1')
+    await startCall()
+
+    await act(async () => {
+      vi.advanceTimersByTime(61_000)
+    })
+    expect(rtcPeers[0].updateIceServers).not.toHaveBeenCalled()
+    expect(screen.getByTitle(/mute microphone/i)).toBeInTheDocument()
   })
 })

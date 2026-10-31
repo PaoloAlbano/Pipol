@@ -73,7 +73,7 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
 
     const topic = deriveSwarmTopic(workspace.secret)
     const { relayUrl } = getEffectiveConfig(workspace.config)
-    const swarm = new RoomSwarm(topic, { relayUrl: relayUrl || null })
+    const swarm = new RoomSwarm(topic, { relayUrl: relayUrl || null, ice: workspace.config?.ice ?? null })
     swarmRef.current = swarm
     // Capture membersRef.current at effect start so the cleanup can safely clear it
     // even if the ref has been reassigned by a subsequent render.

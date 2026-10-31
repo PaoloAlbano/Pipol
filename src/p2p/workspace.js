@@ -33,6 +33,7 @@
 
 import * as crypto from 'hypercore-crypto'
 import b4a from 'b4a'
+import { validateWorkspaceIce } from '../webrtc/ice.js'
 
 const STORAGE_KEY = 'p2p-chat:workspaces'
 const ACTIVE_KEY = 'p2p-chat:active-workspace'
@@ -170,6 +171,20 @@ export function parseInviteUrl(urlOrParam) {
   if (typeof payload.name !== 'string' || !payload.name.trim()) throw new Error('invalid-invite')
   if (!Array.isArray(payload.channels) || payload.channels.length === 0) throw new Error('invalid-invite')
 
+  let config = payload.config ?? null
+  if (config != null) {
+    if (typeof config !== 'object' || Array.isArray(config)) throw new Error('invalid-invite')
+    if (config.ice != null) {
+      // An invite can point joiners at custom TURN servers, so it is validated strictly
+      try {
+        const ice = validateWorkspaceIce(config.ice)
+        config = { ...config, ice }
+      } catch {
+        throw new Error('invalid-invite')
+      }
+    }
+  }
+
   const now = Date.now()
   const workspace = {
     id: globalThis.crypto.randomUUID(),
@@ -181,11 +196,11 @@ export function parseInviteUrl(urlOrParam) {
       createdAt: now,
       createdBy: null,
     })),
-    config: payload.config ?? null,
+    config,
     joinedAt: now,
   }
 
-  return { workspace, config: payload.config ?? null }
+  return { workspace, config }
 }
 
 /**

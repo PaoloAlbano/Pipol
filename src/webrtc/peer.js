@@ -21,7 +21,7 @@
  * once the remote description is set.
  */
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
+import { DEFAULT_ICE_SERVERS } from './ice.js'
 
 export class WebRTCPeer extends EventTarget {
   /**
@@ -31,12 +31,21 @@ export class WebRTCPeer extends EventTarget {
    * @param {MediaStream|null} screenStream  Active screen-share stream, sent alongside the camera
    * @param {boolean}      [polite]     Who yields when both sides send an offer at once. Must differ
    *                                    between the two ends; defaults to the non-initiator.
+   * @param {RTCConfiguration} [rtcConfig]  ICE servers and policy (see webrtc/ice.js)
    */
-  constructor(peerId, isInitiator, localStream, screenStream = null, polite = !isInitiator) {
+  constructor(
+    peerId,
+    isInitiator,
+    localStream,
+    screenStream = null,
+    polite = !isInitiator,
+    rtcConfig = { iceServers: DEFAULT_ICE_SERVERS }
+  ) {
     super()
     this.peerId = peerId
     this.isInitiator = isInitiator
     this.polite = polite
+    this.rtcConfig = rtcConfig
     this.localStream = localStream
     this.screenStream = screenStream
 
@@ -49,6 +58,20 @@ export class WebRTCPeer extends EventTarget {
     this._closed = false
   }
 
+  /**
+   * Swaps in fresh ICE servers (new TURN credentials) on a live connection, so a long call keeps its relay.
+   * @param {{ iceServers: object[] }} config
+   */
+  updateIceServers(config) {
+    if (!this._pc || this._closed) return
+    this.rtcConfig = config
+    try {
+      this._pc.setConfiguration({ ...this._pc.getConfiguration(), iceServers: config.iceServers })
+    } catch (err) {
+      console.warn('[webrtc] could not update ICE servers', err)
+    }
+  }
+
   /** True once the first offer/answer exchange has completed. */
   get established() {
     return this._initialDone
@@ -56,7 +79,7 @@ export class WebRTCPeer extends EventTarget {
 
   /** Initialise the RTCPeerConnection and, if initiator, create+send an offer. */
   async init() {
-    this._pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+    this._pc = new RTCPeerConnection(this.rtcConfig)
 
     // Add all local tracks (audio + video)
     if (this.localStream) {
@@ -249,7 +272,8 @@ export class WebRTCPeer extends EventTarget {
 
   /**
    * Returns stats for the active ICE candidate pair.
-   * @returns {Promise<{ localType, remoteType, localAddress, remoteAddress, rtt, bytesSent, bytesReceived } | null>}
+   * `relayed` is true when the media goes through a TURN server (either side's candidate is a relay).
+   * @returns {Promise<{ localType, remoteType, relayed, relayProtocol, localAddress, remoteAddress, rtt, bytesSent, bytesReceived } | null>}
    */
   async getConnectionStats() {
     if (!this._pc) return null
@@ -275,6 +299,8 @@ export class WebRTCPeer extends EventTarget {
     return {
       localType: local?.candidateType ?? '?',
       remoteType: remote?.candidateType ?? '?',
+      relayed: local?.candidateType === 'relay' || remote?.candidateType === 'relay',
+      relayProtocol: local?.candidateType === 'relay' ? (local.relayProtocol ?? null) : null,
       localAddress: local?.address ?? '',
       remoteAddress: remote?.address ?? '',
       rtt: activePair.currentRoundTripTime != null ? Math.round(activePair.currentRoundTripTime * 1000) : null,

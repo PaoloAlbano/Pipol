@@ -169,4 +169,93 @@ describe('WebRTCPeer — screen share', () => {
     await peer.handleAnswer({ type: 'answer', sdp: 'a' })
     expect(peer.established).toBe(true)
   })
+
+  it('creates the connection with the given ICE configuration', async () => {
+    const seen = []
+    globalThis.RTCPeerConnection = class extends FakePC {
+      constructor(config) {
+        super()
+        seen.push(config)
+      }
+    }
+    const rtcConfig = {
+      iceServers: [{ urls: ['turn:t:3478'], username: 'u', credential: 'p' }],
+      iceTransportPolicy: 'relay',
+    }
+    const peer = new WebRTCPeer('p', false, stream(track('audio')), null, false, rtcConfig)
+    await peer.init()
+    expect(seen[0]).toBe(rtcConfig)
+  })
+
+  it('falls back to public STUN when no configuration is given', async () => {
+    const seen = []
+    globalThis.RTCPeerConnection = class extends FakePC {
+      constructor(config) {
+        super()
+        seen.push(config)
+      }
+    }
+    await new WebRTCPeer('p', false, stream(track('audio'))).init()
+    expect(seen[0].iceServers[0].urls).toMatch(/^stun:/)
+  })
+
+  describe('getConnectionStats', () => {
+    async function statsFor(localCandidate, remoteCandidate) {
+      const peer = new WebRTCPeer('p', true, stream(track('audio')))
+      await peer.init()
+      const entries = [
+        { type: 'candidate-pair', nominated: true, state: 'succeeded', localCandidateId: 'l', remoteCandidateId: 'r' },
+        { type: 'local-candidate', id: 'l', ...localCandidate },
+        { type: 'remote-candidate', id: 'r', ...remoteCandidate },
+      ]
+      pcs[0].getStats = async () => new Map(entries.map((e, i) => [e.id ?? `p${i}`, e]))
+      return peer.getConnectionStats()
+    }
+
+    it('reports a direct connection', async () => {
+      const stats = await statsFor({ candidateType: 'host' }, { candidateType: 'srflx' })
+      expect(stats).toMatchObject({ localType: 'host', remoteType: 'srflx', relayed: false, relayProtocol: null })
+    })
+
+    it('flags a connection relayed through our TURN allocation, with its protocol', async () => {
+      const stats = await statsFor({ candidateType: 'relay', relayProtocol: 'udp' }, { candidateType: 'host' })
+      expect(stats).toMatchObject({ relayed: true, relayProtocol: 'udp' })
+    })
+
+    it('flags a connection relayed by the other side', async () => {
+      const stats = await statsFor({ candidateType: 'host' }, { candidateType: 'relay' })
+      expect(stats).toMatchObject({ relayed: true, relayProtocol: null })
+    })
+  })
+
+  describe('updateIceServers', () => {
+    it('swaps the ICE servers on a live connection and keeps the rest of its configuration', async () => {
+      const peer = new WebRTCPeer('p', true, stream(track('audio')), null, true, {
+        iceServers: [],
+        iceTransportPolicy: 'relay',
+      })
+      await peer.init()
+      const calls = []
+      pcs[0].getConfiguration = () => ({ iceTransportPolicy: 'relay', iceServers: ['old'] })
+      pcs[0].setConfiguration = (c) => calls.push(c)
+
+      const fresh = [{ urls: ['turn:t:3478'], username: 'u', credential: 'new' }]
+      peer.updateIceServers({ iceServers: fresh })
+      expect(calls).toEqual([{ iceTransportPolicy: 'relay', iceServers: fresh }])
+    })
+
+    it('does nothing once the connection is closed, and survives a browser that refuses', async () => {
+      const peer = new WebRTCPeer('p', true, stream(track('audio')))
+      await peer.init()
+      pcs[0].getConfiguration = () => ({})
+      pcs[0].setConfiguration = () => {
+        throw new Error('InvalidModificationError')
+      }
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      expect(() => peer.updateIceServers({ iceServers: [] })).not.toThrow()
+
+      peer.close()
+      expect(() => peer.updateIceServers({ iceServers: [] })).not.toThrow()
+    })
+  })
 })

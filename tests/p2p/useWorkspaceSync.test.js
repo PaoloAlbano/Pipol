@@ -16,8 +16,9 @@ let lastSwarm = null
 
 vi.mock('../../src/p2p/swarm.js', () => {
   class FakeSwarm extends EventTarget {
-    constructor() {
+    constructor(topic, opts) {
       super()
+      this.opts = opts
       this.joined = false
       this.sentMessages = []
       lastSwarm = this
@@ -40,7 +41,7 @@ vi.mock('../../src/p2p/workspace.js', () => ({
   mergeChannelList: vi.fn((a, b) => [...a, ...b]),
   getWorkspaces: vi.fn(() => []),
   saveWorkspace: vi.fn(),
-  getEffectiveConfig: vi.fn(() => ({ relayUrl: null })),
+  getEffectiveConfig: vi.fn((config) => ({ relayUrl: config?.relayUrl ?? null })),
 }))
 
 vi.mock('../../src/p2p/dm-crypto.js', () => ({
@@ -272,6 +273,33 @@ describe('useWorkspaceSync — member presence', () => {
     })
 
     expect(result.current.members.size).toBe(0)
+    unmount()
+  })
+})
+
+// ── ICE / TURN configuration ──────────────────────────────────────────────────
+
+describe('useWorkspaceSync — TURN configuration', () => {
+  beforeEach(() => {
+    lastSwarm = null
+  })
+
+  it('passes the workspace relay and ICE override to the swarm', async () => {
+    const ice = { servers: [{ urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'p' }] }
+    const workspace = { ...WORKSPACE, config: { relayUrl: 'wss://relay.example.com', ice } }
+
+    const { unmount } = renderHook(() => useWorkspaceSync(workspace, IDENTITY))
+    await act(async () => {})
+
+    expect(lastSwarm.opts).toEqual({ relayUrl: 'wss://relay.example.com', ice })
+    unmount()
+  })
+
+  it('passes no ICE override when the workspace has none', async () => {
+    const { unmount } = renderHook(() => useWorkspaceSync(WORKSPACE, IDENTITY))
+    await act(async () => {})
+
+    expect(lastSwarm.opts.ice).toBeNull()
     unmount()
   })
 })

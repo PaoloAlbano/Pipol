@@ -26,8 +26,7 @@
 
 import b4a from 'b4a'
 import { getIdentity, getRelayUrl } from './storage.js'
-
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
+import { DEFAULT_ICE_SERVERS, resolveIceConfig, chatIceConfig } from '../webrtc/ice.js'
 
 /**
  * Extracts the DTLS fingerprint from an SDP string.
@@ -70,6 +69,11 @@ export class RoomSwarm extends EventTarget {
     // Optional workspace-level relay override (takes priority over global settings)
     this._relayUrl = opts.relayUrl || null
 
+    // Optional workspace-level ICE override ({ servers } or { url }), see webrtc/ice.js
+    this._workspaceIce = opts.ice || null
+    this._iceConfig = { iceServers: DEFAULT_ICE_SERVERS, iceTransportPolicy: 'all' } // calls
+    this._dataIceConfig = this._iceConfig // chat data channels
+
     this._ws = null // signaling WebSocket
     this._localPeerId = null
     this._identity = null
@@ -80,12 +84,39 @@ export class RoomSwarm extends EventTarget {
     this._pendingCandidates = new Map() // peerId → [candidate, ...]
   }
 
+  /** RTCConfiguration (ICE servers + policy) for video calls made through this swarm. */
+  get rtcConfiguration() {
+    return this._iceConfig
+  }
+
+  /**
+   * Fetches the ICE configuration again (cheap while the cached credentials are fresh) so that new calls and
+   * calls in progress get valid TURN credentials. If the endpoint cannot be reached, the credentials we
+   * already have are kept: they stay valid for a while and only a retry is suggested.
+   * @returns {Promise<object>} the configuration, with `refreshInMs` when it expires
+   */
+  async refreshIceConfig() {
+    const config = await resolveIceConfig({ relayUrl: this._iceRelayBase, workspaceIce: this._workspaceIce })
+    if (config.degraded && this._iceConfig.iceServers.some((s) => [].concat(s.urls).some((u) => /^turns?:/i.test(u)))) {
+      return { ...this._iceConfig, degraded: true, refreshInMs: 30_000 }
+    }
+    this._iceConfig = config
+    this._dataIceConfig = chatIceConfig(config)
+    return config
+  }
+
   async join() {
     this._identity = getIdentity()
     this._localPeerId = b4a.toString(this._identity.publicKey, 'hex')
 
     return new Promise((resolve, reject) => {
       const url = signalUrl(this._relayUrl)
+
+      // Resolve TURN/STUN in parallel with the signaling handshake; never rejects
+      this._iceRelayBase = url.replace(/\/signal$/, '')
+      const icePromise = this.refreshIceConfig().catch((err) =>
+        console.warn('[swarm] ICE config unavailable, using defaults:', err.message)
+      )
       const ws = new WebSocket(url)
       this._ws = ws
 
@@ -96,7 +127,9 @@ export class RoomSwarm extends EventTarget {
 
       ws.addEventListener(
         'open',
-        () => {
+        async () => {
+          // Peers start connecting as soon as we have joined, so the ICE servers must be ready by then
+          await icePromise
           ws.send(JSON.stringify({ type: 'join', room: this.roomCode, peerId: this._localPeerId }))
         },
         { once: true }
@@ -202,7 +235,7 @@ export class RoomSwarm extends EventTarget {
   async _initiateConnection(remotePeerId) {
     if (this.peers.has(remotePeerId)) return
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+    const pc = new RTCPeerConnection(this._dataIceConfig)
     const dc = pc.createDataChannel('p2p-chat', { ordered: true })
 
     this._registerPeer(remotePeerId, pc)
@@ -232,7 +265,7 @@ export class RoomSwarm extends EventTarget {
     if (signal.type === 'offer') {
       if (this.peers.has(remotePeerId)) return // already connected
 
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+      const pc = new RTCPeerConnection(this._dataIceConfig)
       const expectedFingerprint = signal.fingerprint || null
 
       this._registerPeer(remotePeerId, pc, expectedFingerprint)

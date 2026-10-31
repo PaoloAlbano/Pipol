@@ -5,11 +5,22 @@ import {
   getRelayUrl,
   setRelayUrl,
   setMirrorVideo,
+  getIceSettings,
+  setIceSettings,
   getPassphrase,
   clearPassphrase,
   getStoredIdentityMeta,
 } from '../p2p/storage.js'
 import { applyVideoQuality } from '../webrtc/media.js'
+import {
+  parseIceUrls,
+  validateIceServers,
+  resolveIceConfig,
+  testIceServers,
+  hasTurnServer,
+  isTurnDisabled,
+} from '../webrtc/ice.js'
+import { getEffectiveConfig } from '../p2p/workspace.js'
 import {
   isBiometricUnlockAvailable,
   hasBiometricUnlock,
@@ -45,6 +56,16 @@ export default function SettingsModal({
   const [quality, setQuality] = useState(getVideoQuality)
   const [relayUrl, setRelayUrlState] = useState(getRelayUrl)
   const [relayError, setRelayError] = useState('')
+  const [iceMode, setIceMode] = useState(() => getIceSettings().mode)
+  const [iceUrls, setIceUrls] = useState(() =>
+    parseIceUrls((getIceSettings().servers[0]?.urls ?? []).join(' ')).join('\n')
+  )
+  const [iceUsername, setIceUsername] = useState(() => getIceSettings().servers[0]?.username ?? '')
+  const [iceCredential, setIceCredential] = useState(() => getIceSettings().servers[0]?.credential ?? '')
+  const [forceRelay, setForceRelay] = useState(() => getIceSettings().forceRelay)
+  const [chatTurn, setChatTurn] = useState(() => getIceSettings().chatTurn)
+  const [iceError, setIceError] = useState('')
+  const [iceTest, setIceTest] = useState(null) // null | 'running' | { ok: boolean, message: string }
   const [saved, setSaved] = useState(false)
   const [biometricAvailable, setBiometricAvailable] = useState(false)
   const [biometricEnabled, setBiometricEnabled] = useState(hasBiometricUnlock)
@@ -60,6 +81,45 @@ export default function SettingsModal({
     if (identity.isGuest) return
     isBiometricUnlockAvailable().then(setBiometricAvailable)
   }, [identity.isGuest])
+
+  /** Builds the ICE settings object from the form; throws 'invalid-ice-servers' for bad custom input. */
+  function readIceSettings() {
+    const settings = { mode: iceMode, servers: [], forceRelay, chatTurn }
+    if (iceMode === 'custom') {
+      settings.servers = validateIceServers([
+        { urls: parseIceUrls(iceUrls), username: iceUsername.trim(), credential: iceCredential },
+      ])
+    }
+    return settings
+  }
+
+  async function handleTestIce() {
+    let settings
+    try {
+      settings = readIceSettings()
+    } catch {
+      setIceError('Use turn:, turns: or stun: URLs. TURN also needs a username and password.')
+      return
+    }
+    setIceError('')
+    setIceTest('running')
+    try {
+      const relay = relayUrl.trim() || getEffectiveConfig(activeWorkspace?.config).relayUrl
+      const config = await resolveIceConfig({ relayUrl: relay, workspaceIce: activeWorkspace?.config?.ice, settings })
+      if (!hasTurnServer(config.iceServers)) {
+        setIceTest({ ok: false, message: 'No TURN server in use: only direct and STUN connections are possible.' })
+        return
+      }
+      const found = await testIceServers(config)
+      setIceTest(
+        found.relay
+          ? { ok: true, message: 'TURN works: a relayed address was allocated.' }
+          : { ok: false, message: 'No relayed address: check the server address, port and credentials.' }
+      )
+    } catch (err) {
+      setIceTest({ ok: false, message: `Test failed: ${err.message}` })
+    }
+  }
 
   function handleSave() {
     const trimmed = name.trim()
@@ -82,7 +142,16 @@ export default function SettingsModal({
       return
     }
 
+    let iceSettings
+    try {
+      iceSettings = readIceSettings()
+    } catch {
+      setIceError('Use turn:, turns: or stun: URLs. TURN also needs a username and password.')
+      return
+    }
+
     onUsernameChange(trimmed)
+    setIceSettings(iceSettings)
     setVideoQuality(quality)
     applyVideoQuality(quality)
     setRelayUrl(trimmedRelay)
@@ -180,6 +249,114 @@ export default function SettingsModal({
             />
             {relayError && <p className="settings-error">{relayError}</p>}
             <p className="settings-hint">Custom signaling relay. Changes take effect on the next room join.</p>
+          </div>
+
+          <div className="settings-section">
+            <label className="settings-label">Connection (TURN)</label>
+            {isTurnDisabled() && (
+              <p className="settings-hint settings-hint--warn">
+                TURN is disabled in this version of the app: &quot;Default&quot; uses public STUN only. Choose
+                &quot;Custom&quot; to use a TURN server of your own.
+              </p>
+            )}
+            <div className="settings-quality-group" role="radiogroup" aria-label="TURN mode">
+              {[
+                { value: 'default', label: 'Default', desc: 'Workspace or app TURN' },
+                { value: 'custom', label: 'Custom', desc: 'Your own TURN (e.g. coturn)' },
+                { value: 'off', label: 'Off', desc: 'Public STUN only' },
+              ].map((m) => (
+                <label
+                  key={m.value}
+                  className={`settings-quality-option ${iceMode === m.value ? 'settings-quality-option--active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="ice-mode"
+                    value={m.value}
+                    checked={iceMode === m.value}
+                    onChange={() => {
+                      setIceMode(m.value)
+                      setIceError('')
+                      setIceTest(null)
+                    }}
+                  />
+                  <span className="settings-quality-label">{m.label}</span>
+                  <span className="settings-quality-desc">{m.desc}</span>
+                </label>
+              ))}
+            </div>
+            {iceMode === 'custom' && (
+              <>
+                <textarea
+                  className="settings-input"
+                  rows={2}
+                  aria-label="TURN server URLs"
+                  value={iceUrls}
+                  onChange={(e) => setIceUrls(e.target.value)}
+                  placeholder={'turn:turn.example.com:3478\nturns:turn.example.com:5349'}
+                  spellCheck={false}
+                />
+                <input
+                  className="settings-input"
+                  aria-label="TURN username"
+                  value={iceUsername}
+                  onChange={(e) => setIceUsername(e.target.value)}
+                  placeholder="Username"
+                  autoComplete="off"
+                />
+                <input
+                  className="settings-input"
+                  aria-label="TURN password"
+                  type="password"
+                  value={iceCredential}
+                  onChange={(e) => setIceCredential(e.target.value)}
+                  placeholder="Password"
+                  autoComplete="off"
+                />
+              </>
+            )}
+            {iceMode !== 'off' && (
+              <label className="settings-toggle-row">
+                <span className="settings-toggle-label">Also use TURN for chat</span>
+                <span className="settings-toggle-desc">
+                  Off by default: TURN is used for video calls only, chat connects directly or falls back to the relay.
+                </span>
+                <input
+                  type="checkbox"
+                  checked={chatTurn || forceRelay}
+                  disabled={forceRelay}
+                  onChange={(e) => setChatTurn(e.target.checked)}
+                />
+              </label>
+            )}
+            {iceMode !== 'off' && (
+              <label className="settings-toggle-row">
+                <span className="settings-toggle-label">Always relay (hide my IP)</span>
+                <span className="settings-toggle-desc">
+                  Other participants will not see your IP address, in calls and chat. Needs a TURN server and adds
+                  latency.
+                </span>
+                <input type="checkbox" checked={forceRelay} onChange={(e) => setForceRelay(e.target.checked)} />
+              </label>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleTestIce}
+              disabled={iceTest === 'running'}
+            >
+              {iceTest === 'running' ? 'Testing…' : 'Test connection'}
+            </button>
+            {iceError && <p className="settings-error">{iceError}</p>}
+            {iceTest && iceTest !== 'running' && (
+              <p className={iceTest.ok ? 'settings-hint' : 'settings-hint settings-hint--warn'} role="status">
+                {iceTest.message}
+              </p>
+            )}
+            <p className="settings-hint">
+              TURN relays traffic when a direct connection is not possible. It only sees encrypted packets, but it does
+              see IP addresses. Changes apply to the next call.
+            </p>
           </div>
 
           <div className="settings-section">
