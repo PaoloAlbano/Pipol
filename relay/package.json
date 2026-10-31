@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude='tests/**' tests/*.test.js"
   },
   "dependencies": {
     "@hyperswarm/dht-relay": "^0.4.3",
