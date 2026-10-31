@@ -3,7 +3,7 @@ import { WebSocketServer } from 'ws'
 import DHT from 'hyperdht'
 import { relay } from '@hyperswarm/dht-relay'
 import Stream from '@hyperswarm/dht-relay/ws'
-import { createIceProvider } from './ice.js'
+import { createIceProvider, isIceDisabled } from './ice.js'
 import { createIceGuard } from './ice-guard.js'
 import { createTurnstile } from './turnstile.js'
 import { createUsageGuard } from './usage-guard.js'
@@ -13,6 +13,9 @@ const PORT = process.env.PORT || 8787
 const dht = new DHT()
 await dht.ready()
 console.log('[relay] DHT node ready')
+
+const iceDisabled = isIceDisabled()
+if (iceDisabled) console.log('[relay] /ice endpoint: DISABLED (ICE_DISABLED=true), it answers 404')
 
 const iceProvider = createIceProvider()
 if (iceProvider.name) console.log(`[relay] TURN credentials: provider "${iceProvider.name}"`)
@@ -30,7 +33,7 @@ const turnstile = createTurnstile()
 console.log(`[relay] /ice human check (Turnstile): ${turnstile.enabled ? 'required' : 'off (set TURNSTILE_SECRET to require it)'}`)
 
 const usageGuard = createUsageGuard()
-if (iceProvider.name === 'cloudflare') {
+if (iceProvider.name === 'cloudflare' && !iceDisabled) {
   console.log(`[relay] TURN usage guard: ${usageGuard.describe()}`)
   usageGuard.start()
 }
@@ -42,6 +45,11 @@ const server = http.createServer(async (req, res) => {
 
   // TURN credentials for browsers (any origin: the app and the relay are usually on different hosts)
   if (req.url?.split('?')[0] === '/ice') {
+    if (iceDisabled) {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'not-found' }))
+      return
+    }
     const verdict = iceGuard.check(req, { rateLimit: req.method !== 'OPTIONS' })
     if (!verdict.ok) {
       // Log each blocked client once so the proxy setting (TRUST_PROXY_HOPS) can be checked against a known IP

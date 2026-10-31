@@ -30,8 +30,8 @@ export async function startRelay(env = {}) {
     env: {
       ...process.env,
       PORT: String(port),
-      CF_TURN_KEY_ID: '',
-      CF_TURN_API_TOKEN: '',
+      CLOUDFLARE_TURN_KEY_ID: '',
+      CLOUDFLARE_TURN_API_TOKEN: '',
       ICE_ALLOWED_ORIGINS: '',
       ICE_RATE_LIMIT: '',
       TRUST_PROXY_HOPS: '',

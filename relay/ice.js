@@ -12,8 +12,10 @@
 //                   TURN_CREDENTIAL
 //   http            TURN_API_URL                          a service that returns ICE servers over HTTP:
 //                   [TURN_API_AUTHORIZATION]              Metered, Xirsys, Twilio proxy, your own API…
-//   cloudflare      CF_TURN_KEY_ID, CF_TURN_API_TOKEN     Cloudflare Realtime TURN (one credential per request,
+//   cloudflare      CLOUDFLARE_TURN_KEY_ID, CLOUDFLARE_TURN_API_TOKEN     Cloudflare Realtime TURN (one credential per request,
 //                                                         so usage can be attributed: see usage-guard.js)
+//
+// ICE_DISABLED=true turns the whole endpoint off (404), whatever else is configured.
 //
 // Common: TURN_TTL (seconds, default 3600) for the providers that mint credentials. Clients renew them
 // before they expire, so a short lifetime limits how long copied credentials stay usable.
@@ -22,7 +24,12 @@
 import crypto from 'node:crypto'
 
 const DEFAULT_TTL_SECONDS = 3600
-const CLOUDFLARE_API = 'https://rtc.live.cloudflare.com/v1/turn/keys' // CF_TURN_API_URL overrides it (tests)
+const CLOUDFLARE_API = 'https://rtc.live.cloudflare.com/v1/turn/keys' // CLOUDFLARE_TURN_API_URL overrides it (tests)
+
+/** ICE_DISABLED=true (or 1/yes) switches the /ice endpoint off completely: it answers 404. */
+export function isIceDisabled(env = process.env) {
+  return /^(1|true|yes)$/i.test(String(env.ICE_DISABLED ?? '').trim())
+}
 
 const splitList = (value) =>
   String(value ?? '')
@@ -97,11 +104,11 @@ export const providers = {
   cloudflare: {
     // A credential per request: usage is reported per credential, so an abusive one can be revoked alone
     cacheable: false,
-    configured: (env) => Boolean(env.CF_TURN_KEY_ID && env.CF_TURN_API_TOKEN),
+    configured: (env) => Boolean(env.CLOUDFLARE_TURN_KEY_ID && env.CLOUDFLARE_TURN_API_TOKEN),
     async fetch({ env, ttl, fetchImpl }) {
-      const res = await fetchImpl(`${env.CF_TURN_API_URL || CLOUDFLARE_API}/${env.CF_TURN_KEY_ID}/credentials/generate-ice-servers`, {
+      const res = await fetchImpl(`${env.CLOUDFLARE_TURN_API_URL || CLOUDFLARE_API}/${env.CLOUDFLARE_TURN_KEY_ID}/credentials/generate-ice-servers`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${env.CF_TURN_API_TOKEN}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${env.CLOUDFLARE_TURN_API_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ ttl }),
       })
       if (!res.ok) throw new Error(`Cloudflare TURN responded ${res.status}`)

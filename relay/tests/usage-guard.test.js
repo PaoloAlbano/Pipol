@@ -7,10 +7,10 @@ const NOW = Date.parse('2026-10-31T12:00:00Z')
 const quiet = { warn: () => {}, info: () => {} }
 
 const ENV = {
-  CF_ACCOUNT_ID: 'acc',
-  CF_ANALYTICS_TOKEN: 'analytics-token',
-  CF_TURN_KEY_ID: 'KEY',
-  CF_TURN_API_TOKEN: 'turn-token',
+  CLOUDFLARE_ACCOUNT_ID: 'acc',
+  CLOUDFLARE_ANALYTICS_TOKEN: 'analytics-token',
+  CLOUDFLARE_TURN_KEY_ID: 'KEY',
+  CLOUDFLARE_TURN_API_TOKEN: 'turn-token',
 }
 
 /**
@@ -46,7 +46,7 @@ const guard = (env, cf, extra = {}) =>
 
 test('is disabled without the analytics settings, and never calls Cloudflare', async () => {
   const cf = fakeCloudflare()
-  const g = createUsageGuard({ env: { CF_TURN_KEY_ID: 'KEY', CF_TURN_API_TOKEN: 't' }, fetchImpl: cf.fetchImpl, log: quiet })
+  const g = createUsageGuard({ env: { CLOUDFLARE_TURN_KEY_ID: 'KEY', CLOUDFLARE_TURN_API_TOKEN: 't' }, fetchImpl: cf.fetchImpl, log: quiet })
   assert.equal(g.enabled, false)
   await g.tick()
   assert.equal(cf.calls.graphql.length, 0)
@@ -56,7 +56,7 @@ test('is disabled without the analytics settings, and never calls Cloudflare', a
 
 test('reads the month usage of the key and stays open under the budget', async () => {
   const cf = fakeCloudflare({ month: 100 * GB })
-  const g = guard({ TURN_MONTHLY_BUDGET_GB: '800' }, cf)
+  const g = guard({ CLOUDFLARE_MONTHLY_BUDGET_GB: '800' }, cf)
   await g.tick()
   assert.equal(g.exhausted, false)
   assert.equal(g.state.monthBytes, 100 * GB)
@@ -70,12 +70,12 @@ test('reads the month usage of the key and stays open under the budget', async (
 
 test('stops issuing credentials once the monthly budget is reached, and resumes when usage drops', async () => {
   const cf = fakeCloudflare({ month: 801 * GB })
-  const g = guard({ TURN_MONTHLY_BUDGET_GB: '800' }, cf)
+  const g = guard({ CLOUDFLARE_MONTHLY_BUDGET_GB: '800' }, cf)
   await g.tick()
   assert.equal(g.exhausted, true)
 
   const under = fakeCloudflare({ month: 10 * GB })
-  const g2 = guard({ TURN_MONTHLY_BUDGET_GB: '800' }, under)
+  const g2 = guard({ CLOUDFLARE_MONTHLY_BUDGET_GB: '800' }, under)
   await g2.tick()
   assert.equal(g2.exhausted, false)
 })
@@ -94,7 +94,7 @@ test('revokes a credential that relayed more than the hourly limit, and only tha
       { username: 'normal-user', at: '2026-10-31T11:45:00Z', bytes: 1 * GB },
     ],
   })
-  const g = guard({ TURN_USER_HOURLY_LIMIT_GB: '8' }, cf)
+  const g = guard({ CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB: '8' }, cf)
   await g.tick()
 
   assert.equal(cf.calls.revoked.length, 1)
@@ -147,7 +147,7 @@ test('forgets old revocations after a few hours', async () => {
 
 test('the per-credential limit can be switched off', async () => {
   const cf = fakeCloudflare({ buckets: [{ username: 'u', at: '2026-10-31T11:50:00Z', bytes: 100 * GB }] })
-  await guard({ TURN_USER_HOURLY_LIMIT_GB: '0' }, cf).tick()
+  await guard({ CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB: '0' }, cf).tick()
   assert.equal(cf.calls.revoked.length, 0)
   assert.equal(cf.calls.graphql.filter((c) => c.query.includes('username')).length, 0)
 })
@@ -172,7 +172,7 @@ test('fails open: an analytics error keeps the last state and is only logged', a
   const warnings = []
   const fetchImpl = async (url, init) => (broken ? { ok: false, status: 500, json: async () => ({}) } : ok.fetchImpl(url, init))
   const g = createUsageGuard({
-    env: { ...ENV, TURN_MONTHLY_BUDGET_GB: '800' },
+    env: { ...ENV, CLOUDFLARE_MONTHLY_BUDGET_GB: '800' },
     fetchImpl,
     now: () => NOW,
     log: { ...quiet, warn: (m) => warnings.push(m) },
@@ -196,6 +196,6 @@ test('GraphQL errors are surfaced in the log, so a wrong token or schema shows u
 })
 
 test('describe() summarises the effective policy', () => {
-  const g = guard({ TURN_MONTHLY_BUDGET_GB: '800', TURN_GUARD_INTERVAL_MIN: '10' }, fakeCloudflare())
+  const g = guard({ CLOUDFLARE_MONTHLY_BUDGET_GB: '800', CLOUDFLARE_GUARD_INTERVAL_MIN: '10' }, fakeCloudflare())
   assert.equal(g.describe(), '800 GB/month budget, 8 GB/hour per credential, checked every 10 min')
 })

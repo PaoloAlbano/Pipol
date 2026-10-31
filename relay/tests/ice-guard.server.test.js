@@ -120,3 +120,23 @@ test('open mode (defaults) still answers every origin with a wildcard', async ()
   assert.equal(res.headers['access-control-allow-origin'], '*')
   assert.equal((await get(open.port)).status, 200)
 })
+
+test('ICE_DISABLED=true switches the endpoint off (404) even with TURN fully configured', async () => {
+  const disabled = await startRelay({ ...TURN_ENV, ICE_DISABLED: 'true' })
+  try {
+    const res = await get(disabled.port)
+    assert.equal(res.status, 404)
+    assert.equal(JSON.parse(res.body).error, 'not-found')
+    assert.doesNotMatch(res.body, /credential|iceServers/)
+    assert.equal(res.headers['access-control-allow-origin'], undefined)
+
+    assert.equal((await get(disabled.port, { method: 'OPTIONS' })).status, 404)
+    assert.match(disabled.output(), /\/ice endpoint: DISABLED/)
+
+    // the rest of the relay is unaffected
+    const health = await fetch(`http://127.0.0.1:${disabled.port}/`)
+    assert.equal(health.status, 200)
+  } finally {
+    await disabled.stop()
+  }
+})

@@ -3,20 +3,20 @@
 // Credentials cannot be kept secret from the browser, so whoever holds valid ones can relay traffic until
 // they expire. This guard bounds the damage using Cloudflare's own usage analytics (GraphQL):
 //
-//   - a credential that relayed more than TURN_USER_HOURLY_LIMIT_GB in the last hour is revoked;
-//   - once the month's egress reaches TURN_MONTHLY_BUDGET_GB, /ice stops issuing credentials (clients fall
+//   - a credential that relayed more than CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB in the last hour is revoked;
+//   - once the month's egress reaches CLOUDFLARE_MONTHLY_BUDGET_GB, /ice stops issuing credentials (clients fall
 //     back to public STUN). Credentials already issued stay valid until they expire (TURN_TTL, 1 hour).
 //
 // It needs the relay to mint a separate credential per /ice request (the cloudflare provider does), so
 // that usage can be attributed to a single credential.
 //
-//   CF_ACCOUNT_ID             Cloudflare account id
-//   CF_ANALYTICS_TOKEN        API token with the "Account Analytics" read permission (a *different* token
-//                             from the TURN key's: that one is CF_TURN_API_TOKEN)
-//   TURN_MONTHLY_BUDGET_GB    Stop issuing at this egress (decimal GB). Unset = no budget stop.
-//   TURN_USER_HOURLY_LIMIT_GB Revoke a credential above this per hour (default 8, 0 disables)
-//   TURN_GUARD_INTERVAL_MIN   How often to check (default 5)
-//   CF_GRAPHQL_URL, CF_TURN_API_URL  Overrides of the Cloudflare endpoints (tests only)
+//   CLOUDFLARE_ACCOUNT_ID             Cloudflare account id
+//   CLOUDFLARE_ANALYTICS_TOKEN        API token with the "Account Analytics" read permission (a *different* token
+//                             from the TURN key's: that one is CLOUDFLARE_TURN_API_TOKEN)
+//   CLOUDFLARE_MONTHLY_BUDGET_GB    Stop issuing at this egress (decimal GB). Unset = no budget stop.
+//   CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB Revoke a credential above this per hour (default 8, 0 disables)
+//   CLOUDFLARE_GUARD_INTERVAL_MIN   How often to check (default 5)
+//   CLOUDFLARE_GRAPHQL_URL, CLOUDFLARE_TURN_API_URL  Overrides of the Cloudflare endpoints (tests only)
 //
 // If Cloudflare cannot be queried the guard keeps its last known state and logs: it never takes
 // the endpoint down by itself.
@@ -59,16 +59,16 @@ export function createUsageGuard({
   now = Date.now,
   log = console,
 } = {}) {
-  const accountId = env.CF_ACCOUNT_ID
-  const analyticsToken = env.CF_ANALYTICS_TOKEN
-  const keyId = env.CF_TURN_KEY_ID
-  const turnToken = env.CF_TURN_API_TOKEN
-  const graphqlUrl = env.CF_GRAPHQL_URL || GRAPHQL_URL
-  const turnApiUrl = env.CF_TURN_API_URL || TURN_API_URL
+  const accountId = env.CLOUDFLARE_ACCOUNT_ID
+  const analyticsToken = env.CLOUDFLARE_ANALYTICS_TOKEN
+  const keyId = env.CLOUDFLARE_TURN_KEY_ID
+  const turnToken = env.CLOUDFLARE_TURN_API_TOKEN
+  const graphqlUrl = env.CLOUDFLARE_GRAPHQL_URL || GRAPHQL_URL
+  const turnApiUrl = env.CLOUDFLARE_TURN_API_URL || TURN_API_URL
 
-  const budgetGb = env.TURN_MONTHLY_BUDGET_GB ? Number(env.TURN_MONTHLY_BUDGET_GB) : 0
-  const hourlyLimitGb = env.TURN_USER_HOURLY_LIMIT_GB === undefined || env.TURN_USER_HOURLY_LIMIT_GB === '' ? 8 : Number(env.TURN_USER_HOURLY_LIMIT_GB)
-  const intervalMin = Number(env.TURN_GUARD_INTERVAL_MIN) > 0 ? Number(env.TURN_GUARD_INTERVAL_MIN) : 5
+  const budgetGb = env.CLOUDFLARE_MONTHLY_BUDGET_GB ? Number(env.CLOUDFLARE_MONTHLY_BUDGET_GB) : 0
+  const hourlyLimitGb = env.CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB === undefined || env.CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB === '' ? 8 : Number(env.CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB)
+  const intervalMin = Number(env.CLOUDFLARE_GUARD_INTERVAL_MIN) > 0 ? Number(env.CLOUDFLARE_GUARD_INTERVAL_MIN) : 5
 
   const enabled = Boolean(accountId && analyticsToken && keyId && turnToken)
 
@@ -158,7 +158,7 @@ export function createUsageGuard({
       return { ...state, revoked: revoked.size }
     },
     describe() {
-      if (!enabled) return 'disabled (set CF_ACCOUNT_ID and CF_ANALYTICS_TOKEN to enable)'
+      if (!enabled) return 'disabled (set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_ANALYTICS_TOKEN to enable)'
       const budget = budgetGb > 0 ? `${budgetGb} GB/month budget` : 'no monthly budget'
       const limit = hourlyLimitGb > 0 ? `${hourlyLimitGb} GB/hour per credential` : 'no per-credential limit'
       return `${budget}, ${limit}, checked every ${intervalMin} min`

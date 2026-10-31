@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
-import { createIceProvider, selectProvider, sharedSecretCredentials } from '../ice.js'
+import { createIceProvider, isIceDisabled, selectProvider, sharedSecretCredentials } from '../ice.js'
 
 test('returns no servers when nothing is configured', async () => {
   const provider = createIceProvider({ env: {} })
@@ -71,7 +71,7 @@ test('asks Cloudflare for credentials and strips the browser-blocked port 53', a
       }),
     }
   }
-  const provider = createIceProvider({ env: { CF_TURN_KEY_ID: 'KEY', CF_TURN_API_TOKEN: 'TOKEN' }, fetchImpl })
+  const provider = createIceProvider({ env: { CLOUDFLARE_TURN_KEY_ID: 'KEY', CLOUDFLARE_TURN_API_TOKEN: 'TOKEN' }, fetchImpl })
   const { iceServers } = await provider.get()
 
   assert.match(calls[0].url, /\/turn\/keys\/KEY\/credentials\/generate-ice-servers$/)
@@ -83,7 +83,7 @@ test('asks Cloudflare for credentials and strips the browser-blocked port 53', a
 
 test('TURN_PROVIDER decides when several back-ends are configured', async () => {
   const fetchImpl = async () => ({ ok: true, json: async () => ({ iceServers: [{ urls: ['stun:cf'] }] }) })
-  const env = { CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T', TURN_URLS: 'turn:x', TURN_SECRET: 's' }
+  const env = { CLOUDFLARE_TURN_KEY_ID: 'K', CLOUDFLARE_TURN_API_TOKEN: 'T', TURN_URLS: 'turn:x', TURN_SECRET: 's' }
 
   const cloudflare = createIceProvider({ env: { ...env, TURN_PROVIDER: 'cloudflare' }, fetchImpl })
   assert.equal(cloudflare.name, 'cloudflare')
@@ -99,7 +99,7 @@ test('auto-detects the provider from the variables that are present', () => {
   assert.equal(selectProvider({ TURN_URLS: 'turn:x', TURN_SECRET: 's' }).name, 'coturn')
   assert.equal(selectProvider({ TURN_URLS: 'turn:x', TURN_USERNAME: 'u', TURN_CREDENTIAL: 'p' }).name, 'static')
   assert.equal(selectProvider({ TURN_API_URL: 'https://api.example.com' }).name, 'http')
-  assert.equal(selectProvider({ CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T' }).name, 'cloudflare')
+  assert.equal(selectProvider({ CLOUDFLARE_TURN_KEY_ID: 'K', CLOUDFLARE_TURN_API_TOKEN: 'T' }).name, 'cloudflare')
 })
 
 test('reports a misspelt or incomplete TURN_PROVIDER instead of failing silently', async () => {
@@ -184,7 +184,7 @@ test('an HTTP ICE API is called once and reused until half of the credentials li
 test('propagates upstream failures without caching them', async () => {
   let ok = false
   const fetchImpl = async () => (ok ? { ok: true, json: async () => ({ iceServers: [] }) } : { ok: false, status: 500 })
-  const provider = createIceProvider({ env: { CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T' }, fetchImpl })
+  const provider = createIceProvider({ env: { CLOUDFLARE_TURN_KEY_ID: 'K', CLOUDFLARE_TURN_API_TOKEN: 'T' }, fetchImpl })
   await assert.rejects(provider.get(), /500/)
   ok = true
   assert.deepEqual((await provider.get()).iceServers, [])
@@ -215,7 +215,7 @@ test('Cloudflare mints a credential per request so usage can be attributed and a
       json: async () => ({ iceServers: [{ urls: ['turn:t:3478'], username: `u${++n}`, credential: 'c' }] }),
     }
   }
-  const provider = createIceProvider({ env: { CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T' }, fetchImpl })
+  const provider = createIceProvider({ env: { CLOUDFLARE_TURN_KEY_ID: 'K', CLOUDFLARE_TURN_API_TOKEN: 'T' }, fetchImpl })
   const first = (await provider.get()).iceServers[0].username
   const second = (await provider.get()).iceServers[0].username
   assert.notEqual(first, second)
@@ -229,9 +229,21 @@ test('the Cloudflare API base URL can be overridden (used by the integration tes
     return { ok: true, json: async () => ({ iceServers: [] }) }
   }
   const provider = createIceProvider({
-    env: { CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T', CF_TURN_API_URL: 'http://127.0.0.1:9/keys' },
+    env: { CLOUDFLARE_TURN_KEY_ID: 'K', CLOUDFLARE_TURN_API_TOKEN: 'T', CLOUDFLARE_TURN_API_URL: 'http://127.0.0.1:9/keys' },
     fetchImpl,
   })
   await provider.get()
   assert.equal(url, 'http://127.0.0.1:9/keys/K/credentials/generate-ice-servers')
+})
+
+test('the Cloudflare provider is only configured by CLOUDFLARE_* variables', () => {
+  assert.equal(selectProvider({ CLOUDFLARE_TURN_KEY_ID: 'K', CLOUDFLARE_TURN_API_TOKEN: 'T' }).name, 'cloudflare')
+  assert.equal(selectProvider({ CF_TURN_KEY_ID: 'K', CF_TURN_API_TOKEN: 'T' }).name, null)
+})
+
+test('ICE_DISABLED accepts true, 1 and yes, in any case, and nothing else', () => {
+  for (const value of ['true', 'TRUE', '1', 'yes', ' true ']) assert.equal(isIceDisabled({ ICE_DISABLED: value }), true, value)
+  for (const value of [undefined, '', 'false', '0', 'no', 'disabled']) {
+    assert.equal(isIceDisabled({ ICE_DISABLED: value }), false, String(value))
+  }
 })
