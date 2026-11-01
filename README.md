@@ -17,6 +17,7 @@
 - **Video calls** — WebRTC mesh with mute, camera toggle, and screen sharing
 - **Layouts** — adaptive grid and spotlight (pin) view, auto-switches on screen share
 - **E2E encrypted by design** — all traffic is encrypted end-to-end; no server can read your messages, not even the relay when it has to forward them
+- **Signed messages** — messages, edits, deletions and reactions are signed with the author's key: nobody can write as, or change the messages of, another member ([details](docs/security.md))
 - **Installable PWA** — works offline, installable on desktop and mobile
 - **No account required** — identity is a local cryptographic keypair
 

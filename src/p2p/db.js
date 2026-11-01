@@ -92,6 +92,11 @@ export async function persistMessage(roomCode, msg) {
   const { content, _enc } = await _encrypt(msg.content)
   const record = { ...msg, content, room: roomCode }
   if (_enc) record._enc = true
+  // The text of an edit is as private as the content: encrypt it too
+  if (typeof msg.edit?.newContent === 'string') {
+    const { content: newContent, _enc: editEnc } = await _encrypt(msg.edit.newContent)
+    record.edit = { ...msg.edit, newContent, ...(editEnc ? { _enc: true } : {}) }
+  }
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite')
     tx.objectStore(STORE).put(record)
@@ -113,10 +118,16 @@ export async function loadMessages(roomCode) {
     req.onsuccess = async () => {
       const rows = req.result ?? []
       const msgs = await Promise.all(
-        rows.map(async ({ room: _r, _enc, ...msg }) => ({
-          ...msg,
-          content: await _decrypt({ content: msg.content, _enc }),
-        }))
+        rows.map(async ({ room: _r, _enc, ...msg }) => {
+          const loaded = { ...msg, content: await _decrypt({ content: msg.content, _enc }) }
+          if (msg.edit) {
+            const { _enc: editEnc, ...edit } = msg.edit
+            const newContent = await _decrypt({ content: edit.newContent, _enc: editEnc })
+            if (newContent === null) delete loaded.edit
+            else loaded.edit = { ...edit, newContent }
+          }
+          return loaded
+        })
       )
       // Filtra i messaggi che non si riescono a decifrare (appartenenti a un altro account)
       msgs.sort((a, b) => a.timestamp - b.timestamp)

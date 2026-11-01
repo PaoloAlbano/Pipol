@@ -585,7 +585,9 @@ describe('RoomSwarm two-peer — REACTION', () => {
       type: 'REACTION',
       messageId: 'msg-1',
       emoji: '👍',
-      userPubkey: 'aabbccdd',
+      publicKey: 'aabbccdd',
+      at: 1234,
+      sig: 'cafe',
       channelName: 'generale',
       removed: false,
     })
@@ -593,7 +595,9 @@ describe('RoomSwarm two-peer — REACTION', () => {
     expect(received[0]).toMatchObject({
       messageId: 'msg-1',
       emoji: '👍',
-      userPubkey: 'aabbccdd',
+      publicKey: 'aabbccdd',
+      at: 1234,
+      sig: 'cafe',
       channelName: 'generale',
       removed: false,
     })

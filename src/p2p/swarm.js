@@ -565,9 +565,11 @@ export class RoomSwarm extends EventTarget {
               peerId: remoteId,
               messageId: msg.messageId,
               emoji: msg.emoji,
-              userPubkey: msg.userPubkey,
-              channelName: msg.channelName ?? null,
               removed: msg.removed ?? false,
+              at: msg.at,
+              publicKey: msg.publicKey,
+              sig: msg.sig,
+              channelName: msg.channelName ?? null,
             },
           })
         )
@@ -579,7 +581,9 @@ export class RoomSwarm extends EventTarget {
               peerId: remoteId,
               originalId: msg.originalId,
               newContent: msg.newContent,
-              editedAt: msg.editedAt ?? Date.now(),
+              editedAt: msg.editedAt,
+              publicKey: msg.publicKey,
+              sig: msg.sig,
               channelName: msg.channelName ?? null,
             },
           })
@@ -591,6 +595,8 @@ export class RoomSwarm extends EventTarget {
             detail: {
               peerId: remoteId,
               originalId: msg.originalId,
+              publicKey: msg.publicKey,
+              sig: msg.sig,
               channelName: msg.channelName ?? null,
             },
           })
@@ -609,6 +615,8 @@ export class RoomSwarm extends EventTarget {
               channelName: msg.channelName ?? null,
               senderUsername: msg.senderUsername ?? null,
               senderPublicKey: msg.senderPublicKey ?? null,
+              timestamp: msg.timestamp,
+              sig: msg.sig,
             },
           })
         )

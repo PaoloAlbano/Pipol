@@ -17,11 +17,14 @@
 import b4a from 'b4a'
 import { getStore, getIdentity } from './storage.js'
 import { persistMessage, loadMessages } from './db.js'
+import { signMessage, verifyMessage, cleanMessage, sameMessage, signOp, verifyOp, toHex } from './signing.js'
+
+const MAX_MESSAGE_LENGTH = 10000
 
 export class MessageStore {
   /**
-   * @param {string} roomCode
-   * @param {{ username: string, publicKey: Buffer }} identity
+   * @param {string} roomCode  Also the scope of every signature made or verified by this store
+   * @param {{ username: string, publicKey: Uint8Array, secretKey: Uint8Array }} identity
    */
   constructor(roomCode, identity) {
     this.roomCode = roomCode
@@ -29,13 +32,15 @@ export class MessageStore {
 
     this._localCore = null
     this._remoteCores = new Map() // hex pubKey → Hypercore
-    this._channelMessages = [] // messages received via swarm control channel (browser mode)
+    this._channelMessages = [] // signed messages received via swarm / loaded from IndexedDB
     this._store = null
     this._listeners = new Map() // event → [fn, ...]
-    // Edit/delete ops for messages that live in Hypercore cores (own messages).
-    // Applied in getHistory() so they're visible even when the core block is immutable.
-    this._editsMap = new Map() // id → { newContent, editedAt }
-    this._deletedIds = new Set() // id
+    // Signed edit/delete operations, keyed `${messageId}:${authorPublicKey}`. They are kept apart from the
+    // messages (which stay exactly as signed) and applied in getHistory(), only when the signer is the
+    // author of the message. This also covers messages that live in immutable Hypercore blocks.
+    this._edits = new Map()
+    this._deletes = new Map()
+    this._verifiedBlocks = new Map() // `${id}:${sig}` → { block, msg }: the verdict for a block, reused only if identical
   }
 
   async init() {
@@ -49,17 +54,16 @@ export class MessageStore {
     // Emit messages update whenever our own core grows
     this._localCore.on('append', () => this._emit('messages'))
 
-    // Load persisted messages from IndexedDB into the in-memory channel cache
+    // Load persisted messages from IndexedDB into the in-memory channel cache (our own storage: trusted)
     const persisted = await loadMessages(this.roomCode)
-    const MAX_MESSAGE_LENGTH = 10000
-    for (const msg of persisted) {
-      if (!this._channelMessages.some((m) => m.id === msg.id)) {
-        // Validate and truncate if needed (defensive: old messages or corruption)
-        if (msg.content?.length > MAX_MESSAGE_LENGTH) {
-          msg.content = msg.content.slice(0, MAX_MESSAGE_LENGTH)
-        }
-        this._channelMessages.push(msg)
-      }
+    for (const stored of persisted) {
+      const { edit, del, ...msg } = stored
+      if (this._has(msg.id, msg.publicKey)) continue
+      if (msg.type !== 'image' && msg.content?.length > MAX_MESSAGE_LENGTH) continue
+      this._signOwnLegacyMessage(msg)
+      this._channelMessages.push(msg)
+      if (edit) this._acceptOp('edit', { ...edit, originalId: msg.id })
+      if (del) this._acceptOp('delete', { ...del, originalId: msg.id })
     }
     console.info(`[autobase] Loaded ${persisted.length} messages from IndexedDB for room "${this.roomCode}"`)
     console.info(
@@ -69,23 +73,48 @@ export class MessageStore {
   }
 
   /**
-   * Accept a message forwarded via the swarm control channel
-   * (used in BroadcastChannel browser mode where Hypercore replication is unavailable).
-   * @param {object} msg
+   * Messages written before signatures existed: the ones we wrote can be signed now, so that they can still be
+   * shared with the others (who accept only signed messages).
    */
-  receiveMessage(msg) {
-    if (!msg?.id) return
-    if (this._channelMessages.some((m) => m.id === msg.id)) return
-    // Validate message length — truncate if too long (malicious or buggy peer)
+  _signOwnLegacyMessage(msg) {
+    if (msg.sig || msg.deleted || msg.publicKey !== toHex(this.identity.publicKey) || !this.identity.secretKey) return
+    msg.sig = signMessage(this.roomCode, msg, this.identity.secretKey)
+    persistMessage(this.roomCode, msg).catch(() => {})
+  }
+
+  /**
+   * Accept a message forwarded via the swarm control channel, relayed history included.
+   * It must carry a valid signature of its author, otherwise it is dropped. Only the signed fields are kept.
+   * @param {object} raw
+   */
+  receiveMessage(raw) {
+    if (typeof raw?.id !== 'string') return
+    if (this._has(raw.id, raw.publicKey)) {
+      this._ingestEmbeddedOps(raw) // already known: the copy may still carry an edit/delete we missed
+      return
+    }
+    if (!verifyMessage(this.roomCode, raw)) {
+      console.warn('[autobase] dropped a message with a missing or invalid signature')
+      return
+    }
+    const msg = cleanMessage(raw)
     // Image messages carry a data URL in imageData and have empty content — skip the limit.
-    const MAX_MESSAGE_LENGTH = 10000
-    if (msg.type !== 'image' && msg.content?.length > MAX_MESSAGE_LENGTH) {
-      console.warn('[autobase] Message too long, truncating:', msg.content.length, '→', MAX_MESSAGE_LENGTH)
-      msg.content = msg.content.slice(0, MAX_MESSAGE_LENGTH)
+    if (msg.type !== 'image' && msg.content.length > MAX_MESSAGE_LENGTH) {
+      console.warn('[autobase] dropped a message that is too long:', msg.content.length)
+      return
     }
     this._channelMessages.push(msg)
-    persistMessage(this.roomCode, msg).catch(() => {})
+    this._ingestEmbeddedOps(raw)
+    persistMessage(this.roomCode, this._persistable(msg)).catch(() => {})
     this._emit('messages')
+  }
+
+  /** Edit/delete operations that travel inside a message (history sync) are verified like any other. */
+  _ingestEmbeddedOps(raw) {
+    let changed = false
+    if (raw.edit) changed = this._acceptOp('edit', { ...raw.edit, originalId: raw.id }) || changed
+    if (raw.del) changed = this._acceptOp('delete', { ...raw.del, originalId: raw.id }) || changed
+    if (changed) this._emit('messages')
   }
 
   /** Hex public key for this peer's message core (to be advertised in HELLO). */
@@ -103,7 +132,6 @@ export class MessageStore {
    * @throws {Error} If content exceeds maximum length
    */
   async addMessage(content, opts = {}) {
-    const MAX_MESSAGE_LENGTH = 10000
     if (content.length > MAX_MESSAGE_LENGTH) {
       throw new Error(`Message too long (${content.length}/${MAX_MESSAGE_LENGTH} characters)`)
     }
@@ -111,12 +139,14 @@ export class MessageStore {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       content,
       username: getIdentity().username,
-      publicKey: b4a.toString(this.identity.publicKey, 'hex'),
+      publicKey: toHex(this.identity.publicKey),
       timestamp: Date.now(),
       type: 'text',
     }
     if (opts.parentId) msg.parentId = opts.parentId
+    msg.sig = signMessage(this.roomCode, msg, this.identity.secretKey)
     await this._localCore.append(msg)
+    this._channelMessages.push(msg) // needed to apply our own edits and deletions
     persistMessage(this.roomCode, msg).catch(() => {})
     return msg
   }
@@ -167,49 +197,90 @@ export class MessageStore {
   }
 
   /**
-   * Read and merge all messages from all known cores, sorted by timestamp.
+   * Ids are only unique per author: anybody can sign a message of their own with somebody else's id, so a
+   * message is identified by its author and its id together.
+   */
+  _has(id, publicKey) {
+    return this._channelMessages.some((m) => m.id === id && m.publicKey === publicKey)
+  }
+
+  /** Our own messages plus everything received, one entry per author and id, still exactly as signed. */
+  async _collectRaw() {
+    const byKey = new Map()
+    const keyOf = (msg) => `${msg.publicKey}:${msg.id}`
+    for (const msg of this._channelMessages) byKey.set(keyOf(msg), msg)
+
+    const blocks = []
+    await this._readCoreInto(this._localCore, blocks, false)
+    for (const core of this._remoteCores.values()) {
+      await this._readCoreInto(core, blocks, true)
+    }
+    for (const block of blocks) {
+      if (!byKey.has(keyOf(block))) byKey.set(keyOf(block), block)
+    }
+    return [...byKey.values()]
+  }
+
+  /**
+   * Read and merge all messages from all known cores, sorted by timestamp, with edits and deletions applied.
    * @returns {Promise<object[]>}
    */
   async getHistory() {
-    const all = []
-
-    await this._readCoreInto(this._localCore, all)
-
-    for (const core of this._remoteCores.values()) {
-      await this._readCoreInto(core, all)
-    }
-
-    // Include messages forwarded via swarm control channel (browser mode)
-    for (const msg of this._channelMessages) {
-      if (!all.some((m) => m.id === msg.id)) all.push(msg)
-    }
-
-    // Apply edit/delete ops (covers messages whose source is a Hypercore core)
-    for (const msg of all) {
-      if (this._deletedIds.has(msg.id) && !msg.deleted) {
-        msg.deleted = true
-        msg.content = ''
-      }
-      const edit = this._editsMap.get(msg.id)
-      if (edit && !msg.edited) {
-        msg.content = edit.newContent
-        msg.edited = true
-        msg.editedAt = edit.editedAt
-      }
-    }
-
+    const all = (await this._collectRaw()).map((msg) => this._display(msg))
     // Stable sort by timestamp; break ties by publicKey for determinism
     all.sort((a, b) => a.timestamp - b.timestamp || a.publicKey?.localeCompare(b.publicKey))
     return all
   }
 
-  /** Read all blocks from a core into the destination array. */
-  async _readCoreInto(core, dest) {
+  /**
+   * The messages to give to a peer that asks for history: the signed ones only, with the signed edit and
+   * delete operations attached, so the peer can verify everything without trusting us.
+   * @returns {Promise<object[]>}
+   */
+  async getSignedHistory() {
+    return (await this._collectRaw()).filter((msg) => msg.sig).map((msg) => this._persistable(msg))
+  }
+
+  /** The message as shown: edit and deletion applied (only when signed by the author of the message). */
+  _display(raw) {
+    const key = `${raw.id}:${raw.publicKey}`
+    const edit = this._edits.get(key)
+    const del = this._deletes.get(key)
+    const msg = { ...raw }
+    if (edit) {
+      msg.content = edit.newContent
+      msg.edited = true
+      msg.editedAt = edit.editedAt
+    }
+    if (del) {
+      msg.deleted = true
+      msg.content = ''
+    }
+    return msg
+  }
+
+  /** The signed message with the signed operations that apply to it (what is stored and given to peers). */
+  _persistable(msg) {
+    const key = `${msg.id}:${msg.publicKey}`
+    const body = ({ originalId: _id, ...rest }) => rest
+    const edit = this._edits.get(key)
+    const del = this._deletes.get(key)
+    return { ...msg, ...(edit ? { edit: body(edit) } : {}), ...(del ? { del: body(del) } : {}) }
+  }
+
+  /** Read all blocks from a core into the destination array. Blocks of other peers must be signed. */
+  async _readCoreInto(core, dest, verify = false) {
     if (!core || core.length === 0) return
     for (let i = 0; i < core.length; i++) {
       try {
-        const block = await core.get(i)
-        if (block) dest.push(block) // already decoded by valueEncoding: 'json'
+        const block = await core.get(i) // already decoded by valueEncoding: 'json'
+        if (!block) continue
+        if (verify) {
+          const msg = this._authenticBlock(block)
+          if (msg) dest.push(msg)
+        } else {
+          dest.push(block)
+        }
       } catch (err) {
         console.warn('[autobase] failed to read block', i, err)
       }
@@ -217,41 +288,77 @@ export class MessageStore {
   }
 
   /**
-   * Apply an edit received from a peer (or locally triggered).
-   * Updates the in-memory message and persists the change to IndexedDB.
-   * @param {string} originalId  id of the message being edited
-   * @param {string} newContent  new text content
-   * @param {number} editedAt    timestamp of the edit
+   * The message as signed if the block of another peer's core is authentic, otherwise null. The result is
+   * cached, but only reused for a block identical in every signed field: the same id and signature with other
+   * content is a different block and is verified again.
    */
-  receiveEdit(originalId, newContent, editedAt) {
-    // Track for messages in Hypercore cores (own messages — immutable append-only log)
-    this._editsMap.set(originalId, { newContent, editedAt })
-    // Also update _channelMessages in-place if the message arrived via swarm control
-    const idx = this._channelMessages.findIndex((m) => m.id === originalId)
-    if (idx !== -1) {
-      const updated = { ...this._channelMessages[idx], content: newContent, edited: true, editedAt }
-      this._channelMessages[idx] = updated
-      persistMessage(this.roomCode, updated).catch(() => {})
-    }
-    this._emit('messages')
+  _authenticBlock(block) {
+    const key = `${block.id}:${block.sig}`
+    const cached = this._verifiedBlocks.get(key)
+    if (cached && sameMessage(cached.block, block)) return cached.msg
+    const ok =
+      verifyMessage(this.roomCode, block) && (block.type === 'image' || block.content.length <= MAX_MESSAGE_LENGTH)
+    const msg = ok ? cleanMessage(block) : null
+    this._verifiedBlocks.set(key, { block: cleanMessage(block), msg })
+    return msg
   }
 
   /**
-   * Apply a deletion received from a peer (or locally triggered).
-   * Marks the message as deleted — content is blanked, flag set.
-   * @param {string} originalId  id of the message being deleted
+   * Verify and store a signed edit or deletion. It is accepted only if the signature is valid. It is kept per
+   * author and applies only to a message of that author. An edit replaces an older one; a deletion is final.
+   * @returns {boolean} true if the operation is new
    */
-  receiveDelete(originalId) {
-    // Track for messages in Hypercore cores (own messages — immutable append-only log)
-    this._deletedIds.add(originalId)
-    // Also update _channelMessages in-place if the message arrived via swarm control
-    const idx = this._channelMessages.findIndex((m) => m.id === originalId)
-    if (idx !== -1) {
-      const updated = { ...this._channelMessages[idx], deleted: true, content: '' }
-      this._channelMessages[idx] = updated
-      persistMessage(this.roomCode, updated).catch(() => {})
-    }
-    this._emit('messages')
+  _acceptOp(kind, op) {
+    if (!verifyOp(kind, this.roomCode, op)) return false
+    if (kind === 'edit' && op.newContent.length > MAX_MESSAGE_LENGTH) return false
+
+    const ops = kind === 'edit' ? this._edits : this._deletes
+    const key = `${op.originalId}:${op.publicKey}`
+    const current = ops.get(key)
+    if (current && (kind === 'delete' || current.editedAt >= op.editedAt)) return false
+
+    ops.set(key, op)
+    const raw = this._channelMessages.find((m) => m.id === op.originalId && m.publicKey === op.publicKey)
+    if (raw) persistMessage(this.roomCode, this._persistable(raw)).catch(() => {})
+    return true
+  }
+
+  /**
+   * Apply a signed edit received from a peer.
+   * @param {{ originalId: string, newContent: string, editedAt: number, publicKey: string, sig: string }} op
+   */
+  receiveEdit(op) {
+    if (this._acceptOp('edit', op)) this._emit('messages')
+  }
+
+  /**
+   * Apply a signed deletion received from a peer: the content is blanked and the message flagged.
+   * @param {{ originalId: string, publicKey: string, sig: string }} op
+   */
+  receiveDelete(op) {
+    if (this._acceptOp('delete', op)) this._emit('messages')
+  }
+
+  /**
+   * Edit one of our messages: signs the edit, applies it and returns it, ready to be sent to the others.
+   * @returns {object} the signed operation
+   */
+  createEdit(originalId, newContent) {
+    const previous = this._edits.get(`${originalId}:${toHex(this.identity.publicKey)}`)
+    const editedAt = Math.max(Date.now(), (previous?.editedAt ?? 0) + 1)
+    const op = signOp('edit', this.roomCode, { originalId, newContent, editedAt }, this.identity)
+    this.receiveEdit(op)
+    return op
+  }
+
+  /**
+   * Delete one of our messages: signs the deletion, applies it and returns it, ready to be sent.
+   * @returns {object} the signed operation
+   */
+  createDelete(originalId) {
+    const op = signOp('delete', this.roomCode, { originalId }, this.identity)
+    this.receiveDelete(op)
+    return op
   }
 
   on(event, listener) {
