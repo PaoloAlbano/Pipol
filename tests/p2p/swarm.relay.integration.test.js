@@ -314,3 +314,92 @@ describe('RoomSwarm — WebSocket relay fallback (no WebRTC DataChannel)', () =>
     expect(ids).toEqual(['msg-0', 'msg-1', 'msg-2', 'msg-3', 'msg-4'])
   })
 })
+
+// ── What the relay gets to see ────────────────────────────────────────────────
+
+describe('RoomSwarm — relay fallback is end-to-end encrypted', () => {
+  const ID_A = makeIdentity(0xaa)
+  const ID_B = makeIdentity(0xbb)
+  let swarms
+
+  async function joinPair(roomA, roomB, optsA = {}, optsB = {}) {
+    const { getIdentity } = await import('../../src/p2p/storage.js')
+    getIdentity.mockReturnValueOnce(ID_A).mockReturnValueOnce(ID_B)
+    const a = new RoomSwarm(roomA, { relayUrl: relay.url, ...optsA })
+    const b = new RoomSwarm(roomB, { relayUrl: relay.url, ...optsB })
+    swarms.push(a, b)
+    await Promise.all([a.join(), b.join()])
+    await new Promise((r) => setTimeout(r, 100))
+    return [a, b]
+  }
+
+  beforeEach(() => {
+    swarms = []
+    relay.frames.length = 0
+  })
+
+  afterEach(() => {
+    swarms.forEach((s) => s.leave())
+  })
+
+  it('a quick room shows the relay only a hash of the room code, and only ciphertext afterwards', async () => {
+    const [a, b] = await joinPair('spy-quick-room', 'spy-quick-room')
+    const received = []
+    b.addEventListener('chat-message', (e) => received.push(e.detail))
+
+    a.sendToAll({ type: 'MSG', channelName: 'general', message: { id: 'spy-1', content: 'top secret text' } })
+    await waitFor(() => received.length > 0)
+    expect(received[0].message.content).toBe('top secret text')
+
+    const seen = relay.frames.join('\n')
+    expect(relay.frames.some((f) => JSON.parse(f).type === 'join')).toBe(true)
+    for (const secret of ['top secret text', 'spy-quick-room', 'peer-aa', 'peer-bb', 'fingerprint', 'v=0', 'HELLO']) {
+      expect(seen).not.toContain(secret)
+    }
+  })
+
+  it('a workspace keeps the relay blind too (shared key, room name already a hash)', async () => {
+    const relayKey = new Uint8Array(32).fill(9)
+    const room = 'f'.repeat(64)
+    const [a, b] = await joinPair(room, room, { relayKey }, { relayKey })
+    const received = []
+    b.addEventListener('chat-message', (e) => received.push(e.detail))
+
+    a.sendToAll({ type: 'MSG', channelName: 'general', message: { id: 'spy-2', content: 'workspace secret' } })
+    await waitFor(() => received.length > 0)
+
+    expect(received[0].message.content).toBe('workspace secret')
+    expect(relay.frames.join('\n')).not.toContain('workspace secret')
+  })
+
+  it('peers with a different key (wrong room code or secret) get nothing and do not crash', async () => {
+    const room = 'e'.repeat(64)
+    const [a, b] = await joinPair(
+      room,
+      room,
+      { relayKey: new Uint8Array(32).fill(1) },
+      { relayKey: new Uint8Array(32).fill(2) }
+    )
+    const received = []
+    const joined = []
+    b.addEventListener('chat-message', (e) => received.push(e.detail))
+    b.addEventListener('peer-joined', (e) => joined.push(e.detail))
+
+    a.sendToAll({ type: 'MSG', channelName: 'general', message: { id: 'spy-3', content: 'not for you' } })
+    await new Promise((r) => setTimeout(r, 300))
+
+    expect(received).toHaveLength(0)
+    expect(joined).toHaveLength(0)
+  })
+
+  it('quick rooms with different codes cannot read each other even if the relay mixes them', async () => {
+    const [a, b] = await joinPair('code-one', 'code-two')
+    const received = []
+    b.addEventListener('chat-message', (e) => received.push(e.detail))
+
+    a.sendToAll({ type: 'MSG', channelName: 'general', message: { id: 'spy-4', content: 'wrong room' } })
+    await new Promise((r) => setTimeout(r, 300))
+
+    expect(received).toHaveLength(0)
+  })
+})

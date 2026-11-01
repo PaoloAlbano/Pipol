@@ -24,6 +24,7 @@
  * Derivations (BLAKE2b via hypercore-crypto):
  *   swarmTopic(secret)         = BLAKE2b(secretBytes ‖ ":meta")          → 32-byte hex
  *   channelRoomCode(secret, n) = BLAKE2b(secretBytes ‖ ":ch:" ‖ n).hex().slice(0,20)
+ *   relayKey(secret)           = BLAKE2b(secretBytes ‖ ":relay:v1")      → 32-byte key
  *
  * Channel rules:
  *   - Anyone in the workspace can create a channel (append-only CRDT)
@@ -50,6 +51,17 @@ const SCHEMA_VERSION = 1
 export function deriveSwarmTopic(secret) {
   const buf = b4a.concat([b4a.from(secret, 'hex'), b4a.from(':meta')])
   return b4a.toString(crypto.hash(buf), 'hex')
+}
+
+/**
+ * Derives the key that encrypts everything the workspace sends through the relay (see relay-crypto.js).
+ * The relay never knows the secret, so it cannot derive this key.
+ * @param {string} secret  Hex-encoded 32-byte workspace secret
+ * @returns {Uint8Array}  32-byte key
+ */
+export function deriveWorkspaceRelayKey(secret) {
+  const buf = b4a.concat([b4a.from(secret, 'hex'), b4a.from(':relay:v1')])
+  return crypto.hash(buf)
 }
 
 /**

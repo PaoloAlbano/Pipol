@@ -22,7 +22,14 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { RoomSwarm } from './swarm.js'
-import { deriveSwarmTopic, mergeChannelList, getWorkspaces, saveWorkspace, getEffectiveConfig } from './workspace.js'
+import {
+  deriveSwarmTopic,
+  deriveWorkspaceRelayKey,
+  mergeChannelList,
+  getWorkspaces,
+  saveWorkspace,
+  getEffectiveConfig,
+} from './workspace.js'
 import { encryptDM } from './dm-crypto.js'
 import { containsMention } from './notifications.js'
 
@@ -73,7 +80,11 @@ export function useWorkspaceSync(workspace, identity, onChannelsUpdated, onChann
 
     const topic = deriveSwarmTopic(workspace.secret)
     const { relayUrl } = getEffectiveConfig(workspace.config)
-    const swarm = new RoomSwarm(topic, { relayUrl: relayUrl || null, ice: workspace.config?.ice ?? null })
+    const swarm = new RoomSwarm(topic, {
+      relayUrl: relayUrl || null,
+      ice: workspace.config?.ice ?? null,
+      relayKey: deriveWorkspaceRelayKey(workspace.secret),
+    })
     swarmRef.current = swarm
     // Capture membersRef.current at effect start so the cleanup can safely clear it
     // even if the ref has been reassigned by a subsequent render.

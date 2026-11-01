@@ -19,7 +19,7 @@ There are no CDN fonts or other third-party assets.
 ## Still contacting the outside world today
 
 1. **Public STUN (Google).** The built-in default in `src/webrtc/ice.js` (`stun.l.google.com` and `stun1.l.google.com`) is used by:
-   - **chat connections**, unless "Also use TURN for chat" or "Always relay" is on, even when `/ice` returns your own coturn;
+   - **chat connections**, unless "Always relay" is on, even when `/ice` returns your own coturn;
    - **calls** as a fallback, when `/ice` returns no servers (no TURN configured, an error, or **Off** in Settings).
 
    With an internal coturn behind `/ice`, calls use only your servers, but chat connections still query Google's STUN. Until the default is configurable, block outbound UDP to ports 3478 and 19302 at your firewall: peers on the same network should still connect through their local addresses.

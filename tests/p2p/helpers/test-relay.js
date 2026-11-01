@@ -17,6 +17,7 @@ import { WebSocketServer } from 'ws'
 
 export async function createTestRelay() {
   const rooms = new Map() // roomCode → Map<peerId, ws>
+  const frames = [] // every raw frame the relay received, to check what it gets to see
 
   const server = http.createServer()
   // One WSS listening on all paths; routes via req.url (mirrors relay/server.js)
@@ -27,6 +28,7 @@ export async function createTestRelay() {
     let roomCode = null
 
     ws.on('message', (raw) => {
+      frames.push(String(raw))
       let msg
       try {
         msg = JSON.parse(raw)
@@ -105,6 +107,7 @@ export async function createTestRelay() {
 
   return {
     port,
+    frames,
     url: `ws://127.0.0.1:${port}`,
     close: () => new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   }

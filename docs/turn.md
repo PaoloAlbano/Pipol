@@ -14,11 +14,11 @@ A TURN server only sees packets that are already end-to-end encrypted (DTLS-SRTP
 
 ## How the app uses it
 
-- **TURN is for video calls only.** Chat connections (data channels) use public STUN and, if they cannot connect, fall back to the relay's WebSocket. This keeps chat from consuming TURN bandwidth. A user can opt in to TURN for chat in Settings.
+- **TURN is for video calls only.** Chat connections (data channels) use public STUN and, if they cannot connect, fall back to the relay's WebSocket. This keeps chat from consuming TURN bandwidth. Only "Always relay" sends chat through TURN too (to hide your IP).
 - The app asks the relay for the ICE servers when it joins, before each call, and again before the credentials expire, **also during a call**, swapping the new credentials into the live connections. If the relay cannot be reached it keeps the credentials it has and retries after 30 seconds.
 - If anything fails (no relay answer, an error, no TURN configured) calls fall back to public STUN, so a broken TURN setup never blocks a call.
 
-> The relay-WebSocket fallback for chat carries channel messages in clear text for the relay operator (direct messages are encrypted separately). Enabling "Also use TURN for chat" makes that fallback less likely, but does not remove it. Encrypting the fallback is planned.
+> **When chat cannot connect directly** it falls back to the relay's WebSocket. That traffic, and the call signalling, is end-to-end encrypted with a key the relay does not know: see [What the relay can see](relay.md#what-the-relay-can-see).
 
 ## Who can choose what
 
@@ -26,7 +26,7 @@ Precedence, highest first:
 
 | Level | Where | What |
 |-------|-------|------|
-| **User** | Settings → Connection (TURN) | **Default** (workspace/app TURN), **Custom** (your own servers: URLs, username, password), **Off** (public STUN only). Extra options: *Also use TURN for chat*, *Always relay* (hides your IP from other participants, in calls and chat; needs a TURN server and adds latency) and **Test connection**, which checks that a relayed address can be allocated |
+| **User** | Settings → Connection (TURN) | **Default** (workspace/app TURN), **Custom** (your own servers: URLs, username, password), **Off** (public STUN only). Extra options: *Always relay* (hides your IP from other participants, in calls and chat; needs a TURN server and adds latency) and **Test connection**, which checks that a relayed address can be allocated |
 | **Workspace** | Create workspace → Advanced configuration | Fixed TURN servers or an ICE endpoint URL, embedded in the invite link. Members can still override or disable it in their own Settings |
 | **App** | The relay's `/ice`, or `VITE_ICE_URL` | The default for everyone |
 
