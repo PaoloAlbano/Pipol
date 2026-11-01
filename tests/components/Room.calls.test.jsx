@@ -6,11 +6,14 @@
 
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import * as crypto from 'hypercore-crypto'
 import Room from '../../src/components/Room.jsx'
 import { createRoomSwarm } from '../../src/p2p/swarm.js'
 import { WebRTCPeer } from '../../src/webrtc/peer.js'
 import * as media from '../../src/webrtc/media.js'
 import { sendImageFile } from '../../src/p2p/file-transfer.js'
+import { encryptDM, decryptDM } from '../../src/p2p/dm-crypto.js'
+import { signOp, toHex } from '../../src/p2p/signing.js'
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -31,12 +34,21 @@ vi.mock('../../src/p2p/autobase.js', () => ({
       }),
       emitMessages: (msgs) => listeners.messages?.(msgs),
       getHistory: vi.fn().mockResolvedValue([]),
+      getSignedHistory: vi.fn().mockResolvedValue([]),
       getLastTimestamp: vi.fn().mockResolvedValue(0),
       getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
       addMessage: vi.fn().mockResolvedValue({ id: 'm1', content: 'hi', timestamp: 1 }),
       receiveMessage: vi.fn(),
       receiveEdit: vi.fn(),
       receiveDelete: vi.fn(),
+      createEdit: vi.fn((originalId, newContent) => ({
+        originalId,
+        newContent,
+        editedAt: 5,
+        publicKey: 'aabb',
+        sig: 'edit-sig',
+      })),
+      createDelete: vi.fn((originalId) => ({ originalId, publicKey: 'aabb', sig: 'del-sig' })),
       close: vi.fn().mockResolvedValue(undefined),
     }
     stores.push(store)
@@ -87,8 +99,11 @@ Object.defineProperty(HTMLVideoElement.prototype, 'srcObject', {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const identity = { publicKey: Uint8Array.from([0xaa, 0xbb]), secretKey: 'ccdd', username: 'alice' }
-const MY_HEX = 'aabb'
+const keyPair = crypto.keyPair()
+const identity = { publicKey: keyPair.publicKey, secretKey: keyPair.secretKey, username: 'alice' }
+const MY_HEX = toHex(keyPair.publicKey)
+const peerKeys = crypto.keyPair()
+const PEER_HEX = toHex(peerKeys.publicKey)
 
 const baseProps = {
   roomCode: 'room-1',
@@ -563,7 +578,7 @@ describe('Room — chat messages', () => {
 
   it('answers history requests with newer messages only', async () => {
     await setup()
-    stores[0].getHistory.mockResolvedValue([msg({ timestamp: 5 }), msg({ id: 'x2', timestamp: 20 })])
+    stores[0].getSignedHistory.mockResolvedValue([msg({ timestamp: 5 }), msg({ id: 'x2', timestamp: 20 })])
     await fire('history-req', { peerId: 'p', since: 10, channelName: 'room-1' })
     expect(swarmMock.sendToPeer).toHaveBeenCalledWith(
       'p',
@@ -581,12 +596,49 @@ describe('Room — chat messages', () => {
     expect(swarmMock.sendToPeer).not.toHaveBeenCalledWith('p', expect.objectContaining({ type: 'HISTORY_RES' }))
   })
 
-  it('applies remote edits and deletes', async () => {
+  it('applies remote edits and deletes (the store verifies the signatures)', async () => {
     await setup()
-    await fire('msg-edit', { originalId: 'a', newContent: 'new', editedAt: 5, channelName: null })
-    await fire('msg-delete', { originalId: 'a', channelName: null })
-    expect(stores[0].receiveEdit).toHaveBeenCalledWith('a', 'new', 5)
-    expect(stores[0].receiveDelete).toHaveBeenCalledWith('a')
+    const edit = { originalId: 'a', newContent: 'new', editedAt: 5, publicKey: 'ffff', sig: 's1' }
+    const del = { originalId: 'a', publicKey: 'ffff', sig: 's2' }
+    await fire('msg-edit', { ...edit, channelName: null })
+    await fire('msg-delete', { ...del, channelName: null })
+    expect(stores[0].receiveEdit).toHaveBeenCalledWith(expect.objectContaining(edit))
+    expect(stores[0].receiveDelete).toHaveBeenCalledWith(expect.objectContaining(del))
+  })
+
+  const reaction = (over = {}, signer = peerKeys) =>
+    signOp('reaction', 'room-1', { messageId: 'x1', emoji: '👍', removed: false, at: 100, ...over }, signer)
+
+  it('adds a signed reaction from a peer and removes it again', async () => {
+    await setup()
+    await act(async () => stores[0].emitMessages([msg()]))
+    await fire('reaction', { ...reaction(), channelName: null })
+    expect(screen.getByText(/👍/)).toBeInTheDocument()
+    await fire('reaction', { ...reaction({ removed: true, at: 200 }), channelName: null })
+    expect(screen.queryByText(/👍/)).toBeNull()
+  })
+
+  it('ignores reactions that are unsigned, forged or signed for another room', async () => {
+    await setup()
+    await act(async () => stores[0].emitMessages([msg()]))
+    const op = reaction()
+    await fire('reaction', { ...op, sig: undefined, channelName: null })
+    await fire('reaction', { ...op, publicKey: MY_HEX, channelName: null }) // claims to be somebody else
+    await fire('reaction', { ...op, emoji: '🎉', channelName: null }) // changed after signing
+    await fire('reaction', {
+      ...signOp('reaction', 'other-room', { messageId: 'x1', emoji: '👍', removed: false, at: 100 }, peerKeys),
+      channelName: null,
+    })
+    expect(screen.queryByText(/👍|🎉/)).toBeNull()
+  })
+
+  it('ignores an old reaction replayed after a newer one', async () => {
+    await setup()
+    await act(async () => stores[0].emitMessages([msg()]))
+    await fire('reaction', { ...reaction({ at: 100 }), channelName: null })
+    await fire('reaction', { ...reaction({ removed: true, at: 200 }), channelName: null })
+    await fire('reaction', { ...reaction({ at: 100 }), channelName: null }) // replay of the first one
+    expect(screen.queryByText(/👍/)).toBeNull()
   })
 
   it('shows and clears typing indicators', async () => {
@@ -603,15 +655,6 @@ describe('Room — chat messages', () => {
     } finally {
       vi.useRealTimers()
     }
-  })
-
-  it('adds a reaction from a peer and removes it again', async () => {
-    await setup()
-    await act(async () => stores[0].emitMessages([msg()]))
-    await fire('reaction', { messageId: 'x1', emoji: '👍', userPubkey: 'ffff', channelName: null })
-    expect(screen.getByText(/👍/)).toBeInTheDocument()
-    await fire('reaction', { messageId: 'x1', emoji: '👍', userPubkey: 'ffff', channelName: null, removed: true })
-    expect(screen.queryByText(/👍/)).toBeNull()
   })
 
   it('receives chunked files through the file receiver', async () => {
@@ -686,6 +729,91 @@ describe('Room — direct messages', () => {
     await fire('chat-message', { channelName: null, message: { id: 'z', content: 'x', timestamp: 1 } })
     expect(stores[0].receiveMessage).not.toHaveBeenCalled()
   })
+
+  describe('edits, deletions and reactions', () => {
+    const own = { id: 'own1', content: 'my text', username: 'alice', publicKey: MY_HEX, timestamp: 10 }
+
+    async function openOwnMessageMenu() {
+      await setup(dmProps)
+      await act(async () => stores[0].emitMessages([own]))
+      await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+    }
+
+    it('go to the recipient inside the encrypted DM, never in clear to the whole workspace', async () => {
+      await openOwnMessageMenu()
+      await userEvent.click(screen.getByRole('menuitem', { name: /edit/i }))
+      const box = document.querySelector('.message-edit-textarea')
+      await userEvent.clear(box)
+      await userEvent.type(box, 'changed{Enter}')
+
+      expect(encryptDM).toHaveBeenCalledWith(
+        expect.objectContaining({ op: 'edit', originalId: 'own1', newContent: 'changed', sig: 'edit-sig' }),
+        identity.secretKey,
+        dmProps.dmPeerPublicKey
+      )
+      expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'DM', to: '0102', nonce: 'n', ciphertext: 'c' })
+      expect(swarmMock.sendToAll).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'MSG_EDIT' }))
+    })
+
+    it('also keep deletions and reactions out of the clear', async () => {
+      await openOwnMessageMenu()
+      await userEvent.click(screen.getByRole('menuitem', { name: '👍' }))
+      expect(encryptDM).toHaveBeenLastCalledWith(
+        expect.objectContaining({ op: 'reaction', messageId: 'own1', emoji: '👍' }),
+        identity.secretKey,
+        dmProps.dmPeerPublicKey
+      )
+      await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
+      await userEvent.click(screen.getByRole('menuitem', { name: /delete/i }))
+      expect(encryptDM).toHaveBeenLastCalledWith(
+        expect.objectContaining({ op: 'delete', originalId: 'own1' }),
+        identity.secretKey,
+        dmProps.dmPeerPublicKey
+      )
+      expect(swarmMock.sendToAll).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'REACTION' }))
+      expect(swarmMock.sendToAll).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'MSG_DELETE' }))
+    })
+
+    it('are applied when they arrive inside a DM', async () => {
+      await setup(dmProps)
+      const dm = (payload) => {
+        decryptDM.mockReturnValueOnce(payload)
+        return fire('dm-message', { from: '0102', to: MY_HEX, nonce: 'n', ciphertext: 'c' })
+      }
+      await dm({ op: 'edit', originalId: 'a', newContent: 'x', editedAt: 1, publicKey: '0102', sig: 's' })
+      await dm({ op: 'delete', originalId: 'a', publicKey: '0102', sig: 's' })
+      expect(stores[0].receiveEdit).toHaveBeenCalledWith(expect.objectContaining({ originalId: 'a', newContent: 'x' }))
+      expect(stores[0].receiveDelete).toHaveBeenCalledWith(expect.objectContaining({ originalId: 'a' }))
+
+      await act(async () => stores[0].emitMessages([{ ...own, publicKey: '0102' }]))
+      await dm({
+        ...signOp('reaction', 'room-1', { messageId: 'own1', emoji: '👍', removed: false, at: 1 }, peerKeys),
+        op: 'reaction',
+      })
+      expect(screen.getByText(/👍/)).toBeInTheDocument()
+      expect(stores[0].receiveMessage).not.toHaveBeenCalled()
+    })
+
+    it('are ignored when they arrive in clear in a DM room', async () => {
+      await setup(dmProps)
+      await fire('msg-edit', {
+        originalId: 'a',
+        newContent: 'x',
+        editedAt: 1,
+        publicKey: 'ffff',
+        sig: 's',
+        channelName: null,
+      })
+      await fire('msg-delete', { originalId: 'a', publicKey: 'ffff', sig: 's', channelName: null })
+      await fire('reaction', {
+        ...signOp('reaction', 'room-1', { messageId: 'a', emoji: '👍', removed: false, at: 1 }, peerKeys),
+        channelName: null,
+      })
+      expect(stores[0].receiveEdit).not.toHaveBeenCalled()
+      expect(stores[0].receiveDelete).not.toHaveBeenCalled()
+      expect(screen.queryByText(/👍/)).toBeNull()
+    })
+  })
 })
 
 // ── Peers and incoming calls ──────────────────────────────────────────────────
@@ -742,11 +870,18 @@ describe('Room — own message actions', () => {
     await userEvent.click(screen.getByRole('button', { name: /message actions/i }))
   }
 
-  it('toggles a reaction optimistically and broadcasts it', async () => {
+  it('toggles a reaction optimistically and broadcasts it signed', async () => {
     await setupWithOwnMessage()
     await userEvent.click(screen.getByRole('menuitem', { name: '👍' }))
     expect(swarmMock.sendToAll).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'REACTION', messageId: 'own1', emoji: '👍', removed: false })
+      expect.objectContaining({
+        type: 'REACTION',
+        messageId: 'own1',
+        emoji: '👍',
+        removed: false,
+        publicKey: MY_HEX,
+        sig: expect.stringMatching(/^[0-9a-f]{128}$/),
+      })
     )
     expect(screen.getByLabelText(/👍 1/)).toBeInTheDocument()
 
@@ -756,24 +891,30 @@ describe('Room — own message actions', () => {
     expect(screen.queryByLabelText(/👍 1/)).toBeNull()
   })
 
-  it('deletes optimistically and broadcasts MSG_DELETE', async () => {
+  it('deletes with a signed operation and broadcasts MSG_DELETE', async () => {
     await setupWithOwnMessage()
     await userEvent.click(screen.getByRole('menuitem', { name: /delete/i }))
-    expect(stores[0].receiveDelete).toHaveBeenCalledWith('own1')
+    expect(stores[0].createDelete).toHaveBeenCalledWith('own1')
     expect(swarmMock.sendToAll).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'MSG_DELETE', originalId: 'own1' })
+      expect.objectContaining({ type: 'MSG_DELETE', originalId: 'own1', publicKey: 'aabb', sig: 'del-sig' })
     )
   })
 
-  it('edits optimistically and broadcasts MSG_EDIT', async () => {
+  it('edits with a signed operation and broadcasts MSG_EDIT', async () => {
     await setupWithOwnMessage()
     await userEvent.click(screen.getByRole('menuitem', { name: /edit/i }))
     const box = document.querySelector('.message-edit-textarea')
     await userEvent.clear(box)
     await userEvent.type(box, 'changed{Enter}')
-    expect(stores[0].receiveEdit).toHaveBeenCalledWith('own1', 'changed', expect.any(Number))
+    expect(stores[0].createEdit).toHaveBeenCalledWith('own1', 'changed')
     expect(swarmMock.sendToAll).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'MSG_EDIT', originalId: 'own1', newContent: 'changed' })
+      expect.objectContaining({
+        type: 'MSG_EDIT',
+        originalId: 'own1',
+        newContent: 'changed',
+        editedAt: 5,
+        sig: 'edit-sig',
+      })
     )
   })
 

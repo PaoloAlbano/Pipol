@@ -6,5 +6,6 @@
 | [Cloudflare setup](cloudflare.md) | Step by step: TURN key, analytics token, relay variables, verification, Turnstile, day-to-day operation and troubleshooting. |
 | [TURN and calls](turn.md) | How the app uses STUN/TURN, who can choose what (user, workspace, app), the app build variables, credential renewal, the diagnostics overlay, privacy and the security model. |
 | [Closed networks](closed-network.md) | Running everything on a private network with no calls to third parties: what to leave off, what to set, and the outgoing requests that are still built in. |
+| [Message authenticity](security.md) | Signatures on messages, edits, deletions and reactions: who can write or change what, and what a signature does not prove. |
 
 Planned: this folder will be published as GitHub Pages. Write pages as plain Markdown with relative links so they work both on GitHub and on the published site.

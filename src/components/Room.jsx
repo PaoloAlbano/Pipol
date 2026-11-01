@@ -3,6 +3,7 @@ import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
 import { decryptDM, encryptDM } from '../p2p/dm-crypto.js'
 import { sendImageFile, FileReceiver } from '../p2p/file-transfer.js'
+import { signOp, verifyOp } from '../p2p/signing.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
 import {
   getLocalStream,
@@ -64,12 +65,44 @@ export default function Room({
 
   // Reactions: messageId → { emoji → Set<userPubkeyHex> }
   const [reactions, setReactions] = useState(() => new Map())
+  const reactionStampsRef = useRef(new Map()) // `${messageId}|${emoji}|${user}` → time of the latest reaction seen
   const myPubkeyHexRef = useRef(
     identity?.publicKey
       ? Array.from(identity.publicKey)
           .map((b) => b.toString(16).padStart(2, '0'))
           .join('')
       : null
+  )
+
+  /**
+   * Applies a signed reaction (ours or a peer's). It must be signed by the user it is attributed to, and a
+   * reaction older than the latest one seen for the same user, message and emoji is ignored, so replaying an
+   * old "remove" or "add" cannot flip it back.
+   */
+  const applyReaction = useCallback(
+    (op) => {
+      if (!verifyOp('reaction', roomCode, op)) return
+      const stampKey = `${op.messageId}|${op.emoji}|${op.publicKey}`
+      if ((reactionStampsRef.current.get(stampKey) ?? 0) >= op.at) return
+      reactionStampsRef.current.set(stampKey, op.at)
+      setReactions((prev) => {
+        const next = new Map(prev)
+        if (!next.has(op.messageId)) next.set(op.messageId, new Map())
+        const emojiMap = new Map(next.get(op.messageId))
+        const users = new Set(emojiMap.get(op.emoji) ?? [])
+        if (op.removed) {
+          users.delete(op.publicKey)
+          if (users.size === 0) emojiMap.delete(op.emoji)
+          else emojiMap.set(op.emoji, users)
+        } else {
+          users.add(op.publicKey)
+          emojiMap.set(op.emoji, users)
+        }
+        next.set(op.messageId, emojiMap)
+        return next
+      })
+    },
+    [roomCode]
   )
 
   // Panel collapse state (auto-reset on mobile)
@@ -268,7 +301,7 @@ export default function Room({
       const { peerId, since, channelName: reqChannel } = e.detail
       const myKey = channelName ?? roomCode
       if (reqChannel && reqChannel !== myKey) return
-      const history = await msgStore.getHistory()
+      const history = await msgStore.getSignedHistory()
       const newer = history.filter((m) => m.timestamp > since)
       if (newer.length > 0) {
         swarmRef.current.sendToPeer(peerId, { type: 'HISTORY_RES', channelName: myKey, messages: newer })
@@ -298,7 +331,12 @@ export default function Room({
       if (!isFromPeer || !isToUs) return
       if (!dmPeerPublicKey || !identity?.secretKey) return
       const message = decryptDM(nonce, ciphertext, identity.secretKey, dmPeerPublicKey)
-      if (message) msgStore.receiveMessage(message)
+      if (!message) return
+      // Edits, deletions and reactions of a DM travel inside the encrypted payload too
+      if (message.op === 'edit') msgStore.receiveEdit(message)
+      else if (message.op === 'delete') msgStore.receiveDelete(message)
+      else if (message.op === 'reaction') applyReaction(message)
+      else msgStore.receiveMessage(message)
     }
 
     function onScreenShareStart(e) {
@@ -323,35 +361,21 @@ export default function Room({
       setStatus('reconnecting…')
     }
     function onReaction(e) {
-      const { messageId, emoji, userPubkey, channelName: rxChannel, removed } = e.detail
-      // Filter by channel (same logic as chat-message)
-      if (!isDM && channelName && rxChannel !== channelName) return
-      setReactions((prev) => {
-        const next = new Map(prev)
-        if (!next.has(messageId)) next.set(messageId, new Map())
-        const emojiMap = new Map(next.get(messageId))
-        const users = new Set(emojiMap.get(emoji) ?? [])
-        if (removed) {
-          users.delete(userPubkey)
-          if (users.size === 0) emojiMap.delete(emoji)
-          else emojiMap.set(emoji, users)
-        } else {
-          users.add(userPubkey)
-          emojiMap.set(emoji, users)
-        }
-        next.set(messageId, emojiMap)
-        return next
-      })
+      // In a DM, reactions only arrive inside the encrypted DM payload
+      if (isDM) return
+      if (channelName && e.detail.channelName !== channelName) return
+      applyReaction(e.detail)
     }
     function onMsgEdit(e) {
-      const { originalId, newContent, editedAt, channelName: rxChannel } = e.detail
-      if (!isDM && channelName && rxChannel !== channelName) return
-      msgStore.receiveEdit(originalId, newContent, editedAt)
+      // In a DM, edits only arrive inside the encrypted DM payload
+      if (isDM) return
+      if (channelName && e.detail.channelName !== channelName) return
+      msgStore.receiveEdit(e.detail)
     }
     function onMsgDelete(e) {
-      const { originalId, channelName: rxChannel } = e.detail
-      if (!isDM && channelName && rxChannel !== channelName) return
-      msgStore.receiveDelete(originalId)
+      if (isDM) return
+      if (channelName && e.detail.channelName !== channelName) return
+      msgStore.receiveDelete(e.detail)
     }
     function onTyping(e) {
       const { peerId, username, stopped, channelName: typingChannel } = e.detail
@@ -935,7 +959,13 @@ export default function Room({
   const handleSendFile = useCallback(
     async (file) => {
       try {
-        const msg = await sendImageFile(swarmRef.current, file, isDM ? null : (channelName ?? roomCode), identity)
+        const msg = await sendImageFile(
+          swarmRef.current,
+          file,
+          isDM ? null : (channelName ?? roomCode),
+          identity,
+          roomCode
+        )
         // Add locally (sender doesn't receive own FILE_META/CHUNK)
         msgStoreRef.current?.receiveMessage(msg)
         onMessageSent?.()
@@ -947,73 +977,56 @@ export default function Room({
     [identity, isDM, channelName, roomCode, onMessageSent]
   )
 
+  // Sends a signed operation (edit, delete, reaction): in a DM inside the encrypted DM payload, so nobody else
+  // in the workspace sees it, otherwise to the whole channel.
+  const sendOperation = useCallback(
+    (type, op) => {
+      if (isDM) {
+        if (!dmPeerPublicKey || !identity?.secretKey || !dmPeerPubkeyHex) return
+        const { nonce, ciphertext } = encryptDM({ ...op, op: type }, identity.secretKey, dmPeerPublicKey)
+        swarmRef.current?.sendToAll({ type: 'DM', to: dmPeerPubkeyHex, nonce, ciphertext })
+      } else {
+        const wire = { edit: 'MSG_EDIT', delete: 'MSG_DELETE', reaction: 'REACTION' }[type]
+        swarmRef.current?.sendToAll({ type: wire, ...op, channelName: channelName ?? roomCode })
+      }
+    },
+    [isDM, dmPeerPublicKey, dmPeerPubkeyHex, identity?.secretKey, channelName, roomCode]
+  )
+
   const handleEditMessage = useCallback(
     async (originalId, newContent) => {
-      const myPubkey = myPubkeyHexRef.current
-      if (!myPubkey) return
-      const editedAt = Date.now()
-      // Optimistic local update
-      msgStoreRef.current?.receiveEdit(originalId, newContent, editedAt)
-      swarmRef.current?.sendToAll({
-        type: 'MSG_EDIT',
-        originalId,
-        newContent,
-        editedAt,
-        channelName: isDM ? null : (channelName ?? roomCode),
-      })
+      // Signed and applied locally right away; only the author's edit has effect, here and for the others
+      const op = msgStoreRef.current?.createEdit(originalId, newContent)
+      if (op) sendOperation('edit', op)
     },
-    [isDM, channelName, roomCode]
+    [sendOperation]
   )
 
   const handleDeleteMessage = useCallback(
     (originalId) => {
-      const myPubkey = myPubkeyHexRef.current
-      if (!myPubkey) return
-      // Optimistic local update
-      msgStoreRef.current?.receiveDelete(originalId)
-      swarmRef.current?.sendToAll({
-        type: 'MSG_DELETE',
-        originalId,
-        channelName: isDM ? null : (channelName ?? roomCode),
-      })
+      const op = msgStoreRef.current?.createDelete(originalId)
+      if (op) sendOperation('delete', op)
     },
-    [isDM, channelName, roomCode]
+    [sendOperation]
   )
 
   const handleReaction = useCallback(
     (messageId, emoji) => {
       const myPubkey = myPubkeyHexRef.current
-      if (!myPubkey) return
+      if (!myPubkey || !identity?.secretKey) return
       // Toggle: if already reacted, remove; otherwise add
-      const alreadyReacted = reactions.get(messageId)?.get(emoji)?.has(myPubkey) ?? false
-      const removed = alreadyReacted
-      // Optimistic local update
-      setReactions((prev) => {
-        const next = new Map(prev)
-        if (!next.has(messageId)) next.set(messageId, new Map())
-        const emojiMap = new Map(next.get(messageId))
-        const users = new Set(emojiMap.get(emoji) ?? [])
-        if (removed) {
-          users.delete(myPubkey)
-          if (users.size === 0) emojiMap.delete(emoji)
-          else emojiMap.set(emoji, users)
-        } else {
-          users.add(myPubkey)
-          emojiMap.set(emoji, users)
-        }
-        next.set(messageId, emojiMap)
-        return next
-      })
-      swarmRef.current?.sendToAll({
-        type: 'REACTION',
-        messageId,
-        emoji,
-        userPubkey: myPubkey,
-        channelName: isDM ? null : (channelName ?? roomCode),
-        removed,
-      })
+      const removed = reactions.get(messageId)?.get(emoji)?.has(myPubkey) ?? false
+      const previous = reactionStampsRef.current.get(`${messageId}|${emoji}|${myPubkey}`) ?? 0
+      const op = signOp(
+        'reaction',
+        roomCode,
+        { messageId, emoji, removed, at: Math.max(Date.now(), previous + 1) },
+        identity
+      )
+      applyReaction(op) // optimistic local update
+      sendOperation('reaction', op)
     },
-    [reactions, isDM, channelName, roomCode]
+    [reactions, identity, roomCode, applyReaction, sendOperation]
   )
 
   const handleTypingNotification = useCallback(() => {

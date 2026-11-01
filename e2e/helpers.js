@@ -14,8 +14,12 @@ import { expect } from '@playwright/test'
  * @param {string} name
  */
 export async function loginAsGuest(page, name) {
-  // Default mode is 'identity'. Click the guest shortcut button at the bottom.
-  await page.click('button.login-guest-btn')
+  // Quick-room links open the guest form directly; otherwise click the guest shortcut at the bottom of the
+  // default identity form first.
+  const guestShortcut = page.locator('button.login-guest-btn')
+  const guestName = page.locator('#guestName')
+  await expect(guestShortcut.or(guestName)).toBeVisible({ timeout: 10000 })
+  if (await guestShortcut.isVisible()) await guestShortcut.click()
   // Guest form: fill the display name
   await page.fill('#guestName', name)
   await page.click('button[type="submit"]')

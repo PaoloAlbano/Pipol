@@ -32,6 +32,7 @@ vi.mock('../../src/p2p/autobase.js', () => ({
       init: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       getHistory: vi.fn().mockResolvedValue([]),
+      getSignedHistory: vi.fn().mockResolvedValue([]),
       getLastTimestamp: vi.fn().mockResolvedValue(0),
       getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
       addMessage: vi.fn().mockResolvedValue({ id: '1', content: 'hi', timestamp: Date.now() }),
