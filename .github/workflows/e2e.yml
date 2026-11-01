@@ -5,8 +5,7 @@ name: E2E
 # Visual tests are left out (their snapshots are for macOS) and so are the coturn tests (they need Docker).
 on:
   push:
-    # TEMPORARY: ci/e2e-on-main is here only to try the workflow before merging. Remove it before the merge.
-    branches: [main, ci/e2e-on-main]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
