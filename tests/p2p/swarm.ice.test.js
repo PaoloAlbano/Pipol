@@ -4,6 +4,7 @@
  */
 
 import { RoomSwarm } from '../../src/p2p/swarm.js'
+import { roomRelayId } from '../../src/p2p/relay-crypto.js'
 import { resolveIceConfig, DEFAULT_ICE_SERVERS } from '../../src/webrtc/ice.js'
 
 const mockSettings = vi.hoisted(() => ({ value: { mode: 'default', servers: [], forceRelay: false, chatTurn: false } }))
@@ -101,7 +102,7 @@ describe('RoomSwarm — ICE configuration', () => {
 
     release()
     await joining
-    expect(sockets[0].sent[0]).toMatchObject({ type: 'join', room: 'room' })
+    expect(sockets[0].sent[0]).toMatchObject({ type: 'join', room: roomRelayId('room') })
     expect(swarm.rtcConfiguration).toBe(TURN_CONFIG)
   })
 

@@ -63,7 +63,6 @@ export default function SettingsModal({
   const [iceUsername, setIceUsername] = useState(() => getIceSettings().servers[0]?.username ?? '')
   const [iceCredential, setIceCredential] = useState(() => getIceSettings().servers[0]?.credential ?? '')
   const [forceRelay, setForceRelay] = useState(() => getIceSettings().forceRelay)
-  const [chatTurn, setChatTurn] = useState(() => getIceSettings().chatTurn)
   const [iceError, setIceError] = useState('')
   const [iceTest, setIceTest] = useState(null) // null | 'running' | { ok: boolean, message: string }
   const [saved, setSaved] = useState(false)
@@ -84,7 +83,7 @@ export default function SettingsModal({
 
   /** Builds the ICE settings object from the form; throws 'invalid-ice-servers' for bad custom input. */
   function readIceSettings() {
-    const settings = { mode: iceMode, servers: [], forceRelay, chatTurn }
+    const settings = { mode: iceMode, servers: [], forceRelay, chatTurn: false }
     if (iceMode === 'custom') {
       settings.servers = validateIceServers([
         { urls: parseIceUrls(iceUrls), username: iceUsername.trim(), credential: iceCredential },
@@ -315,11 +314,14 @@ export default function SettingsModal({
                 />
               </>
             )}
+            {/* "Also use TURN for chat" is hidden for now: the relay fallback is end-to-end encrypted and always
+                available. The chatTurn setting is still understood by ice.js and storage.js.
             {iceMode !== 'off' && (
               <label className="settings-toggle-row">
                 <span className="settings-toggle-label">Also use TURN for chat</span>
                 <span className="settings-toggle-desc">
-                  Off by default: TURN is used for video calls only, chat connects directly or falls back to the relay.
+                  Off by default. When a direct connection fails, route chat and files through the TURN server instead
+                  of the relay. It uses TURN traffic. Without it, chat falls back to the relay (encrypted).
                 </span>
                 <input
                   type="checkbox"
@@ -329,6 +331,7 @@ export default function SettingsModal({
                 />
               </label>
             )}
+            */}
             {iceMode !== 'off' && (
               <label className="settings-toggle-row">
                 <span className="settings-toggle-label">Always relay (hide my IP)</span>

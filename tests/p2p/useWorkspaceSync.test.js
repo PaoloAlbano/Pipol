@@ -38,6 +38,7 @@ vi.mock('../../src/p2p/swarm.js', () => {
 
 vi.mock('../../src/p2p/workspace.js', () => ({
   deriveSwarmTopic: vi.fn(() => 'fake-topic'),
+  deriveWorkspaceRelayKey: vi.fn(() => new Uint8Array(32)),
   mergeChannelList: vi.fn((a, b) => [...a, ...b]),
   getWorkspaces: vi.fn(() => []),
   saveWorkspace: vi.fn(),
@@ -291,7 +292,11 @@ describe('useWorkspaceSync — TURN configuration', () => {
     const { unmount } = renderHook(() => useWorkspaceSync(workspace, IDENTITY))
     await act(async () => {})
 
-    expect(lastSwarm.opts).toEqual({ relayUrl: 'wss://relay.example.com', ice })
+    expect(lastSwarm.opts).toEqual({
+      relayUrl: 'wss://relay.example.com',
+      ice,
+      relayKey: expect.any(Uint8Array),
+    })
     unmount()
   })
 

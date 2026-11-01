@@ -553,23 +553,17 @@ describe('SettingsModal — connection (TURN)', () => {
     })
   })
 
-  it('uses TURN for calls only unless the user opts in for chat', async () => {
+  it('does not offer TURN for chat (hidden for now), and saving clears it', async () => {
     const user = userEvent.setup()
     setup()
-    const chatToggle = screen.getByRole('checkbox', { name: /also use turn for chat/i })
-    expect(chatToggle).not.toBeChecked()
-    await user.click(chatToggle)
+    expect(screen.queryByRole('checkbox', { name: /also use turn for chat/i })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /save/i }))
-    expect(storage.setIceSettings).toHaveBeenLastCalledWith(expect.objectContaining({ chatTurn: true }))
+    expect(storage.setIceSettings).toHaveBeenLastCalledWith(expect.objectContaining({ chatTurn: false }))
   })
 
-  it('always relays chat too when "always relay" is on', async () => {
-    const user = userEvent.setup()
+  it('"always relay" is still offered', () => {
     setup()
-    await user.click(screen.getByRole('checkbox', { name: /always relay/i }))
-    const chatToggle = screen.getByRole('checkbox', { name: /also use turn for chat/i })
-    expect(chatToggle).toBeChecked()
-    expect(chatToggle).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: /always relay/i })).toBeInTheDocument()
   })
 
   it('does not save custom servers without credentials', async () => {

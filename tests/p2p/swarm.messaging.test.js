@@ -21,7 +21,9 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { RoomSwarm } from '../../src/p2p/swarm.js'
+import { RelayCipher } from '../../src/p2p/relay-crypto.js'
 
+const RELAY_KEY = new Uint8Array(32).fill(7)
 // ── Storage mock ──────────────────────────────────────────────────────────────
 // RoomSwarm reads identity from storage.js in the HELLO flow; mock it.
 
@@ -791,7 +793,8 @@ describe('RoomSwarm — sendToAll relay fallback gating', () => {
   })
 
   it('DOES send via WS relay when a peer has no open DataChannel', () => {
-    const swarmA = new RoomSwarm('test-room-gating-2')
+    const swarmA = new RoomSwarm('test-room-gating-2', { relayKey: RELAY_KEY })
+    swarmA._localPeerId = PEER_A
     const fakeWs = { readyState: 1 /* OPEN */, send: vi.fn() }
     swarmA._ws = fakeWs
     swarmA.peers.set(PEER_B, {
@@ -804,19 +807,36 @@ describe('RoomSwarm — sendToAll relay fallback gating', () => {
     swarmA.sendToAll({ type: 'MSG', channelName: 'generale', message: { id: '2', content: 'needs relay' } })
 
     expect(fakeWs.send).toHaveBeenCalledTimes(1)
-    const sent = JSON.parse(fakeWs.send.mock.calls[0][0])
-    expect(sent.type).toBe('relay-data')
-    expect(sent.data.message.content).toBe('needs relay')
+    const raw = fakeWs.send.mock.calls[0][0]
+    expect(JSON.parse(raw).type).toBe('relay-data')
+    expect(raw).not.toContain('needs relay') // the relay never sees the content
+    const opened = new RelayCipher(RELAY_KEY, 'test-room-gating-2').open(JSON.parse(raw).data, PEER_A, PEER_B)
+    expect(opened.message.content).toBe('needs relay')
   })
 
   it('DOES send via WS relay when there are no known peers yet (bootstrap race)', () => {
-    const swarmA = new RoomSwarm('test-room-gating-3')
+    const swarmA = new RoomSwarm('test-room-gating-3', { relayKey: RELAY_KEY })
+    swarmA._localPeerId = PEER_A
     const fakeWs = { readyState: 1 /* OPEN */, send: vi.fn() }
     swarmA._ws = fakeWs
 
     swarmA.sendToAll({ type: 'MSG', channelName: 'generale', message: { id: '3', content: 'no peers yet' } })
 
     expect(fakeWs.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('never sends in clear through the relay when it has no encryption key', () => {
+    const swarmA = new RoomSwarm('test-room-gating-5')
+    swarmA._localPeerId = PEER_A
+    const fakeWs = { readyState: 1 /* OPEN */, send: vi.fn() }
+    swarmA._ws = fakeWs
+
+    swarmA.sendToAll({ type: 'MSG', message: { id: '5', content: 'secret' } })
+    swarmA.sendToPeer(PEER_B, { type: 'MSG', message: { id: '6', content: 'secret' } })
+    swarmA._sendSignal(PEER_B, { type: 'offer', sdp: 'v=0' })
+    swarmA._sendRelayHello(PEER_B)
+
+    expect(fakeWs.send).not.toHaveBeenCalled()
   })
 
   it('does not throw when WS is not connected and DataChannel is open', () => {

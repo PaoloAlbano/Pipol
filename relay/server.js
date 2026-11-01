@@ -124,7 +124,7 @@ wssDHT.on('connection', (socket, req) => {
 
 // ── Signaling WebSocket server (path: /signal) ───────────────────────────────
 // Simple room-based WebSocket signaling for browser-to-browser WebRTC.
-// Only SDP offers/answers and ICE candidates pass through — no message content.
+// Signals and relay-data payloads are sealed by the clients (end-to-end): the relay forwards opaque data.
 const wssSignal = new WebSocketServer({ noServer: true })
 const rooms = new Map() // roomCode → Map<peerId, ws>
 

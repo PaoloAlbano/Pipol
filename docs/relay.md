@@ -1,6 +1,6 @@
 # Relay server
 
-`relay/server.js` is a small Node server. It never sees message content when peers can connect directly; it only helps them find each other and, when a direct connection fails, carries traffic as a fallback.
+`relay/server.js` is a small Node server. It helps peers find each other and, when a direct connection fails, forwards their traffic as a fallback. Everything it forwards is encrypted end-to-end, so it never sees message content (see [What the relay can see](#what-the-relay-can-see)).
 
 ## What it serves
 
@@ -140,9 +140,27 @@ The guard **fails open**: if analytics cannot be read it keeps its last state an
 
 The guard exists only for Cloudflare. For coturn use its native limits (`max-bps` per session, `user-quota`, `total-quota`, `bps-capacity`, see the example configuration) and the bandwidth of your server plan; for Metered/Xirsys, the limits of your plan.
 
+## What the relay can see
+
+Everything that goes through the relay's WebSocket (`signal`, `relay-data`, `relay-data-to`) is sealed in the browser with a key shared by the room members and unknown to the relay (NaCl `secretbox`). The relay forwards opaque payloads and does not need to change when the format does.
+
+| The relay **can** see | The relay **cannot** see or do |
+|-----------------------|--------------------------------|
+| IP addresses, peer ids (public keys) and who talks to whom | Message text, files and images, channel names, usernames, presence |
+| The room name: a hash (a workspace's topic, or a hash of a quick room's code), never the code | The room code of a quick room, or a workspace's secret |
+| Size and timing of each message | SDP, ICE candidates and DTLS fingerprints of the calls and data channels, so it cannot swap them to sit in the middle of a WebRTC connection |
+| That a message was sent, and drop it | Alter a message, forge its sender, replay an old one or move it to another room or recipient: the receiver discards it |
+
+Where the key comes from:
+
+- **Workspace**: derived from the workspace secret (256 bits), which is only in the invite link. There is no practical way to guess it.
+- **Quick room**: derived from the room code (PBKDF2, 210,000 iterations). The strength is the strength of the code: a generated code (for example `word-a1b2c3-word`) is expensive to brute-force, but **a code chosen by hand (such as `standup`) is easy to guess**, and whoever guesses it can read that room. Use a workspace or a long random code for anything sensitive.
+
+Limits: members of a room share one key, so a member can impersonate another member towards the rest of the room (the sender is authenticated against the relay, not between members). A client whose clock is more than 15 minutes off (the time zone does not matter, only the real time) drops the relay traffic of the others (replay protection). There is no compatibility with clients older than this feature: those cannot talk through the relay to updated ones.
+
 ## Logs and privacy
 
-By default the relay logs enough to operate it, and that includes identifiers: the address of each DHT connection, the first characters of a peer id and the **name of the room** being joined or left (for a quick room that name is the room's secret), the IP and proxy chain of the first client that hits the rate limit, and the first characters of a revoked credential's id.
+By default the relay logs enough to operate it, and that includes identifiers: the address of each DHT connection, the first characters of a peer id and the **name of the room** being joined or left (a hash, so it does not reveal a quick room's code but still tells rooms apart), the IP and proxy chain of the first client that hits the rate limit, and the first characters of a revoked credential's id.
 
 Set `LOG_HIDE_SENSITIVE=true` and those lines are **not written at all**:
 

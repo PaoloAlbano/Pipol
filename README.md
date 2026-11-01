@@ -16,7 +16,7 @@
 - **Group chat** — persistent, encrypted message history via Hypercore
 - **Video calls** — WebRTC mesh with mute, camera toggle, and screen sharing
 - **Layouts** — adaptive grid and spotlight (pin) view, auto-switches on screen share
-- **E2E encrypted by design** — all traffic is encrypted end-to-end; no server can read your messages
+- **E2E encrypted by design** — all traffic is encrypted end-to-end; no server can read your messages, not even the relay when it has to forward them
 - **Installable PWA** — works offline, installable on desktop and mobile
 - **No account required** — identity is a local cryptographic keypair
 
@@ -94,7 +94,7 @@ pnpm run preview
 
 ## TURN server (calls behind strict NATs and firewalls)
 
-Direct connections work on most networks. Behind symmetric NATs, mobile carriers or strict firewalls a TURN server relays the traffic; it only sees packets that are already end-to-end encrypted, though it does see IP addresses. TURN is used for **video calls only**, and only as a last resort.
+Direct connections work on most networks. Behind symmetric NATs, mobile carriers or strict firewalls a TURN server relays the traffic; it only sees packets that are already end-to-end encrypted, though it does see IP addresses. TURN is used for **video calls only**, and only as a last resort. When chat cannot connect directly it goes through the relay server, also end-to-end encrypted: see [What the relay can see](docs/relay.md#what-the-relay-can-see).
 
 Everyone can choose their own TURN (user setting, then the workspace, then the app default served by the relay's `GET /ice`), and it can be switched off per user (Settings), per app build (`VITE_TURN_DISABLED=true`) or on the relay (`ICE_DISABLED=true`). The relay works with Cloudflare Realtime TURN, coturn, any TURN with a fixed login, and services such as Metered or Xirsys, and protects `/ice` with an origin allow-list, a rate limit, optional Cloudflare Turnstile and, with Cloudflare, a usage guard.
 

@@ -6,15 +6,16 @@
  *   Browser ──── WebSocket ────▶ Relay /signal  (signaling: SDP + ICE)
  *   Browser ◀──── WebRTC DataChannel ────▶ Browser  (P2P: all messages)
  *
- * When every peer's DataChannel is open, the relay only ever sees WebRTC
- * handshake metadata (SDP/ICE) — never message content.
+ * When every peer's DataChannel is open, the relay only ever sees the
+ * (encrypted) WebRTC handshake — never message content.
  *
  * Fallback: if a peer's DataChannel cannot be established (e.g. symmetric
  * NAT with no TURN server — common on mobile networks), messages to that
- * peer are relayed in clear-text through the signaling WebSocket
- * (`relay-data` / `relay-data-to`). This trades the P2P-only privacy
- * guarantee for delivery reliability in that specific case; sendToAll/
- * sendToPeer only use this path for peers that actually need it.
+ * peer are relayed through the signaling WebSocket (`relay-data` /
+ * `relay-data-to`). Everything that goes through the relay — signaling
+ * included — is encrypted end-to-end with a key the relay does not know
+ * (see relay-crypto.js), so the relay only forwards opaque payloads.
+ * sendToAll/sendToPeer only use this path for peers that actually need it.
  *
  * Events emitted (CustomEvent via EventTarget):
  *   peer-joined   { id, username, messageCoreKey }
@@ -27,6 +28,7 @@
 import b4a from 'b4a'
 import { getIdentity, getRelayUrl } from './storage.js'
 import { DEFAULT_ICE_SERVERS, resolveIceConfig, chatIceConfig } from '../webrtc/ice.js'
+import { RelayCipher, deriveRoomRelayKey, roomRelayId } from './relay-crypto.js'
 
 /**
  * Extracts the DTLS fingerprint from an SDP string.
@@ -59,6 +61,12 @@ function signalUrl(override) {
 // ─── RoomSwarm ────────────────────────────────────────────────────────────────
 
 export class RoomSwarm extends EventTarget {
+  /**
+   * @param {string} roomCode
+   * @param {object} [opts]
+   * @param {Uint8Array} [opts.relayKey]  Key shared by the room members, for rooms whose name is already
+   *   a hash (workspaces). Without it the key is derived from `roomCode` and the relay only sees its hash.
+   */
   constructor(roomCode, opts = {}) {
     super()
     this.roomCode = roomCode
@@ -66,6 +74,9 @@ export class RoomSwarm extends EventTarget {
     this.peers = new Map() // peerId → { id, username, messageCoreKey, pc, dc, sendControl }
     this.mode = 'webrtc'
 
+    // Encryption of everything sent through the relay; without a cipher nothing is sent there
+    this._relayRoom = opts.relayKey ? roomCode : null // room name as the relay sees it
+    this._relayCipher = opts.relayKey ? new RelayCipher(opts.relayKey, roomCode) : null
     // Optional workspace-level relay override (takes priority over global settings)
     this._relayUrl = opts.relayUrl || null
 
@@ -105,6 +116,14 @@ export class RoomSwarm extends EventTarget {
     return config
   }
 
+  /** Quick rooms have no shared secret: the key comes from the room code, the relay only sees a hash of it. */
+  async _ensureRelayCipher() {
+    if (this._relayCipher) return
+    const key = await deriveRoomRelayKey(this.roomCode)
+    this._relayRoom = roomRelayId(this.roomCode)
+    this._relayCipher = new RelayCipher(key, this._relayRoom)
+  }
+
   async join() {
     this._identity = getIdentity()
     this._localPeerId = b4a.toString(this._identity.publicKey, 'hex')
@@ -117,6 +136,10 @@ export class RoomSwarm extends EventTarget {
       const icePromise = this.refreshIceConfig().catch((err) =>
         console.warn('[swarm] ICE config unavailable, using defaults:', err.message)
       )
+      const keyPromise = this._ensureRelayCipher().then(
+        () => null,
+        (err) => err
+      )
       const ws = new WebSocket(url)
       this._ws = ws
 
@@ -128,9 +151,17 @@ export class RoomSwarm extends EventTarget {
       ws.addEventListener(
         'open',
         async () => {
-          // Peers start connecting as soon as we have joined, so the ICE servers must be ready by then
+          // Peers start connecting as soon as we have joined, so the ICE servers and the key must be ready by then
           await icePromise
-          ws.send(JSON.stringify({ type: 'join', room: this.roomCode, peerId: this._localPeerId }))
+          const keyError = await keyPromise
+          if (keyError) {
+            clearTimeout(timeout)
+            this._leaving = true
+            ws.close()
+            reject(new Error(`Cannot derive the relay encryption key: ${keyError.message}`))
+            return
+          }
+          ws.send(JSON.stringify({ type: 'join', room: this._relayRoom, peerId: this._localPeerId }))
         },
         { once: true }
       )
@@ -203,13 +234,16 @@ export class RoomSwarm extends EventTarget {
       case 'peer-left':
         this._handleDisconnect(msg.peerId)
         break
-      case 'signal':
-        this._handleRTCSignal(msg.from, msg.signal)
+      case 'signal': {
+        const signal = this._relayCipher?.open(msg.signal, msg.from, this._localPeerId)
+        if (signal) this._handleRTCSignal(msg.from, signal)
         break
+      }
       // ── WebSocket relay fallback ───────────────────────────────────────────
       // Received when the sender could not (or did not) use the DataChannel.
-      case 'relay-data':
-        if (msg.from && msg.data) {
+      case 'relay-data': {
+        const data = msg.from ? this._relayCipher?.open(msg.data, msg.from, this._localPeerId) : null
+        if (data) {
           // Auto-register the sender if we haven't seen them via WebRTC yet.
           // This lets messages arrive even when the DataChannel hasn't established.
           if (!this.peers.has(msg.from)) {
@@ -224,9 +258,10 @@ export class RoomSwarm extends EventTarget {
               _joinedFired: false,
             })
           }
-          this._handleControl(msg.from, msg.data)
+          this._handleControl(msg.from, data)
         }
         break
+      }
     }
   }
 
@@ -606,29 +641,28 @@ export class RoomSwarm extends EventTarget {
     this.dispatchEvent(new CustomEvent('peer-left', { detail: { id: remoteId } }))
   }
 
+  // Everything that leaves through the relay WebSocket goes through here, sealed. Without a key nothing is sent.
+  _sendRelay(type, to, payload) {
+    if (this._ws?.readyState !== WebSocket.OPEN || !this._relayCipher || !this._localPeerId) return
+    const sealed = this._relayCipher.seal(payload, this._localPeerId, to)
+    const frame = type === 'signal' ? { type, to, signal: sealed } : { type, ...(to ? { to } : {}), data: sealed }
+    this._ws.send(JSON.stringify(frame))
+  }
+
   _sendSignal(to, signal) {
-    if (this._ws?.readyState === WebSocket.OPEN) {
-      this._ws.send(JSON.stringify({ type: 'signal', to, signal }))
-    }
+    this._sendRelay('signal', to, signal)
   }
 
   // Send a HELLO to a specific peer via the WS relay so that peer-joined fires
   // on both sides without waiting for WebRTC DataChannel to open.
   _sendRelayHello(toPeerId) {
-    if (this._ws?.readyState !== WebSocket.OPEN || !this._localPeerId) return
-    this._ws.send(
-      JSON.stringify({
-        type: 'relay-data-to',
-        to: toPeerId,
-        data: {
-          type: 'HELLO',
-          username: this._identity?.username ?? '…',
-          publicKey: this._localPeerId,
-          messageCoreKey: this.messageCoreKey,
-          fingerprint: null, // no DTLS for WS-relay path — fingerprint check skipped when null
-        },
-      })
-    )
+    this._sendRelay('relay-data-to', toPeerId, {
+      type: 'HELLO',
+      username: this._identity?.username ?? '…',
+      publicKey: this._localPeerId,
+      messageCoreKey: this.messageCoreKey,
+      fingerprint: null, // no DTLS for WS-relay path — fingerprint check skipped when null
+    })
   }
 
   // ── WebSocket reconnect ───────────────────────────────────────────────────
@@ -654,8 +688,8 @@ export class RoomSwarm extends EventTarget {
     ws.addEventListener(
       'open',
       () => {
-        ws.send(JSON.stringify({ type: 'join', room: this.roomCode, peerId: this._localPeerId }))
-        console.info('[swarm] WS reconnected, re-joined room', this.roomCode.slice(0, 16) + '…')
+        ws.send(JSON.stringify({ type: 'join', room: this._relayRoom, peerId: this._localPeerId }))
+        console.info('[swarm] WS reconnected, re-joined room', this._relayRoom.slice(0, 16) + '…')
       },
       { once: true }
     )
@@ -697,9 +731,7 @@ export class RoomSwarm extends EventTarget {
       peer.sendControl?.(msg)
       if (peer.dc?.readyState !== 'open') allHaveOpenDC = false
     }
-    if (!allHaveOpenDC && this._ws?.readyState === WebSocket.OPEN) {
-      this._ws.send(JSON.stringify({ type: 'relay-data', data: msg }))
-    }
+    if (!allHaveOpenDC) this._sendRelay('relay-data', null, msg)
   }
 
   sendToPeer(peerId, msg) {
@@ -711,9 +743,7 @@ export class RoomSwarm extends EventTarget {
       if (peer.dc?.readyState === 'open') return
     }
     // DataChannel not open (or unavailable) — relay via WebSocket
-    if (this._ws?.readyState === WebSocket.OPEN) {
-      this._ws.send(JSON.stringify({ type: 'relay-data-to', to: peerId, data: msg }))
-    }
+    this._sendRelay('relay-data-to', peerId, msg)
   }
 
   getPeers() {
