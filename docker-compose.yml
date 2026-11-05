@@ -1,0 +1,124 @@
+# The whole Pipol stack in three containers:
+#
+#   web    the app (nginx), with the relay and the auth server proxied under the same origin
+#   relay  signaling WebSocket, fallback relay and ICE servers (relay/Dockerfile)
+#   auth   OIDC / OAuth2 key derivation (auth/Dockerfile)
+#
+#   docker compose up --build        # then open http://localhost:8080
+#   docker compose --profile stress run --rm stress   # load test against the stack (see docs/docker.md)
+#
+# Configuration comes from the shell or from a .env file next to this one (see .env.example). A variable that
+# is not set is simply not passed to the container, so the defaults of each service apply.
+# Camera, microphone and the crypto of the app need a secure context: http://localhost works, any other
+# address needs HTTPS in front of the web container (a reverse proxy, Cloudflare, ...).
+
+name: pipol
+
+x-high-connections: &high-connections
+  # Every chat client keeps a connection open: the default limit of open files (often 1024) would be the first wall
+  ulimits:
+    nofile:
+      soft: 262144
+      hard: 262144
+
+services:
+  web:
+    <<: *high-connections
+    build:
+      context: .
+      args:
+        # Fixed when the image is built (the app is static): change one and run `docker compose build web`
+        VITE_AUTH_URL: ${VITE_AUTH_URL:-/auth}
+        VITE_DHT_RELAY_URL: ${VITE_DHT_RELAY_URL:-}
+        VITE_ICE_URL: ${VITE_ICE_URL:-}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+        VITE_TURN_DISABLED: ${VITE_TURN_DISABLED:-}
+    image: pipol-web
+    ports:
+      - '${WEB_PORT:-8080}:8080'
+    environment:
+      RELAY_UPSTREAM: http://relay:8787
+      AUTH_UPSTREAM: http://auth:8080
+    sysctls:
+      # A larger accept queue, and enough local ports for a connection to the relay per connected client
+      net.core.somaxconn: 4096
+      net.ipv4.ip_local_port_range: '1024 65535'
+    depends_on:
+      relay:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    restart: unless-stopped
+
+  relay:
+    <<: *high-connections
+    build: ./relay
+    image: pipol-relay
+    # Resource limits, to reproduce a small hosting plan (0 = no limit): RELAY_CPUS=0.5 RELAY_MEMORY=512m
+    cpus: ${RELAY_CPUS:-0}
+    mem_limit: ${RELAY_MEMORY:-0}
+    environment:
+      PORT: 8787
+      # One proxy (the web container) sits in front of the relay. Put as many as you have if you add more.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      # Passed through only when set (see docs/relay.md for each one)
+      ICE_ALLOWED_ORIGINS:
+      ICE_RATE_LIMIT:
+      ICE_DISABLED:
+      TURN_PROVIDER:
+      TURN_URLS:
+      TURN_SECRET:
+      TURN_USERNAME:
+      TURN_CREDENTIAL:
+      TURN_API_URL:
+      TURN_API_AUTHORIZATION:
+      TURN_TTL:
+      CLOUDFLARE_TURN_KEY_ID:
+      CLOUDFLARE_TURN_API_TOKEN:
+      CLOUDFLARE_ACCOUNT_ID:
+      CLOUDFLARE_ANALYTICS_TOKEN:
+      CLOUDFLARE_MONTHLY_BUDGET_GB:
+      CLOUDFLARE_CREDENTIAL_HOURLY_LIMIT_GB:
+      TURNSTILE_SECRET:
+      LOG_HIDE_SENSITIVE:
+      HEARTBEAT_INTERVAL_MS:
+      MAX_CLIENT_BUFFER_MB:
+      RELAY_STATS_INTERVAL_SEC:
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:8787/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+
+  auth:
+    build: ./auth
+    image: pipol-auth
+    environment:
+      PORT: 8080
+      # Passed through only when set. Without PIPOL_MASTER_KEY_V1 the server starts but /derive refuses to work
+      # (make auth-gen-key creates one); a provider appears when its client id (and secret) are set.
+      ALLOWED_ORIGINS:
+      PIPOL_CURRENT_KEY_VERSION:
+      PIPOL_RETIRED_VERSIONS:
+      PIPOL_MASTER_KEY_V1:
+      GITHUB_CLIENT_ID:
+      GITHUB_CLIENT_SECRET:
+      GOOGLE_CLIENT_ID:
+      GOOGLE_CLIENT_SECRET:
+    restart: unless-stopped
+
+  # Load test (opt-in): `docker compose --profile stress run --rm stress`
+  # Runs relay/stress/stress.js inside the stack's network, against the web container (so through nginx).
+  stress:
+    profiles: [stress]
+    image: pipol-relay
+    entrypoint: ['node', 'stress/stress.js']
+    command: ['--url', 'ws://web:8080', '--yes', '--scenario', '${STRESS_SCENARIO:-conns}', '--max-conns', '${STRESS_MAX_CONNS:-1000}']
+    volumes:
+      - ./relay/stress:/app/stress:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: 'no'

@@ -93,6 +93,14 @@ pnpm run build
 pnpm run preview
 ```
 
+### Everything in Docker
+
+```bash
+docker compose up --build
+```
+
+Runs the whole app as three images (the web app, the relay and the auth server) and serves it at `http://localhost:8080`. See [Running everything with Docker](docs/docker.md) for the configuration, how many connections it is set up for, measured capacity and the stress test.
+
 ## TURN server (calls behind strict NATs and firewalls)
 
 Direct connections work on most networks. Behind symmetric NATs, mobile carriers or strict firewalls a TURN server relays the traffic; it only sees packets that are already end-to-end encrypted, though it does see IP addresses. TURN is used for **video calls only**, and only as a last resort. When chat cannot connect directly it goes through the relay server, also end-to-end encrypted: see [What the relay can see](docs/relay.md#what-the-relay-can-see).

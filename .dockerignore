@@ -1,0 +1,23 @@
+# The web image copies only what it needs (see Dockerfile); this keeps the build context small and keeps
+# secrets and local files out of it.
+.git
+.github
+.vscode
+.claude
+node_modules
+relay
+auth
+dist
+coverage
+playwright-report
+test-results
+e2e
+tests
+docs
+.env
+.env.*
+*.key
+*.pem
+serveo_key
+*.md
+TODO.md

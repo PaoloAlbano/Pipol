@@ -1,4 +1,4 @@
-.PHONY: install dev dev-tunnel build check-key expose start-relay relay-test start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed turn-e2e
+.PHONY: install dev dev-tunnel build check-key expose start-relay relay-test start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed turn-e2e docker-up docker-down docker-e2e docker-stress
 
 SERVEO_SUBDOMAIN ?= pipol
 SERVEO_KEY       ?= ./serveo_key
@@ -75,3 +75,18 @@ e2e-headed:
 # Needs Docker: runs a real coturn and checks the TURN setup end to end
 turn-e2e:
 	TURN_E2E=1 pnpm exec playwright test e2e/turn.test.js
+
+# The whole stack in Docker (web + relay + auth), see docs/docker.md
+docker-up:
+	docker compose up --build -d
+
+docker-down:
+	docker compose down
+
+# Browser tests against the running Docker stack (not the dev server). Visual tests are macOS-only snapshots.
+docker-e2e:
+	E2E_BASE_URL=http://localhost:$${WEB_PORT:-8080} pnpm exec playwright test --grep-invert Visual
+
+# Load test of the running stack. STRESS_SCENARIO=conns|fanout|bigroom|rooms|payload|churn, STRESS_MAX_CONNS=N
+docker-stress:
+	docker compose --profile stress run --rm stress

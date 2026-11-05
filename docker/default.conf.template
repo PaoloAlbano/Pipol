@@ -1,0 +1,100 @@
+# Server block of the web image. The ${...} names are replaced at start-up with the container's environment
+# variables (RELAY_UPSTREAM, AUTH_UPSTREAM, DNS_RESOLVER); the nginx variables ($host, ...) are left alone.
+
+# WebSocket upgrade: "upgrade" while the client asks for it, "close" otherwise
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Scheme the visitor used, when a TLS terminator sits in front of this container
+map $http_x_forwarded_proto $app_scheme {
+    default $http_x_forwarded_proto;
+    ''      $scheme;
+}
+
+# Browsers do not send Origin on a same-origin GET, but the relay's /ice allow-list (ICE_ALLOWED_ORIGINS) refuses
+# requests without one: give those the origin of the app itself. A cross-origin request keeps its own Origin,
+# so the allow-list still tells other websites apart.
+map $http_origin $ice_origin {
+    default $http_origin;
+    ''      "$app_scheme://$http_host";
+}
+
+server {
+    listen 8080 backlog=4096 reuseport;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Docker's DNS (or yours): the upstream names are resolved while running, so the relay or the auth server can
+    # restart, or come up after this container, without nginx having to be restarted
+    resolver ${DNS_RESOLVER} valid=10s ipv6=off;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # ── The relay: signaling WebSocket and ICE servers ──────────────────────────
+    location = /signal {
+        set $relay ${RELAY_UPSTREAM};
+        proxy_pass $relay;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $app_scheme;
+
+        # The default (60 s) closes a connection that stays silent: a quiet chat would drop with code 1006.
+        # The relay pings every 25 s anyway; this is only the safety net.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_connect_timeout 5s;
+        proxy_buffering off;
+    }
+
+    location = /ice {
+        set $relay ${RELAY_UPSTREAM};
+        proxy_pass $relay;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header Origin $ice_origin;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $app_scheme;
+        proxy_read_timeout 15s;
+        proxy_connect_timeout 5s;
+    }
+
+    # ── The auth server, under /auth (build the app with VITE_AUTH_URL=/auth) ────
+    location /auth/ {
+        set $auth ${AUTH_UPSTREAM};
+        rewrite ^/auth/(.*)$ /$1 break;
+        proxy_pass $auth;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $app_scheme;
+        proxy_read_timeout 30s;
+        proxy_connect_timeout 5s;
+    }
+
+    # ── The app ──────────────────────────────────────────────────────────────────
+    # (add_header in a location replaces the ones inherited, so each location includes the security headers)
+    location /assets/ {
+        include /etc/nginx/headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    location / {
+        include /etc/nginx/headers.conf;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri /index.html;
+    }
+}
