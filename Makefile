@@ -1,4 +1,4 @@
-.PHONY: install dev dev-tunnel build check-key expose start-relay relay-test start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed turn-e2e docker-up docker-down docker-e2e docker-stress
+.PHONY: install dev dev-tunnel build check-key expose start-relay relay-test start-auth auth-gen-key auth-lint auth-format auth-test auth-test-watch test test-watch coverage lint format e2e e2e-notifications e2e-workspace e2e-headed turn-e2e docker-e2e
 
 SERVEO_SUBDOMAIN ?= pipol
 SERVEO_KEY       ?= ./serveo_key
@@ -76,17 +76,7 @@ e2e-headed:
 turn-e2e:
 	TURN_E2E=1 pnpm exec playwright test e2e/turn.test.js
 
-# The whole stack in Docker (web + relay + auth), see docs/docker.md
-docker-up:
-	docker compose up --build -d
-
-docker-down:
-	docker compose down
-
-# Browser tests against the running Docker stack (not the dev server). Visual tests are macOS-only snapshots.
+# Browser tests against an app that is already running (for instance the Docker images, see docs/docker.md),
+# not the dev server. E2E_BASE_URL defaults to http://localhost:8080. Visual tests are macOS-only snapshots.
 docker-e2e:
-	E2E_BASE_URL=http://localhost:$${WEB_PORT:-8080} pnpm exec playwright test --grep-invert Visual
-
-# Load test of the running stack. STRESS_SCENARIO=conns|fanout|bigroom|rooms|payload|churn, STRESS_MAX_CONNS=N
-docker-stress:
-	docker compose --profile stress run --rm stress
+	E2E_BASE_URL=$${E2E_BASE_URL:-http://localhost:8080} pnpm exec playwright test --grep-invert Visual

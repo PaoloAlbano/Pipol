@@ -219,5 +219,5 @@ During operation the log also shows `/ice rate limit hit for <ip> (TRUST_PROXY_H
 make relay-test                 # unit and integration tests (Node test runner)
 cd relay && npm run test:coverage   # same, with a coverage table in the output
 make turn-e2e                   # needs Docker: real coturn + relay + Chromium
-make docker-stress              # needs Docker: load test through the stack, see docs/docker.md
+node relay/stress/stress.js --url ws://localhost:8787   # load test of a running relay, see docs/docker.md
 ```

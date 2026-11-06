@@ -96,10 +96,12 @@ pnpm run preview
 ### Everything in Docker
 
 ```bash
-docker compose up --build
+docker build -t pipol-web .
+docker build -t pipol-relay relay
+docker build -t pipol-auth auth
 ```
 
-Runs the whole app as three images (the web app, the relay and the auth server) and serves it at `http://localhost:8080`. See [Running everything with Docker](docs/docker.md) for the configuration, how many connections it is set up for, measured capacity and the stress test.
+Runs the whole app as three images (the web app, the relay and the auth server). See [Running everything with Docker](docs/docker.md) for how to start them, the configuration, capacity and the stress test.
 
 ## TURN server (calls behind strict NATs and firewalls)
 

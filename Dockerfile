@@ -1,57 +1,55 @@
 # syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 
-# Web app image: the built PWA served by nginx, with the relay (/signal, /ice) and the auth server (/auth)
-# proxied under the same origin, so the browser needs no cross-origin configuration.
+# Web app image: the app is built when the container STARTS, with the addresses of the relay and the auth server
+# taken from its environment, and served by nginx. The browser talks to the relay and the auth server directly,
+# so those addresses must be reachable from the browser (not just from this container).
 #
 #   docker build -t pipol-web .
-#   docker run -p 8080:8080 --ulimit nofile=262144:262144 -e RELAY_UPSTREAM=http://relay:8787 pipol-web
+#   docker run -p 8080:8080 \
+#     -e VITE_DHT_RELAY_URL=wss://relay.example.com \
+#     -e VITE_AUTH_URL=https://auth.example.com \
+#     pipol-web
 #
-# Everything is on one origin, so the app finds the relay by itself (wss://<host>/signal). Only the auth server
-# needs a build argument, because the app has no other way to know where it is (VITE_AUTH_URL, default /auth).
-# The Vite variables are fixed at build time: change one and rebuild.
+# Building at start-up takes a few seconds, and the image carries Node and the dependencies to do it, which
+# makes it larger than one that only holds a finished build. The image sends no security headers (put them on
+# the reverse proxy in front of it, see docs/docker.md).
+# None of the variables is a secret: they end up in the JavaScript sent to every browser (the Turnstile site key
+# is public by design), so the "secrets in ARG/ENV" check, which only looks at the names, is skipped.
 
-# ── Build ───────────────────────────────────────────────────────────────────────
-FROM node:24-slim AS build
+FROM node:24-slim
+
+# nginx serves the built app; corepack provides pnpm for the install below
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends nginx \
+ && rm -rf /var/lib/apt/lists/* \
+ && corepack enable
+
+# Everything below runs as the unprivileged `node` user, which also owns /app (the build writes to it)
+RUN mkdir /app && chown node:node /app
+USER node
 WORKDIR /app
 
-RUN corepack enable
-
-COPY package.json pnpm-lock.yaml ./
+COPY --chown=node:node package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-COPY index.html vite.config.js ./
-COPY public ./public
-COPY src ./src
-COPY docker/headers-to-nginx.mjs ./docker/
-
-ARG VITE_AUTH_URL=/auth
-ARG VITE_DHT_RELAY_URL=
-ARG VITE_ICE_URL=
-ARG VITE_TURNSTILE_SITE_KEY=
-ARG VITE_TURN_DISABLED=
-ENV VITE_AUTH_URL=$VITE_AUTH_URL \
-    VITE_DHT_RELAY_URL=$VITE_DHT_RELAY_URL \
-    VITE_ICE_URL=$VITE_ICE_URL \
-    VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY \
-    VITE_TURN_DISABLED=$VITE_TURN_DISABLED
-
-RUN pnpm build \
- && node docker/headers-to-nginx.mjs public/_headers /headers.conf
-
-# ── Serve ───────────────────────────────────────────────────────────────────────
-FROM nginxinc/nginx-unprivileged:stable-alpine
-
+COPY --chown=node:node index.html vite.config.js ./
+COPY --chown=node:node public ./public
+COPY --chown=node:node src ./src
+COPY --chown=node:node docker/start.sh ./docker/
 COPY docker/nginx.conf /etc/nginx/nginx.conf
-COPY docker/default.conf.template /etc/nginx/templates/default.conf.template
-COPY --from=build /headers.conf /etc/nginx/headers.conf
-COPY --from=build /app/dist /usr/share/nginx/html
 
-# Where the proxied services are (replaced in the server block at start-up)
-ENV RELAY_UPSTREAM=http://relay:8787 \
-    AUTH_UPSTREAM=http://auth:8080 \
-    DNS_RESOLVER=127.0.0.11
+# Where the BROWSER finds the services. The defaults suit everything on one machine; change them with -e.
+# Empty VITE_AUTH_URL: no sign-in providers. Empty VITE_DHT_RELAY_URL: the relay at the same address as the app.
+ENV VITE_DHT_RELAY_URL=ws://localhost:8787 \
+    VITE_AUTH_URL=http://localhost:8081 \
+    VITE_ICE_URL= \
+    VITE_TURNSTILE_SITE_KEY= \
+    VITE_TURN_DISABLED=
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+
+CMD ["sh", "docker/start.sh"]
