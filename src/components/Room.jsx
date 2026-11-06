@@ -285,7 +285,12 @@ export default function Room({
 
     async function onVideoOffer(e) {
       if (!callActiveRef.current) return
-      const peer = await ensureRTCPeer(e.detail.peerId, false)
+      const { peerId } = e.detail
+      const existing = rtcPeersRef.current[peerId]
+      // Both sides offered at once: the polite side drops its unanswered connection and answers on a
+      // fresh one. A rollback while ICE is gathering can leave the connection stuck in "new".
+      if (existing?.polite && existing.isInitiator && !existing.established) cleanupRTCPeer(peerId)
+      const peer = await ensureRTCPeer(peerId, false)
       await peer.handleOffer(e.detail.sdp)
     }
     async function onVideoAnswer(e) {
@@ -1060,6 +1065,8 @@ export default function Room({
       setLocalStream(stream)
       // Start from fresh TURN credentials (a tab can stay open for days)
       await swarmRef.current?.refreshIceConfig?.().catch(() => {})
+      // Set the ref now: signalling that arrives before the next render must not be dropped
+      callActiveRef.current = true
       setCallActive(true)
       setCallStartedAt(Date.now())
 
@@ -1092,6 +1099,7 @@ export default function Room({
     setRemoteScreens({})
     stopLocalStream()
     setLocalStream(null)
+    callActiveRef.current = false
     setCallActive(false)
     setCallStartedAt(null)
     setAudioMutedState(false)
@@ -1334,20 +1342,17 @@ export default function Room({
         </aside>
       )}
 
-      {/* ── Center: video grid (only during call) ── */}
+      {/* ── Center: video area (only during call) ── */}
       {callActive && (
         <main className="room-main">
-          {callElapsed && (
-            <div className="room-call-timer" aria-label="Call duration" aria-live="off">
-              {callElapsed}
-            </div>
-          )}
           <VideoGrid
             localStream={localStream}
             remoteStreams={remoteStreams}
             remoteScreens={remoteScreens}
             peers={peers}
             localUsername={identity.username}
+            localVideoMuted={videoMuted}
+            callElapsed={embedded ? '' : callElapsed}
             showStats={showStats}
             peerStats={peerStats}
             layout={layout}

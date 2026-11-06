@@ -352,22 +352,6 @@
   position: relative;
 }
 
-.room-call-timer {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  padding: 3px 10px;
-  border-radius: 99px;
-  pointer-events: none;
-  z-index: 10;
-  letter-spacing: 0.04em;
-}
-
 /* ── Right: chat panel (always visible) ─────────────────────── */
 .room-chat {
   width: 320px;
@@ -386,12 +370,9 @@
   border-left: none;
 }
 
-/* ── Video grid fills the entire center area ─────────────────── */
+/* ── Video area fills the entire center area ─────────────────── */
 .room-layout--call .video-container {
   flex: 1;
-  height: 100%;
-}
-.room-layout--call .video-grid {
   height: 100%;
 }
 

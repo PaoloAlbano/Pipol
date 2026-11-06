@@ -1,12 +1,16 @@
 /**
  * VideoGrid.test.jsx
- * Tests the two layouts (grid / spotlight), the toggle and sidebar interaction.
+ * Tests the two layouts (grid / spotlight), the toggle, the thumbnail strip, the avatar and the speaking highlight.
+ * jsdom has no layout: the area measures the fallback size of useElementSize (960×540).
  */
 
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import VideoGrid from '../../src/components/VideoGrid.jsx'
+import { useSpeaking } from '../../src/webrtc/useSpeaking.js'
+
+vi.mock('../../src/webrtc/useSpeaking.js', () => ({ useSpeaking: vi.fn(() => false) }))
 
 // jsdom does not support HTMLVideoElement.srcObject — we stub it
 Object.defineProperty(HTMLVideoElement.prototype, 'srcObject', {
@@ -55,7 +59,7 @@ describe('VideoGrid — layout grid, solo', () => {
     expect(screen.queryByTitle(/layout/i)).toBeNull()
   })
 
-  it('does not show corner self-preview when alone', () => {
+  it('shows only your own tile when alone', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}
@@ -70,7 +74,7 @@ describe('VideoGrid — layout grid, solo', () => {
         onSpotlightChange={vi.fn()}
       />
     )
-    expect(container.querySelector('.video-self-preview')).toBeNull()
+    expect(container.querySelectorAll('.video-tile')).toHaveLength(1)
   })
 })
 
@@ -92,12 +96,12 @@ describe('VideoGrid — layout grid, with remote peers', () => {
     expect(screen.getByText('bob')).toBeInTheDocument()
   })
 
-  it('displays corner self-preview when remote peers are present', () => {
+  it('puts your own tile last, in the same grid as the others', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}
-        remoteStreams={{ 'peer-1': makeFakeStream() }}
-        peers={[peer1]}
+        remoteStreams={{ 'peer-1': makeFakeStream(), 'peer-2': makeFakeStream() }}
+        peers={[peer1, peer2]}
         localUsername="swift-fox"
         showStats={false}
         peerStats={{}}
@@ -107,7 +111,39 @@ describe('VideoGrid — layout grid, with remote peers', () => {
         onSpotlightChange={vi.fn()}
       />
     )
-    expect(container.querySelector('.video-self-preview')).toBeInTheDocument()
+    const tiles = [...container.querySelectorAll('.video-tile--grid')]
+    expect(tiles).toHaveLength(3)
+    expect(tiles[2].textContent).toContain('swift-fox')
+    // Same size for everybody
+    expect(new Set(tiles.map((t) => `${t.style.width}x${t.style.height}`)).size).toBe(1)
+  })
+
+  it('never overlaps the tiles', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={Object.fromEntries([1, 2, 3, 4].map((n) => [`p${n}`, makeFakeStream()]))}
+        peers={[1, 2, 3, 4].map((n) => ({ id: `p${n}`, username: `user${n}` }))}
+        localUsername="swift-fox"
+        layout="grid"
+        spotlightPeerId={null}
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+      />
+    )
+    const boxes = [...container.querySelectorAll('.video-tile')].map((t) => ({
+      l: parseFloat(t.style.left),
+      t: parseFloat(t.style.top),
+      r: parseFloat(t.style.left) + parseFloat(t.style.width),
+      b: parseFloat(t.style.top) + parseFloat(t.style.height),
+    }))
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]
+        const b = boxes[j]
+        expect(a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b).toBe(false)
+      }
+    }
   })
 
   it('displays layout toggle button when remote peers are present', () => {
@@ -169,22 +205,28 @@ describe('VideoGrid — layout spotlight', () => {
 
   it('displays spotlight peer in main panel', () => {
     spotlightSetup()
-    const main = document.querySelector('.video-spotlight-main')
+    const main = document.querySelector('.video-tile--main')
     expect(main).toBeInTheDocument()
     expect(main.textContent).toContain('alice')
   })
 
-  it('displays other peers in sidebar', () => {
+  it('displays other peers in the strip', () => {
     spotlightSetup()
-    const sidebar = document.querySelector('.video-spotlight-sidebar')
-    expect(sidebar).toBeInTheDocument()
-    expect(sidebar.textContent).toContain('bob')
+    const strip = [...document.querySelectorAll('.video-tile--strip')]
+    expect(strip.map((t) => t.textContent).join(' ')).toContain('bob')
   })
 
-  it('displays self-preview in sidebar', () => {
+  it('displays your own tile in the strip', () => {
     spotlightSetup()
-    const sidebar = document.querySelector('.video-spotlight-sidebar')
-    expect(sidebar.textContent).toContain('swift-fox')
+    const strip = [...document.querySelectorAll('.video-tile--strip')]
+    expect(strip.at(-1).textContent).toContain('swift-fox')
+  })
+
+  it('makes the main tile fill the area next to the strip', () => {
+    spotlightSetup()
+    const main = document.querySelector('.video-tile--main')
+    // Fallback area 960×540: a side strip, so the main tile takes the full height
+    expect(main.style.height).toBe('528px')
   })
 
   it('toggle in spotlight mode calls onLayoutChange with "grid"', async () => {
@@ -194,21 +236,92 @@ describe('VideoGrid — layout spotlight', () => {
     expect(onLayoutChange).toHaveBeenCalledWith('grid')
   })
 
-  it('click on sidebar tile calls onSpotlightChange with peerId', async () => {
+  it('click on a strip tile calls onSpotlightChange with peerId', async () => {
     const user = userEvent.setup()
     const { onSpotlightChange } = spotlightSetup()
-    const sidebar = document.querySelector('.video-spotlight-sidebar')
-    const clickableTile = sidebar.querySelector('.video-tile--clickable')
-    await user.click(clickableTile)
+    await user.click(document.querySelector('.video-tile--clickable'))
     expect(onSpotlightChange).toHaveBeenCalledWith('peer-2')
   })
 
-  it('local tile in sidebar is not clickable', () => {
+  it('your own tile in the strip is not clickable', () => {
     spotlightSetup()
-    const sidebar = document.querySelector('.video-spotlight-sidebar')
-    const tiles = sidebar.querySelectorAll('.video-tile')
-    const localTile = [...tiles].find((t) => t.textContent.includes('swift-fox'))
+    const localTile = [...document.querySelectorAll('.video-tile--strip')].find((t) =>
+      t.textContent.includes('swift-fox')
+    )
     expect(localTile).not.toHaveClass('video-tile--clickable')
+  })
+
+  it('shows a "+N" tile for the people that do not fit in the strip, which goes back to the grid', async () => {
+    const user = userEvent.setup()
+    const ids = [1, 2, 3, 4, 5, 6].map((n) => `p${n}`)
+    const { onLayoutChange } = setup({
+      peers: ids.map((id) => ({ id, username: id })),
+      remoteStreams: Object.fromEntries(ids.map((id) => [id, makeFakeStream()])),
+      layout: 'spotlight',
+      spotlightPeerId: 'p1',
+    })
+    // 5 places in the strip: 3 people, the "+N" tile and you (6 peers, one of them in the main tile)
+    expect(document.querySelectorAll('.video-tile--strip')).toHaveLength(4)
+    const more = document.querySelector('.video-tile--more')
+    expect(more.textContent).toBe('+2')
+    expect([...document.querySelectorAll('.video-tile--strip')].at(-1).textContent).toContain('swift-fox')
+    await user.click(more)
+    expect(onLayoutChange).toHaveBeenCalledWith('grid')
+  })
+
+  it('has no "+N" tile when everybody fits', () => {
+    spotlightSetup()
+    expect(document.querySelector('.video-tile--more')).toBeNull()
+  })
+})
+
+// ── Own camera off, speaking, timer ───────────────────────────────────────────
+
+describe('VideoGrid — avatar, speaking and timer', () => {
+  const peer1 = { id: 'peer-1', username: 'alice' }
+
+  it('shows your initials when your camera is off, keeping the video element', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{}}
+        peers={[]}
+        localUsername="swift-fox"
+        localVideoMuted
+        layout="grid"
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+      />
+    )
+    expect(container.querySelector('.video-avatar').textContent).toBe('SF')
+    expect(container.querySelector('video')).toHaveClass('video-element--hidden')
+  })
+
+  it('shows no avatar while your camera is on', () => {
+    setup()
+    expect(document.querySelector('.video-avatar')).toBeNull()
+  })
+
+  it('highlights the tile of whoever is speaking', () => {
+    useSpeaking.mockReturnValue(true)
+    setup({ peers: [peer1], remoteStreams: { 'peer-1': makeFakeStream() } })
+    expect(document.querySelector('.video-tile--speaking')).toBeInTheDocument()
+    useSpeaking.mockReturnValue(false)
+  })
+
+  it('does not highlight anybody in silence', () => {
+    setup({ peers: [peer1], remoteStreams: { 'peer-1': makeFakeStream() } })
+    expect(document.querySelector('.video-tile--speaking')).toBeNull()
+  })
+
+  it('shows the call duration in the top bar', () => {
+    setup({ callElapsed: '05:42' })
+    expect(screen.getByLabelText('Call duration')).toHaveTextContent('05:42')
+  })
+
+  it('shows no top bar when there is neither a timer nor a toggle', () => {
+    setup()
+    expect(document.querySelector('.video-topbar')).toBeNull()
   })
 })
 
@@ -285,7 +398,11 @@ describe('VideoGrid — stats overlay: connection route', () => {
   }
 
   it('labels a direct connection', () => {
-    const { container } = renderWithStats({ localType: 'host', remoteType: 'srflx', relayed: false })
+    const { container } = renderWithStats({
+      localType: 'host',
+      remoteType: 'srflx',
+      relayed: false,
+    })
     const route = container.querySelector('.video-stats-route')
     expect(route.textContent).toBe('direct')
     expect(route.className).not.toContain('--relay')
@@ -454,7 +571,7 @@ describe('VideoGrid — screen share', () => {
     expect(screen.getByText('alice (screen)')).toBeInTheDocument()
   })
 
-  it('puts the screen in the spotlight and the camera in the sidebar', () => {
+  it('puts the screen in the spotlight and the camera in the strip', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}
@@ -468,10 +585,10 @@ describe('VideoGrid — screen share', () => {
         onSpotlightChange={vi.fn()}
       />
     )
-    const main = container.querySelector('.video-spotlight-main')
-    const sidebar = container.querySelector('.video-spotlight-sidebar')
+    const main = container.querySelector('.video-tile--main')
+    const strip = [...container.querySelectorAll('.video-tile--strip')].map((t) => t.textContent).join(' ')
     expect(main.textContent).toContain('alice (screen)')
-    expect(sidebar.textContent).toContain('alice')
-    expect(sidebar.textContent).not.toContain('(screen)')
+    expect(strip).toContain('alice')
+    expect(strip).not.toContain('(screen)')
   })
 })
