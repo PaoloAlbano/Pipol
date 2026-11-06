@@ -15,20 +15,9 @@ echo "[web] building the app"
 echo "[web]   relay: ${VITE_DHT_RELAY_URL:-(same address as the app)}"
 echo "[web]   auth:  ${VITE_AUTH_URL:-(none)}"
 
-# An address with the wrong scheme would give an app that silently cannot connect: stop here instead
-check() {
-  name=$1 value=$2
-  shift 2
-  [ -n "$value" ] || return 0
-  for scheme in "$@"; do
-    case "$value" in "$scheme"*) return 0 ;; esac
-  done
-  echo "[web] $name must start with $*, got: $value" >&2
-  exit 1
-}
-check VITE_DHT_RELAY_URL "${VITE_DHT_RELAY_URL:-}" ws:// wss://
-check VITE_AUTH_URL "${VITE_AUTH_URL:-}" http:// https://
-check VITE_ICE_URL "${VITE_ICE_URL:-}" http:// https://
+# A bad address fails here, before anything is built; the Content-Security-Policy gets the addresses that were given
+node docker/headers-to-nginx.mjs public/_headers /tmp/headers.conf \
+  "${VITE_DHT_RELAY_URL:-}" "${VITE_AUTH_URL:-}" "${VITE_ICE_URL:-}"
 
 # vite is called directly: pnpm would try to download itself again, and the container may have no internet
 node node_modules/vite/bin/vite.js build --logLevel warn

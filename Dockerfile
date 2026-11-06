@@ -12,8 +12,8 @@
 #     pipol-web
 #
 # Building at start-up takes a few seconds, and the image carries Node and the dependencies to do it, which
-# makes it larger than one that only holds a finished build. The image sends no security headers (put them on
-# the reverse proxy in front of it, see docs/docker.md).
+# makes it larger than one that only holds a finished build. The security headers of the hosted app
+# (public/_headers) are served too, with the relay and auth addresses added to the Content-Security-Policy.
 # None of the variables is a secret: they end up in the JavaScript sent to every browser (the Turnstile site key
 # is public by design), so the "secrets in ARG/ENV" check, which only looks at the names, is skipped.
 
@@ -36,7 +36,7 @@ RUN pnpm install --frozen-lockfile
 COPY --chown=node:node index.html vite.config.js ./
 COPY --chown=node:node public ./public
 COPY --chown=node:node src ./src
-COPY --chown=node:node docker/start.sh ./docker/
+COPY --chown=node:node docker/headers-to-nginx.mjs docker/start.sh ./docker/
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 
 # Where the BROWSER finds the services. The defaults suit everything on one machine; change them with -e.

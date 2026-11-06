@@ -36,7 +36,7 @@ Open <http://localhost:8080>. Two browsers (or one normal and one private window
 
 ## Where the app finds the relay and the auth server
 
-The app is static: the addresses are fixed into it when it is built. The web image builds it **when the container starts**, from its environment, so you choose them with `-e` instead of at `docker build` time. The build takes a few seconds. An address with the wrong scheme stops the container with a clear message before anything is built (the relay must start with `ws://` or `wss://`, the others with `http://` or `https://`).
+The app is static: the addresses are fixed into it when it is built. The web image builds it **when the container starts**, from its environment, so you choose them with `-e` instead of at `docker build` time. The build takes a few seconds. An address that is not a valid `http`, `https`, `ws` or `wss` URL stops the container with a clear message before anything is built.
 
 | Variable | Default in the image | Meaning |
 |----------|----------------------|---------|
@@ -48,7 +48,7 @@ To change one of them, run the container again with the new value (`docker rm -f
 
 **Size.** The image holds Node and the dependencies it needs to build when it starts (about 730 MB), instead of a finished build (a few tens of MB). In exchange there is nothing to rebuild when an address changes.
 
-**Security headers.** The web image sends none: no Content-Security-Policy, no `X-Frame-Options`, no HSTS. Put them on the reverse proxy in front of it, which you need anyway for HTTPS. The headers the hosted app uses are listed in [`public/_headers`](../public/_headers), and they can be copied from there. If you add the Content-Security-Policy, note that it allows `https:`, `wss:` and `ws:` for connections but **not plain `http:`**: add the exact addresses of your relay and auth server to its `connect-src` if they are on `http`.
+**Security headers.** The image serves the same headers as the hosted app (Content-Security-Policy, `X-Frame-Options`, HSTS, …). They are read from [`public/_headers`](../public/_headers) when the container starts, so there is one source. The Content-Security-Policy there allows `https:`, `wss:` and `ws:` for connections but not plain `http:`, so the relay and auth addresses you give are added to its `connect-src`, and only those exact addresses: never a blanket `http:`. A relay given as `ws://localhost:8787` is allowed as a WebSocket and for `/ice` over `http://localhost:8787`; an auth server only for its own scheme. Behind a reverse proxy that adds its own headers, avoid sending the same header twice.
 
 ## Configuring each container
 
@@ -75,7 +75,6 @@ Without any provider the app still works with guest and passphrase identities. T
 2. Set `VITE_DHT_RELAY_URL=wss://relay.example.com` and `VITE_AUTH_URL=https://auth.example.com` on the web container.
 3. Restrict who may call them: `-e ICE_ALLOWED_ORIGINS=https://app.example.com` on the relay (see [Protecting `/ice`](relay.md#protecting-ice)) and `-e ALLOWED_ORIGINS=https://app.example.com` on the auth server. Unset, any website may use them.
 4. Set `TRUST_PROXY_HOPS` on the relay to the number of proxies in front of it, so the `/ice` rate limit reads the visitor's address and not the proxy's.
-5. Add the security headers on the proxy in front of the web container (see above).
 
 On Docker Desktop, connections to a published port all appear to come from one internal address, so every browser shares the `/ice` limit (30 requests a minute by default) and browsers tested from the same machine can see `429`. It does not happen on a Linux host.
 
@@ -158,4 +157,4 @@ To see the load on the relay while testing, start it with `-e RELAY_STATS_INTERV
 
 ## Tests against the running images
 
-With the three containers up, `make docker-e2e` runs the browser tests (Playwright, without the macOS-only visual tests) against the app on `http://localhost:8080` instead of the dev server: the browser opens the app and talks to the relay on 8787. Set `E2E_BASE_URL` to use another address. The relay's own tests (`make relay-test`) cover the heartbeat and the slow-client cut-off.
+With the three containers up, `make docker-e2e` runs the browser tests (Playwright, without the macOS-only visual tests) against the app on `http://localhost:8080` instead of the dev server: the browser opens the app and talks to the relay on 8787. Set `E2E_BASE_URL` to use another address. The relay's own tests (`make relay-test`) cover the heartbeat and the slow-client cut-off, and `pnpm test` checks the generation of the security headers.
