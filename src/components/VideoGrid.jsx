@@ -28,6 +28,7 @@ export default function VideoGrid({
   peers,
   localUsername,
   localVideoMuted = false,
+  remoteVideoOff = {},
   callElapsed = '',
   showStats,
   peerStats,
@@ -59,6 +60,7 @@ export default function VideoGrid({
       peerId,
       stream,
       screen: false,
+      videoOff: Boolean(remoteVideoOff[peerId]),
       name: nameOf(peerId),
       label: nameOf(peerId),
     })),
@@ -180,7 +182,7 @@ export default function VideoGrid({
               role={role}
               muted={Boolean(tile.local)}
               mirror={Boolean(tile.local) && mirrorVideo}
-              videoOff={Boolean(tile.local) && localVideoMuted}
+              videoOff={tile.local ? localVideoMuted : Boolean(tile.videoOff)}
               fit={tile.screen ? 'contain' : isMain ? cameraFit(rect.width, rect.height) : 'cover'}
               stats={statsOf(tile, rect)}
               onClick={role === 'strip' && !tile.local ? () => onSpotlightChange(tile.peerId) : undefined}

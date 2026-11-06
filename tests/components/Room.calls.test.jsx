@@ -377,6 +377,36 @@ describe('Room — remote streams', () => {
     expect(screen.queryByText('peer-1')).toBeNull()
   })
 
+  it('shows an avatar instead of the video while the peer has the camera off', async () => {
+    setPeers('peer-1')
+    await startCall()
+    await act(async () => {
+      rtcPeers[0].dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: camStream } }))
+    })
+    expect(document.querySelectorAll('.video-avatar')).toHaveLength(0)
+
+    await fire('video-state', { peerId: 'peer-1', off: true })
+    expect(document.querySelectorAll('.video-avatar')).toHaveLength(1)
+
+    await fire('video-state', { peerId: 'peer-1', off: false })
+    expect(document.querySelectorAll('.video-avatar')).toHaveLength(0)
+  })
+
+  it('forgets that the camera was off when the peer leaves the call', async () => {
+    setPeers('peer-1')
+    await startCall()
+    await act(async () => {
+      rtcPeers[0].dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: camStream } }))
+    })
+    await fire('video-state', { peerId: 'peer-1', off: true })
+    await fire('call-end', { peerId: 'peer-1' })
+    await fire('call-init', { peerId: 'peer-1' })
+    await act(async () => {
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: camStream } }))
+    })
+    expect(document.querySelectorAll('.video-avatar')).toHaveLength(0)
+  })
+
   it('announces an active screen share to a peer that connects later', async () => {
     media.getActiveScreenStream.mockReturnValue({ id: 'my-screen' })
     await startCall()
@@ -447,6 +477,27 @@ describe('Room — local screen share and camera', () => {
     await userEvent.click(screen.getByTitle(/turn off camera/i))
     expect(media.setVideoMuted).toHaveBeenCalledWith(true)
     expect(screen.getByTitle(/turn on camera/i)).toBeInTheDocument()
+  })
+
+  it('tells the other peers when the camera goes off and on', async () => {
+    await startCall()
+    await userEvent.click(screen.getByTitle(/turn off camera/i))
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'VIDEO_STATE', off: true })
+    await userEvent.click(screen.getByTitle(/turn on camera/i))
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'VIDEO_STATE', off: false })
+  })
+
+  it('tells a peer that connects later that the camera is off', async () => {
+    await startCall()
+    await userEvent.click(screen.getByTitle(/turn off camera/i))
+    await fire('call-init', { peerId: 'peer-9' })
+    expect(swarmMock.sendToPeer).toHaveBeenCalledWith('peer-9', { type: 'VIDEO_STATE', off: true })
+  })
+
+  it('says nothing to a peer that connects later while the camera is on', async () => {
+    await startCall()
+    await fire('call-init', { peerId: 'peer-9' })
+    expect(swarmMock.sendToPeer).not.toHaveBeenCalledWith('peer-9', expect.objectContaining({ type: 'VIDEO_STATE' }))
   })
 
   it('replaces the camera track on every peer after switching camera', async () => {

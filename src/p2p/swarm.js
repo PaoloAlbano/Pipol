@@ -22,6 +22,7 @@
  *   peer-left     { id }
  *   call-init     { peerId }
  *   call-end      { peerId }
+ *   video-state   { peerId, off }   the peer turned their camera off or on during a call
  *   error         { detail: Error }
  */
 
@@ -528,6 +529,9 @@ export class RoomSwarm extends EventTarget {
         break
       case 'SCREEN_SHARE_END':
         this.dispatchEvent(new CustomEvent('screen-share-end', { detail: { peerId: remoteId } }))
+        break
+      case 'VIDEO_STATE':
+        this.dispatchEvent(new CustomEvent('video-state', { detail: { peerId: remoteId, off: msg.off === true } }))
         break
       case 'WORKSPACE_META':
         this.dispatchEvent(new CustomEvent('workspace-meta', { detail: { peerId: remoteId, channels: msg.channels } }))

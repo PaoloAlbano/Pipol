@@ -128,6 +128,8 @@ export default function Room({
   const [remoteScreens, setRemoteScreens] = useState({}) // peerId → screen-share MediaStream
   const [audioMuted, setAudioMutedState] = useState(false)
   const [videoMuted, setVideoMutedState] = useState(false)
+  const videoMutedRef = useRef(false) // read by ensureRTCPeer, which may run from a stale closure
+  const [remoteVideoOff, setRemoteVideoOff] = useState({}) // peerId → true while their camera is off
   const [screenSharing, setScreenSharing] = useState(false)
   const [layout, setLayout] = useState('grid') // 'grid' | 'spotlight'
   const [spotlightPeerId, setSpotlightPeerId] = useState(null)
@@ -245,6 +247,7 @@ export default function Room({
         next.delete(id)
         return next
       })
+      clearRemoteVideoOff(id)
       setIncomingCall((prev) => (prev?.peerId === id ? null : prev))
       setSpotlightPeerId((prev) => (prev === id ? null : prev))
       if (typingPeersRef.current.has(id)) {
@@ -275,6 +278,7 @@ export default function Room({
     function onCallEnd(e) {
       const { peerId } = e.detail
       cleanupRTCPeer(peerId)
+      clearRemoteVideoOff(peerId)
       setCallPeerIds((prev) => {
         const next = new Set(prev)
         next.delete(peerId)
@@ -342,6 +346,17 @@ export default function Room({
       else if (message.op === 'delete') msgStore.receiveDelete(message)
       else if (message.op === 'reaction') applyReaction(message)
       else msgStore.receiveMessage(message)
+    }
+
+    function onVideoState(e) {
+      const { peerId, off } = e.detail
+      setRemoteVideoOff((prev) => {
+        if (Boolean(prev[peerId]) === off) return prev
+        const next = { ...prev }
+        if (off) next[peerId] = true
+        else delete next[peerId]
+        return next
+      })
     }
 
     function onScreenShareStart(e) {
@@ -421,6 +436,7 @@ export default function Room({
     swarm.addEventListener('history-req', onHistoryReq)
     swarm.addEventListener('chat-message', onChatMessage)
     if (isDM) swarm.addEventListener('dm-message', onDMMessage)
+    swarm.addEventListener('video-state', onVideoState)
     swarm.addEventListener('screen-share-start', onScreenShareStart)
     swarm.addEventListener('screen-share-end', onScreenShareEnd)
     swarm.addEventListener('error', onSwarmError)
@@ -442,6 +458,7 @@ export default function Room({
       swarm.removeEventListener('history-req', onHistoryReq)
       swarm.removeEventListener('chat-message', onChatMessage)
       if (isDM) swarm.removeEventListener('dm-message', onDMMessage)
+      swarm.removeEventListener('video-state', onVideoState)
       swarm.removeEventListener('screen-share-start', onScreenShareStart)
       swarm.removeEventListener('screen-share-end', onScreenShareEnd)
       swarm.removeEventListener('error', onSwarmError)
@@ -849,6 +866,8 @@ export default function Room({
     if (screenStream) {
       swarmRef.current?.sendToPeer(peerId, { type: 'SCREEN_SHARE_START', streamId: screenStream.id })
     }
+    // Late joiner while our camera is off: it cannot see that from the video
+    if (videoMutedRef.current) swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_STATE', off: true })
 
     // ── Event handlers for WebRTC signaling ────────────────────────────────
 
@@ -897,6 +916,15 @@ export default function Room({
     // Initialize the peer connection (triggers offer/answer exchange if initiator)
     await rtcPeer.init()
     return rtcPeer
+  }
+
+  function clearRemoteVideoOff(peerId) {
+    setRemoteVideoOff((prev) => {
+      if (!prev[peerId]) return prev
+      const next = { ...prev }
+      delete next[peerId]
+      return next
+    })
   }
 
   function cleanupRTCPeer(peerId) {
@@ -1097,6 +1125,7 @@ export default function Room({
     remoteScreenIdsRef.current = {}
     setRemoteStreams({})
     setRemoteScreens({})
+    setRemoteVideoOff({})
     stopLocalStream()
     setLocalStream(null)
     callActiveRef.current = false
@@ -1104,6 +1133,7 @@ export default function Room({
     setCallStartedAt(null)
     setAudioMutedState(false)
     setVideoMutedState(false)
+    videoMutedRef.current = false
     setScreenSharing(false)
     setLayout('grid')
     setSpotlightPeerId(null)
@@ -1128,6 +1158,9 @@ export default function Room({
     const next = !videoMuted
     setVideoMuted(next)
     setVideoMutedState(next)
+    videoMutedRef.current = next
+    // A disabled camera track only sends black frames: tell the others, so they can show an avatar instead
+    swarmRef.current?.sendToAll({ type: 'VIDEO_STATE', off: next })
   }
 
   async function handleSwitchCamera() {
@@ -1352,6 +1385,7 @@ export default function Room({
             peers={peers}
             localUsername={identity.username}
             localVideoMuted={videoMuted}
+            remoteVideoOff={remoteVideoOff}
             callElapsed={embedded ? '' : callElapsed}
             showStats={showStats}
             peerStats={peerStats}

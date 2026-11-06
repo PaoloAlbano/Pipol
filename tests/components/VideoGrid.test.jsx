@@ -297,6 +297,44 @@ describe('VideoGrid — avatar, speaking and timer', () => {
     expect(container.querySelector('video')).toHaveClass('video-element--hidden')
   })
 
+  it('shows the initials of a remote peer whose camera is off, keeping their video element', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-1': makeFakeStream() }}
+        remoteVideoOff={{ 'peer-1': true }}
+        peers={[peer1]}
+        localUsername="swift-fox"
+        layout="grid"
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+      />
+    )
+    expect(container.querySelectorAll('.video-avatar')).toHaveLength(1)
+    expect(container.querySelector('.video-avatar').textContent).toBe('AL')
+    expect(container.querySelectorAll('video')[0]).toHaveClass('video-element--hidden')
+    expect(container.querySelectorAll('video')[1]).not.toHaveClass('video-element--hidden')
+  })
+
+  it('keeps showing the screen of a peer whose camera is off', () => {
+    const { container } = render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-1': makeFakeStream() }}
+        remoteScreens={{ 'peer-1': makeFakeStream() }}
+        remoteVideoOff={{ 'peer-1': true }}
+        peers={[peer1]}
+        localUsername="swift-fox"
+        layout="grid"
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+      />
+    )
+    expect(container.querySelectorAll('.video-avatar')).toHaveLength(1)
+    const screenTile = [...container.querySelectorAll('.video-tile')].find((t) => t.textContent.includes('(screen)'))
+    expect(screenTile.querySelector('video')).not.toHaveClass('video-element--hidden')
+  })
+
   it('shows no avatar while your camera is on', () => {
     setup()
     expect(document.querySelector('.video-avatar')).toBeNull()
