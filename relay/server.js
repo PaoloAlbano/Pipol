@@ -128,9 +128,56 @@ wssDHT.on('connection', (socket, req) => {
 const wssSignal = new WebSocketServer({ noServer: true })
 const rooms = new Map() // roomCode → Map<peerId, ws>
 
+// Heartbeat: a ping every HEARTBEAT_INTERVAL_MS. A client that did not answer the previous one is gone (browsers
+// answer pings by themselves): it is dropped so its room does not keep a dead peer, and the traffic also stops
+// proxies and load balancers from closing connections that look idle.
+const HEARTBEAT_MS = Number(process.env.HEARTBEAT_INTERVAL_MS) || 25_000
+setInterval(() => {
+  for (const client of wssSignal.clients) {
+    if (client.isAlive === false) {
+      client.terminate()
+      continue
+    }
+    client.isAlive = false
+    client.ping()
+  }
+}, HEARTBEAT_MS).unref()
+
+// A client that cannot keep up (its send buffer keeps growing) is cut off instead of using the relay's memory;
+// it reconnects and catches up through the history sync.
+const MAX_CLIENT_BUFFER = (Number(process.env.MAX_CLIENT_BUFFER_MB) || 32) * 1024 * 1024
+let slowClientsClosed = 0
+
+function deliver(peerWs, payload) {
+  if (peerWs.readyState !== 1) return
+  if (peerWs.bufferedAmount > MAX_CLIENT_BUFFER) {
+    slowClientsClosed++
+    peerWs.terminate()
+    return
+  }
+  peerWs.send(payload)
+}
+
+// RELAY_STATS_INTERVAL_SEC=N: one line every N seconds with the load of the relay (no identifiers)
+const statsSeconds = Number(process.env.RELAY_STATS_INTERVAL_SEC) || 0
+if (statsSeconds > 0) {
+  setInterval(() => {
+    const { rss, heapUsed } = process.memoryUsage()
+    const mb = (bytes) => Math.round(bytes / 1048576)
+    console.log(
+      `[relay] stats: connections=${wssSignal.clients.size} rooms=${rooms.size} rss=${mb(rss)}MB heap=${mb(heapUsed)}MB slowClientsClosed=${slowClientsClosed}`
+    )
+  }, statsSeconds * 1000).unref()
+}
+
 wssSignal.on('connection', (ws) => {
   let peerId = null
   let roomCode = null
+
+  ws.isAlive = true
+  ws.on('pong', () => {
+    ws.isAlive = true
+  })
 
   ws.on('message', (raw) => {
     let msg
@@ -162,9 +209,7 @@ wssSignal.on('connection', (ws) => {
     if (msg.type === 'signal' && msg.to && roomCode) {
       const room = rooms.get(roomCode)
       const target = room?.get(msg.to)
-      if (target?.readyState === 1) {
-        target.send(JSON.stringify({ ...msg, from: peerId }))
-      }
+      if (target) deliver(target, JSON.stringify({ ...msg, from: peerId }))
       return
     }
 
@@ -176,7 +221,7 @@ wssSignal.on('connection', (ws) => {
       if (!room) return
       const payload = JSON.stringify({ type: 'relay-data', from: peerId, data: msg.data })
       for (const [id, peerWs] of room) {
-        if (id !== peerId && peerWs.readyState === 1) peerWs.send(payload)
+        if (id !== peerId) deliver(peerWs, payload)
       }
       return
     }
@@ -185,9 +230,7 @@ wssSignal.on('connection', (ws) => {
     if (msg.type === 'relay-data-to' && msg.to && roomCode) {
       const room = rooms.get(roomCode)
       const target = room?.get(msg.to)
-      if (target?.readyState === 1) {
-        target.send(JSON.stringify({ type: 'relay-data', from: peerId, data: msg.data }))
-      }
+      if (target) deliver(target, JSON.stringify({ type: 'relay-data', from: peerId, data: msg.data }))
     }
   })
 

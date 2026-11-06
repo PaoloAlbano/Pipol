@@ -1,6 +1,10 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test'
 
+// E2E_BASE_URL=http://localhost:8080 runs the tests against an app that is already up (for instance the Docker
+// stack: `make docker-e2e`) instead of starting the dev server and the relay
+const externalApp = process.env.E2E_BASE_URL
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 90_000,
@@ -20,11 +24,11 @@ export default defineConfig({
     },
   ],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: externalApp || 'http://localhost:5173',
     ignoreHTTPSErrors: true,
   },
   // Start the dev server (plain HTTP) and the relay before tests run
-  webServer: [
+  webServer: externalApp ? undefined : [
     {
       command: 'VITE_NO_SSL=1 pnpm vite --port 5173',
       url: 'http://localhost:5173',

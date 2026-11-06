@@ -93,6 +93,16 @@ pnpm run build
 pnpm run preview
 ```
 
+### Everything in Docker
+
+```bash
+docker build -t pipol-web .
+docker build -t pipol-relay relay
+docker build -t pipol-auth auth
+```
+
+Runs the whole app as three images (the web app, the relay and the auth server). See [Running everything with Docker](docs/docker.md) for how to start them, the configuration, capacity and the stress test.
+
 ## TURN server (calls behind strict NATs and firewalls)
 
 Direct connections work on most networks. Behind symmetric NATs, mobile carriers or strict firewalls a TURN server relays the traffic; it only sees packets that are already end-to-end encrypted, though it does see IP addresses. TURN is used for **video calls only**, and only as a last resort. When chat cannot connect directly it goes through the relay server, also end-to-end encrypted: see [What the relay can see](docs/relay.md#what-the-relay-can-see).

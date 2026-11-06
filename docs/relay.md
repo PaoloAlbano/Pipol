@@ -23,6 +23,9 @@ The relay is configured only through environment variables. Nothing is required:
 |----------|---------|---------|
 | `PORT` | `8787` | Listening port |
 | `LOG_HIDE_SENSITIVE` | off | `true` stops the relay from logging who connects: the lines with client IPs, room names and peer ids are not written. See [Logs and privacy](#logs-and-privacy) |
+| `HEARTBEAT_INTERVAL_MS` | `25000` | How often each signaling connection is pinged. A client that did not answer the previous ping is dropped, so its room does not keep a dead peer; the pings also keep proxies and load balancers from closing connections that look idle |
+| `MAX_CLIENT_BUFFER_MB` | `32` | A client whose send buffer grows past this (it cannot keep up with what the room sends) is disconnected instead of using the relay's memory; it reconnects and catches up through the history sync |
+| `RELAY_STATS_INTERVAL_SEC` | off | `N` writes a line every N seconds with the load (`connections`, `rooms`, `rss`, `heap`, `slowClientsClosed`). No identifiers, so it is safe with `LOG_HIDE_SENSITIVE` |
 
 ### TURN provider
 
@@ -206,7 +209,7 @@ During operation the log also shows `/ice rate limit hit for <ip> (TRUST_PROXY_H
 
 ## Deploying
 
-- **Docker**: `docker build -t pipol-relay relay` then run it with the variables above (`-e NAME=value`). The image runs as the unprivileged `node` user and exposes `8787`.
+- **Docker**: `docker build -t pipol-relay relay` then run it with the variables above (`-e NAME=value`). The image runs as the unprivileged `node` user and exposes `8787`. To run the relay together with the app and the auth server, see [Running everything with Docker](docker.md).
 - **Render** or similar: build from `relay/Dockerfile`, set the variables under Environment and redeploy (the relay caches credentials in memory, so a restart clears them). Set `TRUST_PROXY_HOPS=3` on Render (the default `1` would count Render's internal proxies, of which there are several, instead of your users) and check it as described in [Cloudflare setup](cloudflare.md#44-the-rate-limit-and-trust_proxy_hops). A free instance sleeps when idle: the first `/ice` after a pause can be slow, and after 4 seconds the app falls back to public STUN.
 - Never commit secrets (`CLOUDFLARE_TURN_API_TOKEN`, `TURN_SECRET`, `TURNSTILE_SECRET`, …). If one leaks, revoke it at the provider and replace it.
 
@@ -216,4 +219,5 @@ During operation the log also shows `/ice rate limit hit for <ip> (TRUST_PROXY_H
 make relay-test                 # unit and integration tests (Node test runner)
 cd relay && npm run test:coverage   # same, with a coverage table in the output
 make turn-e2e                   # needs Docker: real coturn + relay + Chromium
+node relay/stress/stress.js --url ws://localhost:8787   # load test of a running relay, see docs/docker.md
 ```
