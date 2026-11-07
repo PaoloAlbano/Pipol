@@ -30,7 +30,8 @@ class FakePC extends EventTarget {
     peerConnections.push(this)
   }
   createDataChannel() {
-    return Object.assign(new EventTarget(), { readyState: 'connecting', send() {}, close() {} })
+    this.dc = Object.assign(new EventTarget(), { readyState: 'connecting', send() {}, close: vi.fn() })
+    return this.dc
   }
   async createOffer() {
     return { type: 'offer', sdp: 'a=fingerprint:sha-256 AA:BB' }
@@ -40,7 +41,7 @@ class FakePC extends EventTarget {
   }
   async setLocalDescription() {}
   async setRemoteDescription() {}
-  close() {}
+  close = vi.fn()
 }
 
 function makeSwarm() {
@@ -125,5 +126,86 @@ describe('RoomSwarm — WebRTC handshake after a relay HELLO', () => {
     await swarm._handleRTCSignal(ALICE, { type: 'offer', sdp: { type: 'offer', sdp: 'x' } })
     await swarm._handleRTCSignal(ALICE, { type: 'offer', sdp: { type: 'offer', sdp: 'y' } })
     expect(peerConnections).toHaveLength(1)
+  })
+})
+
+describe('RoomSwarm — a WebRTC link that ends is not a peer that leaves', () => {
+  async function connectedPeer(swarm, alice) {
+    swarm._handleSignal(helloFromAlice(alice))
+    await swarm._initiateConnection(ALICE)
+    return swarm.peers.get(ALICE).pc
+  }
+
+  function fail(pc) {
+    pc.connectionState = 'failed'
+    pc.dispatchEvent(new Event('connectionstatechange'))
+  }
+
+  it('keeps the peer, reachable through the relay, when the link fails while signaling is up', async () => {
+    const { swarm, sent, alice } = makeSwarm()
+    const left = []
+    swarm.addEventListener('peer-left', (e) => left.push(e.detail.id))
+    const pc = await connectedPeer(swarm, alice)
+
+    fail(pc)
+
+    expect(left).toEqual([])
+    expect(swarm.peers.has(ALICE)).toBe(true)
+    expect(swarm.peers.get(ALICE)).toMatchObject({ pc: null, dc: null, sendControl: null })
+    expect(pc.close).toHaveBeenCalled()
+    swarm._ws.send.mockClear()
+    swarm.sendToPeer(ALICE, { type: 'CALL_INIT' })
+    expect(sent()[0]).toMatchObject({ type: 'relay-data-to', to: ALICE })
+  })
+
+  it('keeps the peer when the data channel closes while signaling is up', async () => {
+    const { swarm, alice } = makeSwarm()
+    const left = []
+    swarm.addEventListener('peer-left', (e) => left.push(e.detail.id))
+    const pc = await connectedPeer(swarm, alice)
+
+    pc.dc.dispatchEvent(new Event('close'))
+
+    expect(left).toEqual([])
+    expect(swarm.peers.has(ALICE)).toBe(true)
+  })
+
+  it('drops the peer when the link fails and there is no signaling to say whether they are still there', async () => {
+    const { swarm, alice } = makeSwarm()
+    const left = []
+    swarm.addEventListener('peer-left', (e) => left.push(e.detail.id))
+    const pc = await connectedPeer(swarm, alice)
+    swarm._ws.readyState = 3
+
+    fail(pc)
+
+    expect(left).toEqual([ALICE])
+    expect(swarm.peers.has(ALICE)).toBe(false)
+  })
+
+  it('still removes the peer when the signaling server says they left', async () => {
+    const { swarm, alice } = makeSwarm()
+    const left = []
+    swarm.addEventListener('peer-left', (e) => left.push(e.detail.id))
+    await connectedPeer(swarm, alice)
+
+    swarm._handleSignal({ type: 'peer-left', peerId: ALICE })
+
+    expect(left).toEqual([ALICE])
+  })
+
+  it('ignores the end of a link that has already been replaced', async () => {
+    const { swarm, alice } = makeSwarm()
+    const left = []
+    swarm.addEventListener('peer-left', (e) => left.push(e.detail.id))
+    const oldPc = await connectedPeer(swarm, alice)
+    fail(oldPc)
+    await swarm._initiateConnection(ALICE)
+    const newPc = swarm.peers.get(ALICE).pc
+
+    fail(oldPc)
+
+    expect(swarm.peers.get(ALICE).pc).toBe(newPc)
+    expect(left).toEqual([])
   })
 })

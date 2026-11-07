@@ -118,6 +118,7 @@ function makeFakePeer(...args) {
   peer.args = args
   peer.peerId = args[0]
   peer.isInitiator = args[1]
+  peer.polite = args[4]
   peer.established = false
   peer.init = vi.fn().mockResolvedValue(undefined)
   peer.close = vi.fn(() => peer.dispatchEvent(new CustomEvent('closed')))
@@ -365,6 +366,24 @@ describe('Room — remote streams', () => {
     await fire('screen-share-end', { peerId: 'peer-1' })
     expect(screen.queryByText('peer-1 (screen)')).toBeNull()
     expect(screen.getByText('peer-1')).toBeInTheDocument()
+  })
+
+  it('still tells the screen from the camera after replacing the connection of a crossing offer', async () => {
+    // Their id is above ours: we are the polite side and give way
+    setPeers('zzzz')
+    await startCall()
+    expect(rtcPeers[0].polite).toBe(true)
+    await fire('screen-share-start', { peerId: 'zzzz', streamId: 'screen-1' })
+    // Our own offer is unanswered when theirs arrives: we answer on a fresh connection
+    await fire('video-offer', { peerId: 'zzzz', sdp: { type: 'offer', sdp: 'x' } })
+    expect(rtcPeers[0].close).toHaveBeenCalled()
+    const fresh = rtcPeers.at(-1)
+    expect(fresh).not.toBe(rtcPeers[0])
+    await act(async () => {
+      fresh.dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: camStream } }))
+      fresh.dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: screenStream } }))
+    })
+    expect(screen.getByText('zzzz (screen)')).toBeInTheDocument()
   })
 
   it('removes remote streams when the peer leaves', async () => {

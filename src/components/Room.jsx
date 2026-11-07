@@ -287,7 +287,7 @@ export default function Room({
         // Our own offer was sent while they were not in the call yet, so they dropped it.
         // Start over with a fresh offer now that they have joined.
         if (rtcPeersRef.current[peerId] && !rtcPeersRef.current[peerId].established) {
-          cleanupRTCPeer(peerId)
+          resetRTCPeer(peerId)
           await ensureRTCPeer(peerId, true)
         } else {
           await ensureRTCPeer(peerId, false)
@@ -315,7 +315,7 @@ export default function Room({
       const existing = rtcPeersRef.current[peerId]
       // Both sides offered at once: the polite side drops its unanswered connection and answers on a
       // fresh one. A rollback while ICE is gathering can leave the connection stuck in "new".
-      if (existing?.polite && existing.isInitiator && !existing.established) cleanupRTCPeer(peerId)
+      if (existing?.polite && existing.isInitiator && !existing.established) resetRTCPeer(peerId)
       const peer = await ensureRTCPeer(peerId, false)
       await peer.handleOffer(e.detail.sdp)
     }
@@ -919,6 +919,13 @@ export default function Room({
       delete next[peerId]
       return next
     })
+  }
+
+  // Replaces the connection with a peer by a new one: what they announced about their screen share still holds
+  function resetRTCPeer(peerId) {
+    const screenId = remoteScreenIdsRef.current[peerId]
+    cleanupRTCPeer(peerId)
+    if (screenId) remoteScreenIdsRef.current[peerId] = screenId
   }
 
   function cleanupRTCPeer(peerId) {

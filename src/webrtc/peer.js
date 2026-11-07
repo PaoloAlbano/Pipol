@@ -56,6 +56,7 @@ export class WebRTCPeer extends EventTarget {
     this._makingOffer = false
     this._pendingCandidates = [] // ICE candidates queued before remoteDescription is set
     this._closed = false
+    this._chain = Promise.resolve() // offers and answers are handled one at a time, in order of arrival
   }
 
   /**
@@ -151,7 +152,11 @@ export class WebRTCPeer extends EventTarget {
    * On glare the polite side yields (its own offer is rolled back); the other side ignores the offer.
    * @param {RTCSessionDescriptionInit} sdp
    */
-  async handleOffer(sdp) {
+  handleOffer(sdp) {
+    return this._inOrder(() => this._handleOffer(sdp))
+  }
+
+  async _handleOffer(sdp) {
     if (this._closed) return
     const collision = this._makingOffer || this._pc.signalingState !== 'stable'
     if (collision && !this.polite) return
@@ -166,20 +171,41 @@ export class WebRTCPeer extends EventTarget {
     await this._pc.setLocalDescription(answer)
     this.dispatchEvent(new CustomEvent('answer', { detail: { sdp: this._pc.localDescription } }))
     this._initialDone = true
+    // The offer had no place for a track of ours (the screen we are already sharing): offer it ourselves
+    if (this._hasTrackWithoutPlace()) this._needsNegotiation = true
     await this._flushRenegotiation()
+  }
+
+  /** True when a track we send is not part of the negotiated session yet (it has no m-line, so no `mid`). */
+  _hasTrackWithoutPlace() {
+    return (this._pc?.getTransceivers?.() ?? []).some((t) => t.mid == null && t.sender?.track)
   }
 
   /**
    * Handle an SDP answer from the remote peer.
    * @param {RTCSessionDescriptionInit} sdp
    */
-  async handleAnswer(sdp) {
+  handleAnswer(sdp) {
+    return this._inOrder(() => this._handleAnswer(sdp))
+  }
+
+  async _handleAnswer(sdp) {
     if (this._closed) return
     if (this._pc.signalingState !== 'have-local-offer') return
     await this._pc.setRemoteDescription(new RTCSessionDescription(sdp))
     await this._flushPendingCandidates()
     this._initialDone = true
     await this._flushRenegotiation()
+  }
+
+  /**
+   * Runs a signalling step after the ones before it have finished. An answer and the offer that follows it arrive
+   * back to back: handled at the same time, the offer would find the connection still waiting for the answer.
+   */
+  _inOrder(task) {
+    const run = this._chain.then(task)
+    this._chain = run.catch(() => {})
+    return run
   }
 
   /** Sends a new offer if tracks changed and the connection is idle. */
@@ -281,17 +307,25 @@ export class WebRTCPeer extends EventTarget {
     if (!this._pc) return null
     const report = await this._pc.getStats()
 
-    let activePair = null
+    // The browser says which pair carries the media (`selectedCandidatePairId`); older ones only flag a nominated pair
+    let selectedId = null
+    const pairs = []
     const candidates = {}
 
     for (const s of report.values()) {
-      if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') {
-        activePair = s
-      }
+      if (s.type === 'transport' && s.selectedCandidatePairId) selectedId = s.selectedCandidatePairId
+      if (s.type === 'candidate-pair') pairs.push(s)
       if (s.type === 'local-candidate' || s.type === 'remote-candidate') {
         candidates[s.id] = s
       }
     }
+
+    const latest = (test) => pairs.filter(test).at(-1)
+    const activePair =
+      pairs.find((p) => p.id === selectedId) ??
+      latest((p) => p.nominated && p.state === 'succeeded') ??
+      latest((p) => p.state === 'succeeded' && (p.bytesReceived > 0 || p.bytesSent > 0)) ??
+      null
 
     if (!activePair) return null
 

@@ -205,6 +205,18 @@ function boxOf(rect) {
   return { left: rect.x, top: rect.y, width: rect.width, height: rect.height }
 }
 
+/** Where the media of a connection passes, in a few words. */
+function routeLabel(stats) {
+  if (stats.relayed) return `via TURN${stats.relayProtocol ? ` (${stats.relayProtocol})` : ''}`
+  return stats.localType === 'host' && stats.remoteType === 'host' ? 'direct · same network' : 'direct · internet'
+}
+
+function routeHelp(stats) {
+  if (stats.relayed) return 'The media passes through a TURN relay server, which cannot read it (it is encrypted).'
+  if (stats.localType === 'host' && stats.remoteType === 'host') return 'Peer to peer, inside the same local network.'
+  return 'Peer to peer over the internet, no server in between.'
+}
+
 function formatBytes(n) {
   if (n == null) return ''
   if (n < 1024) return `${n}B`
@@ -289,8 +301,11 @@ function VideoTile({
       <span className="video-label">{label}</span>
       {stats && (
         <div className="video-stats-badge">
-          <span className={`video-stats-route${stats.relayed ? ' video-stats-route--relay' : ''}`}>
-            {stats.relayed ? `via TURN${stats.relayProtocol ? ` (${stats.relayProtocol})` : ''}` : 'direct'}
+          <span
+            className={`video-stats-route${stats.relayed ? ' video-stats-route--relay' : ''}`}
+            title={routeHelp(stats)}
+          >
+            {routeLabel(stats)}
           </span>
           <span className="video-stats-path">
             {stats.localType} ↔ {stats.remoteType}
