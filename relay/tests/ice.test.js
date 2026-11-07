@@ -30,7 +30,7 @@ test('builds TURN REST credentials from a shared secret (coturn / eturnal)', asy
 })
 
 test('the default credential lifetime is one hour', async () => {
-  const provider = createIceProvider({ env: { TURN_URLS: 'turn:x', TURN_SECRET: 's' } })
+  const provider = createIceProvider({ env: { TURN_URLS: 'turn:x', TURN_SECRET: 's' }, now: () => 0 })
   assert.equal((await provider.get()).ttl, 3600)
 })
 
@@ -141,7 +141,8 @@ test('http provider relays any ICE API (array body, as Metered returns)', async 
 
 test('http provider also accepts { iceServers, ttl }', async () => {
   const fetchImpl = async () => ({ ok: true, json: async () => ({ iceServers: [{ urls: ['stun:s'] }], ttl: 600 }) })
-  const provider = createIceProvider({ env: { TURN_API_URL: 'https://api.example.com' }, fetchImpl })
+  // Fixed clock: the answer carries the time left, which would drop to 599 if a millisecond went by
+  const provider = createIceProvider({ env: { TURN_API_URL: 'https://api.example.com' }, fetchImpl, now: () => 0 })
   assert.deepEqual(await provider.get(), { iceServers: [{ urls: ['stun:s'] }], ttl: 600 })
 })
 
