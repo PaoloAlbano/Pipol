@@ -22,6 +22,20 @@
  */
 
 import { DEFAULT_ICE_SERVERS } from './ice.js'
+import { getVideoQuality } from '../p2p/storage.js'
+import { onVideoQualityChange } from './media.js'
+import { MAX_PROFILE, sendLimits, applySendLimits } from './sendQuality.js'
+
+/** A connection that stays "disconnected" this long (ms) without healing by itself gets an ICE restart. */
+export const DISCONNECT_GRACE_MS = 4000
+/** After an ICE restart that did not bring the connection back within this time (ms), try again. */
+export const RESTART_RETRY_MS = 10_000
+/** ICE restarts in a row before giving up and closing the connection. */
+export const MAX_ICE_RESTARTS = 4
+/** A change of network is acted on after this long (ms) without further changes. */
+export const NETWORK_CHANGE_DEBOUNCE_MS = 1000
+/** How often (ms) the route of a connection is checked, to raise or lower what the "max" profile sends. */
+export const QUALITY_POLL_MS = 3000
 
 export class WebRTCPeer extends EventTarget {
   /**
@@ -32,6 +46,7 @@ export class WebRTCPeer extends EventTarget {
    * @param {boolean}      [polite]     Who yields when both sides send an offer at once. Must differ
    *                                    between the two ends; defaults to the non-initiator.
    * @param {RTCConfiguration} [rtcConfig]  ICE servers and policy (see webrtc/ice.js)
+   * @param {{ quality?: string }} [options]  `quality`: video quality profile (default: the user's setting)
    */
   constructor(
     peerId,
@@ -39,7 +54,8 @@ export class WebRTCPeer extends EventTarget {
     localStream,
     screenStream = null,
     polite = !isInitiator,
-    rtcConfig = { iceServers: DEFAULT_ICE_SERVERS }
+    rtcConfig = { iceServers: DEFAULT_ICE_SERVERS },
+    { quality } = {}
   ) {
     super()
     this.peerId = peerId
@@ -57,6 +73,18 @@ export class WebRTCPeer extends EventTarget {
     this._pendingCandidates = [] // ICE candidates queued before remoteDescription is set
     this._closed = false
     this._chain = Promise.resolve() // offers and answers are handled one at a time, in order of arrival
+
+    this._iceRestartPending = false // the next offer restarts ICE
+    this._restartAttempts = 0
+    this._disconnectTimer = null
+    this._retryTimer = null
+    this._networkTimer = null
+    this._networkCleanup = null
+
+    this._quality = quality ?? getVideoQuality()
+    this._appliedLimits = JSON.stringify(null) // what the video sender has been told (nothing yet)
+    this._qualityTimer = null
+    this._unsubscribeQuality = null
   }
 
   /**
@@ -118,15 +146,14 @@ export class WebRTCPeer extends EventTarget {
       const state = this._pc?.connectionState
       console.info(`[webrtc] ${this.peerId.slice(0, 12)}… state: ${state}`)
       this.dispatchEvent(new CustomEvent('connection-state', { detail: { state } }))
-      if (state === 'failed' || state === 'closed') this.close()
+      if (state === 'connected') this._onConnected()
+      else if (state === 'disconnected') this._armDisconnectTimer()
+      else if (state === 'failed') this._onFailed()
+      else if (state === 'closed') this.close()
     }
 
-    this._pc.oniceconnectionstatechange = () => {
-      if (this._pc?.iceConnectionState === 'failed') {
-        // Attempt ICE restart
-        this._pc.restartIce()
-      }
-    }
+    this._watchNetwork()
+    this._unsubscribeQuality = onVideoQualityChange((quality) => this.setQualityProfile(quality))
 
     if (this.isInitiator) {
       await this._sendOffer()
@@ -136,10 +163,12 @@ export class WebRTCPeer extends EventTarget {
   async _sendOffer() {
     this._makingOffer = true
     try {
-      const offer = await this._pc.createOffer()
+      const iceRestart = this._iceRestartPending
+      const offer = await this._pc.createOffer(iceRestart ? { iceRestart: true } : undefined)
       if (this._closed) return // closed while the offer was being created: never send a stale one
       await this._pc.setLocalDescription(offer)
       if (this._closed) return
+      if (iceRestart) this._iceRestartPending = false
       this.dispatchEvent(new CustomEvent('offer', { detail: { sdp: this._pc.localDescription } }))
     } finally {
       this._makingOffer = false
@@ -174,6 +203,135 @@ export class WebRTCPeer extends EventTarget {
     // The offer had no place for a track of ours (the screen we are already sharing): offer it ourselves
     if (this._hasTrackWithoutPlace()) this._needsNegotiation = true
     await this._flushRenegotiation()
+  }
+
+  // ── Recovering a connection ───────────────────────────────────────────────────
+
+  /**
+   * Starts a new ICE negotiation on the live connection, to find a working path again (after the network changed,
+   * for instance a phone moving from Wi-Fi to 4G). The call keeps going: the tracks are not renegotiated.
+   * The offer waits for the connection to be idle. Tried again if it does not help, up to MAX_ICE_RESTARTS times.
+   * @param {string} [reason]
+   * @returns {boolean} false when it cannot be done (closed, not yet connected once, or tried too many times)
+   */
+  requestIceRestart(reason = 'manual') {
+    if (this._closed || !this._pc || !this._initialDone) return false
+    if (this._restartAttempts >= MAX_ICE_RESTARTS) return false
+    this._restartAttempts++
+    console.info(`[webrtc] ${this.peerId.slice(0, 12)}… restarting ICE (${reason}, attempt ${this._restartAttempts})`)
+    this._armRetryTimer()
+
+    // Our offer is still waiting for an answer: it may have been lost on the way (the signaling connection drops
+    // together with the network), so it is sent again
+    if (this._pc.signalingState === 'have-local-offer' && !this._makingOffer && this._pc.localDescription) {
+      this.dispatchEvent(new CustomEvent('offer', { detail: { sdp: this._pc.localDescription } }))
+      return true
+    }
+
+    this._iceRestartPending = true
+    this._needsNegotiation = true
+    this._flushRenegotiation().catch((err) => console.warn('[webrtc] ICE restart failed', err))
+    return true
+  }
+
+  _onConnected() {
+    clearTimeout(this._disconnectTimer)
+    clearTimeout(this._retryTimer)
+    this._restartAttempts = 0
+    this._syncQuality().catch(() => {})
+    this._managePolling()
+  }
+
+  _onFailed() {
+    clearTimeout(this._disconnectTimer)
+    // A connection that never worked has nothing to restart
+    if (!this.requestIceRestart('failed')) this.close()
+  }
+
+  _armDisconnectTimer() {
+    clearTimeout(this._disconnectTimer)
+    this._disconnectTimer = setTimeout(() => {
+      if (this._pc?.connectionState === 'disconnected') this.requestIceRestart('disconnected')
+    }, DISCONNECT_GRACE_MS)
+  }
+
+  _armRetryTimer() {
+    clearTimeout(this._retryTimer)
+    this._retryTimer = setTimeout(() => {
+      if (this._closed || !this._pc) return
+      if (this._pc.connectionState === 'connected') {
+        this._restartAttempts = 0
+      } else if (!this.requestIceRestart('retry')) {
+        this.close()
+      }
+    }, RESTART_RETRY_MS)
+  }
+
+  /** Restarts ICE when the device changes network (it comes back online, or the connection type changes). */
+  _watchNetwork() {
+    const schedule = (reason) => {
+      clearTimeout(this._networkTimer)
+      this._networkTimer = setTimeout(() => this.requestIceRestart(reason), NETWORK_CHANGE_DEBOUNCE_MS)
+    }
+    const onOnline = () => schedule('online')
+    globalThis.addEventListener?.('online', onOnline)
+
+    const connection = globalThis.navigator?.connection
+    let type = connection?.type
+    const onChange = () => {
+      if (connection.type === undefined || connection.type === type) return
+      type = connection.type
+      schedule('network-change')
+    }
+    connection?.addEventListener?.('change', onChange)
+
+    this._networkCleanup = () => {
+      clearTimeout(this._networkTimer)
+      globalThis.removeEventListener?.('online', onOnline)
+      connection?.removeEventListener?.('change', onChange)
+    }
+  }
+
+  // ── What the camera sends ─────────────────────────────────────────────────────
+
+  /**
+   * Changes the video quality profile of this connection (see sendQuality.js).
+   * @param {string} profile '480p' | '720p' | '1080p' | 'max'
+   */
+  setQualityProfile(profile) {
+    if (this._closed || profile === this._quality) return
+    this._quality = profile
+    this._syncQuality().catch(() => {})
+    this._managePolling()
+  }
+
+  /** Tells the camera sender what it may send, given the profile and how the media reaches the other side. */
+  async _syncQuality() {
+    const sender = this._senders.video
+    if (this._closed || !this._pc || !sender?.track) return
+
+    let route = 'unknown'
+    if (this._quality === MAX_PROFILE && this._pc.connectionState === 'connected') {
+      const stats = await this.getConnectionStats().catch(() => null)
+      if (this._closed) return
+      if (stats) route = stats.relayed ? 'relayed' : 'direct'
+    }
+
+    const limits = sendLimits(this._quality, route, sender.track.getSettings?.() ?? {})
+    const key = JSON.stringify(limits)
+    if (key === this._appliedLimits) return
+    if (await applySendLimits(sender, limits)) this._appliedLimits = key
+  }
+
+  /** The route can change during a call, so with the "max" profile it is looked at now and then. */
+  _managePolling() {
+    const wanted = this._quality === MAX_PROFILE && this._pc?.connectionState === 'connected' && !this._closed
+    if (wanted && !this._qualityTimer) {
+      this._qualityTimer = setInterval(() => this._syncQuality().catch(() => {}), QUALITY_POLL_MS)
+    } else if (!wanted && this._qualityTimer) {
+      clearInterval(this._qualityTimer)
+      this._qualityTimer = null
+    }
   }
 
   /** True when a track we send is not part of the negotiated session yet (it has no m-line, so no `mid`). */
@@ -222,6 +380,9 @@ export class WebRTCPeer extends EventTarget {
    */
   async replaceVideoTrack(track) {
     await this._senders.video?.replaceTrack(track).catch(() => {})
+    // The new camera may deliver another size: work out the limits again
+    this._appliedLimits = this._quality === MAX_PROFILE ? null : JSON.stringify(null)
+    this._syncQuality().catch(() => {})
   }
 
   /**
@@ -289,6 +450,12 @@ export class WebRTCPeer extends EventTarget {
   close() {
     if (this._closed) return
     this._closed = true
+    clearTimeout(this._disconnectTimer)
+    clearTimeout(this._retryTimer)
+    clearInterval(this._qualityTimer)
+    this._qualityTimer = null
+    this._networkCleanup?.()
+    this._unsubscribeQuality?.()
     this._pc?.close()
     this._pc = null
     this.dispatchEvent(new CustomEvent('closed'))

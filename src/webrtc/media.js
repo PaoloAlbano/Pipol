@@ -27,6 +27,63 @@ const QUALITY_CONSTRAINTS = {
   },
 }
 
+// "max": the biggest picture the camera has at (about) 60 fps. Sizes are tried from the top, each demanding a frame
+// rate of at least 50, so a camera that does 4K at 30 fps but 1080p at 60 gives 1080p at 60. If none of them gives
+// that, the biggest picture the camera has is taken, at the frame rate it can (up to 60).
+const MAX_SIZES = [
+  { width: { ideal: 3840 }, height: { ideal: 2160 } },
+  { width: { ideal: 2560 }, height: { ideal: 1440 } },
+  { width: { ideal: 1920 }, height: { ideal: 1080 } },
+]
+const MAX_CONSTRAINTS = [
+  ...MAX_SIZES.map((size) => ({ ...size, frameRate: { min: 50, ideal: 60, max: 60 } })),
+  { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 60, max: 60 } },
+]
+
+/** Camera constraints to try for a quality, best first. */
+function cameraConstraints(quality) {
+  if (quality === 'max') return MAX_CONSTRAINTS
+  return QUALITY_CONSTRAINTS[quality] ? [QUALITY_CONSTRAINTS[quality]] : []
+}
+
+const isOverconstrained = (err) => err?.name === 'OverconstrainedError' || err?.name === 'ConstraintNotSatisfiedError'
+
+/** Runs `attempt` with each candidate until one is accepted by the camera; other failures are not retried. */
+async function firstAccepted(candidates, attempt) {
+  const list = candidates.length > 0 ? candidates : [{}]
+  let lastError
+  for (const constraints of list) {
+    try {
+      return await attempt(constraints)
+    } catch (err) {
+      if (!isOverconstrained(err)) throw err
+      lastError = err
+    }
+  }
+  throw lastError
+}
+
+/** "max" favours smoothness over sharpness when the encoder has to choose. */
+function setContentHint(track, quality) {
+  try {
+    track.contentHint = quality === 'max' ? 'motion' : ''
+  } catch {
+    // not supported
+  }
+}
+
+const qualityListeners = new Set()
+
+/**
+ * Calls back when the video quality is changed during a call (so connections can adjust what they send).
+ * @param {(quality: string) => void} callback
+ * @returns {() => void} unsubscribe
+ */
+export function onVideoQualityChange(callback) {
+  qualityListeners.add(callback)
+  return () => qualityListeners.delete(callback)
+}
+
 let _localStream = null
 let _currentFacingMode = 'user'
 let _screenTrack = null
@@ -42,10 +99,14 @@ export async function getLocalStream({ video = true, audio = true } = {}) {
   if (_localStream) return _localStream
   const quality = getVideoQuality()
   _currentFacingMode = 'user'
-  _localStream = await navigator.mediaDevices.getUserMedia({
-    audio: audio ? { echoCancellation: true, noiseSuppression: true } : false,
-    video: video ? { ...QUALITY_CONSTRAINTS[quality], facingMode: 'user' } : false,
-  })
+  const audioConstraints = audio ? { echoCancellation: true, noiseSuppression: true } : false
+  const stream = video
+    ? await firstAccepted(cameraConstraints(quality), (constraints) =>
+        navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: { ...constraints, facingMode: 'user' } })
+      )
+    : await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false })
+  stream.getVideoTracks().forEach((track) => setContentHint(track, quality))
+  _localStream = stream
   return _localStream
 }
 
@@ -58,20 +119,18 @@ export async function switchCamera() {
   if (!_localStream) return null
   const nextFacing = _currentFacingMode === 'user' ? 'environment' : 'user'
   const quality = getVideoQuality()
-  const videoConstraints = { ...QUALITY_CONSTRAINTS[quality] }
+  const candidates = cameraConstraints(quality)
+  const open = (facingMode) =>
+    firstAccepted(candidates, (constraints) =>
+      navigator.mediaDevices.getUserMedia({ video: { ...constraints, facingMode }, audio: false })
+    )
 
   let newStream
   try {
-    newStream = await navigator.mediaDevices.getUserMedia({
-      video: { ...videoConstraints, facingMode: { exact: nextFacing } },
-      audio: false,
-    })
+    newStream = await open({ exact: nextFacing })
   } catch {
     try {
-      newStream = await navigator.mediaDevices.getUserMedia({
-        video: { ...videoConstraints, facingMode: nextFacing },
-        audio: false,
-      })
+      newStream = await open(nextFacing)
     } catch (err) {
       console.warn('[media] switchCamera failed:', err)
       return null
@@ -80,6 +139,7 @@ export async function switchCamera() {
 
   const [newVideoTrack] = newStream.getVideoTracks()
   if (!newVideoTrack) return null
+  setContentHint(newVideoTrack, quality)
 
   _localStream.getVideoTracks().forEach((t) => t.stop())
   const audioTracks = _localStream.getAudioTracks()
@@ -91,14 +151,16 @@ export async function switchCamera() {
 
 /**
  * Apply new video quality constraints to the active stream (mid-call).
- * @param {string} quality '480p' | '720p' | '1080p'
+ * @param {string} quality '480p' | '720p' | '1080p' | 'max'
  */
 export async function applyVideoQuality(quality) {
-  const constraints = QUALITY_CONSTRAINTS[quality]
-  if (!constraints || !_localStream) return
+  const candidates = cameraConstraints(quality)
+  if (candidates.length === 0 || !_localStream) return
   for (const track of _localStream.getVideoTracks()) {
-    await track.applyConstraints(constraints).catch(() => {})
+    await firstAccepted(candidates, (constraints) => track.applyConstraints(constraints)).catch(() => {})
+    setContentHint(track, quality)
   }
+  qualityListeners.forEach((callback) => callback(quality))
 }
 
 /** Pause all video tracks (reduces GPU/camera usage when backgrounded). */
