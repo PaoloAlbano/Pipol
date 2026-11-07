@@ -34,6 +34,8 @@ export const RESTART_RETRY_MS = 10_000
 export const MAX_ICE_RESTARTS = 4
 /** A change of network is acted on after this long (ms) without further changes. */
 export const NETWORK_CHANGE_DEBOUNCE_MS = 1000
+/** The route of a new connection is written to the console this long (ms) after it connects, once the pairs settled. */
+export const ROUTE_LOG_DELAY_MS = 3000
 /** How often (ms) the route of a connection is checked, to raise or lower what the "max" profile sends. */
 export const QUALITY_POLL_MS = 3000
 
@@ -85,6 +87,7 @@ export class WebRTCPeer extends EventTarget {
     this._appliedLimits = JSON.stringify(null) // what the video sender has been told (nothing yet)
     this._qualityTimer = null
     this._unsubscribeQuality = null
+    this._routeLogTimer = null
   }
 
   /**
@@ -240,6 +243,31 @@ export class WebRTCPeer extends EventTarget {
     this._restartAttempts = 0
     this._syncQuality().catch(() => {})
     this._managePolling()
+    clearTimeout(this._routeLogTimer)
+    this._routeLogTimer = setTimeout(() => this._logRoute(), ROUTE_LOG_DELAY_MS)
+  }
+
+  /**
+   * Writes to the console which candidate pair carries the media and the state of the others (the one in use is
+   * starred), to see why a connection goes through a TURN relay when a direct path was expected.
+   */
+  async _logRoute() {
+    if (this._closed || !this._pc) return
+    try {
+      const items = [...(await this._pc.getStats()).values()]
+      const byId = Object.fromEntries(items.map((s) => [s.id, s]))
+      const selectedId = items.find((s) => s.type === 'transport')?.selectedCandidatePairId
+      const kind = (id) => byId[id]?.candidateType ?? '?'
+      const pairs = items
+        .filter((s) => s.type === 'candidate-pair')
+        .map(
+          (p) =>
+            `${kind(p.localCandidateId)}<->${kind(p.remoteCandidateId)}=${p.state}${p.id === selectedId ? '*' : ''}`
+        )
+      console.info(`[webrtc] ${this.peerId.slice(0, 12)}… route: ${pairs.join(', ') || 'no pairs'}`)
+    } catch {
+      // statistics not available
+    }
   }
 
   _onFailed() {
@@ -452,6 +480,7 @@ export class WebRTCPeer extends EventTarget {
     this._closed = true
     clearTimeout(this._disconnectTimer)
     clearTimeout(this._retryTimer)
+    clearTimeout(this._routeLogTimer)
     clearInterval(this._qualityTimer)
     this._qualityTimer = null
     this._networkCleanup?.()

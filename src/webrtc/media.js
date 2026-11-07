@@ -110,29 +110,70 @@ export async function getLocalStream({ video = true, audio = true } = {}) {
   return _localStream
 }
 
+/** The camera after the one in use (cycling), for phones that do not say which camera faces which way. */
+async function nextCameraId(currentId) {
+  const devices = (await navigator.mediaDevices.enumerateDevices?.()) ?? []
+  const cameras = devices.filter((d) => d.kind === 'videoinput' && d.deviceId)
+  if (cameras.length < 2) return null
+  const index = cameras.findIndex((d) => d.deviceId === currentId)
+  return cameras[(index + 1) % cameras.length].deviceId
+}
+
 /**
  * Switch between front and back camera (mobile).
- * Stops the current video track and requests the opposite facingMode.
- * @returns {Promise<{ stream: MediaStream, videoTrack: MediaStreamTrack } | null>}
+ *
+ * The camera in use is released first: many phones cannot open a second camera while one is open, which made the
+ * switch fail. Then the other camera is asked for by the way it faces, and, for phones that do not report that (or
+ * give the same camera again), by moving on to the next camera of the device. If no other camera can be opened, the
+ * one we had is opened again so the call keeps its picture (`switched` is false then).
+ * @returns {Promise<{ stream: MediaStream, videoTrack: MediaStreamTrack, switched: boolean } | null>}
  */
 export async function switchCamera() {
   if (!_localStream) return null
-  const nextFacing = _currentFacingMode === 'user' ? 'environment' : 'user'
   const quality = getVideoQuality()
   const candidates = cameraConstraints(quality)
-  const open = (facingMode) =>
+  const open = (video) =>
     firstAccepted(candidates, (constraints) =>
-      navigator.mediaDevices.getUserMedia({ video: { ...constraints, facingMode }, audio: false })
+      navigator.mediaDevices.getUserMedia({ video: { ...constraints, ...video }, audio: false })
     )
 
-  let newStream
-  try {
-    newStream = await open({ exact: nextFacing })
-  } catch {
+  const oldTracks = _localStream.getVideoTracks()
+  const currentId = oldTracks[0]?.getSettings?.()?.deviceId
+  const nextFacing = _currentFacingMode === 'user' ? 'environment' : 'user'
+  oldTracks.forEach((t) => t.stop())
+
+  const attempts = [
+    () => open({ facingMode: { exact: nextFacing } }),
+    () => open({ facingMode: nextFacing }),
+    async () => {
+      const id = await nextCameraId(currentId)
+      if (!id) throw new Error('no other camera')
+      return open({ deviceId: { exact: id } })
+    },
+  ]
+
+  let newStream = null
+  for (const attempt of attempts) {
     try {
-      newStream = await open(nextFacing)
+      const stream = await attempt()
+      // Asking for a facing mode may just give the same camera again: that is not a switch
+      if (!currentId || stream.getVideoTracks()[0]?.getSettings?.()?.deviceId !== currentId) {
+        newStream = stream
+        break
+      }
+      stream.getTracks().forEach((t) => t.stop())
+    } catch {
+      // try the next way
+    }
+  }
+
+  const switched = newStream !== null
+  if (!switched) {
+    console.warn('[media] no other camera could be opened, keeping the current one')
+    try {
+      newStream = await open(currentId ? { deviceId: { exact: currentId } } : { facingMode: _currentFacingMode })
     } catch (err) {
-      console.warn('[media] switchCamera failed:', err)
+      console.warn('[media] could not reopen the camera:', err)
       return null
     }
   }
@@ -141,12 +182,11 @@ export async function switchCamera() {
   if (!newVideoTrack) return null
   setContentHint(newVideoTrack, quality)
 
-  _localStream.getVideoTracks().forEach((t) => t.stop())
   const audioTracks = _localStream.getAudioTracks()
   _localStream = new MediaStream([newVideoTrack, ...audioTracks])
-  _currentFacingMode = nextFacing
+  if (switched) _currentFacingMode = newVideoTrack.getSettings?.()?.facingMode || nextFacing
 
-  return { stream: _localStream, videoTrack: newVideoTrack }
+  return { stream: _localStream, videoTrack: newVideoTrack, switched }
 }
 
 /**
