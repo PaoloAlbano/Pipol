@@ -152,6 +152,20 @@ describe('WebRTCPeer — screen share', () => {
     expect(peer.established).toBe(true)
   })
 
+  it('sends no offer once closed while it was being created', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio')))
+    const offers = []
+    peer.addEventListener('offer', (e) => offers.push(e.detail.sdp))
+    globalThis.RTCPeerConnection = class extends FakePC {
+      async createOffer() {
+        peer.close()
+        return { type: 'offer', sdp: 'late' }
+      }
+    }
+    await expect(peer.init()).resolves.toBeUndefined()
+    expect(offers).toHaveLength(0)
+  })
+
   it('the impolite side wins even when it is not the initiator', async () => {
     const peer = new WebRTCPeer('p', false, stream(track('audio')), null, false)
     await peer.init()

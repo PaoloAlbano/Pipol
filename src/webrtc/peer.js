@@ -136,7 +136,9 @@ export class WebRTCPeer extends EventTarget {
     this._makingOffer = true
     try {
       const offer = await this._pc.createOffer()
+      if (this._closed) return // closed while the offer was being created: never send a stale one
       await this._pc.setLocalDescription(offer)
+      if (this._closed) return
       this.dispatchEvent(new CustomEvent('offer', { detail: { sdp: this._pc.localDescription } }))
     } finally {
       this._makingOffer = false

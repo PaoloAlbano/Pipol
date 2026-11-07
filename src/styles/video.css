@@ -4,28 +4,66 @@
   background: #000;
   overflow: hidden;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-/* ── Grid layouts ─────────────────────────────────────────────── */
-.video-grid {
-  display: grid;
-  gap: 4px;
+/* Inside the Picture-in-Picture window the call fills what the controls bar leaves */
+.video-container--pip {
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  height: 100%;
-  padding: 4px;
-  grid-template-columns: repeat(var(--cols, 1), 1fr);
-  grid-template-rows: repeat(var(--rows, 1), 1fr);
 }
 
-/* ── Individual tile ──────────────────────────────────────────── */
-.video-tile {
+/* Timer and layout button sit in their own slim bar, so they never cover anybody's face */
+.video-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px 0;
+}
+
+.video-call-timer {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 9px;
+  border-radius: 99px;
+  letter-spacing: 0.04em;
+}
+
+/* The area the tiles are placed in. Its size is measured, so it must not depend on its content. */
+.video-stage {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Individual tile (placed by position and size, see videoLayout.js) ── */
+.video-tile {
+  position: absolute;
   background: var(--surface-2);
   border-radius: var(--radius);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Tiles slide and grow into their new place when the layout changes */
+  transition:
+    left 0.2s ease,
+    top 0.2s ease,
+    width 0.2s ease,
+    height 0.2s ease,
+    box-shadow 0.15s ease;
+}
+
+.video-tile--speaking {
+  box-shadow: 0 0 0 3px var(--primary);
 }
 
 .video-element {
@@ -42,20 +80,30 @@
   transform: scaleX(-1);
 }
 
-.video-placeholder {
+.video-element--hidden {
+  display: none;
+}
+
+/* Initials, when there is no picture (no stream yet, or the camera is off) */
+.video-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
-  font-size: 40px;
-  color: var(--text-muted);
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
 }
 
 .video-label {
   position: absolute;
   bottom: 8px;
   left: 10px;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
   color: #fff;
@@ -65,27 +113,12 @@
   backdrop-filter: blur(4px);
   pointer-events: none;
 }
-
-/* ── Self-preview (corner overlay) ───────────────────────────── */
-.video-self-preview {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  width: 120px;
-  height: 90px;
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: 2px solid var(--primary);
-  box-shadow: var(--shadow);
-  z-index: 10;
-}
-
-.video-tile--small {
-  width: 100%;
-  height: 100%;
-}
-.video-tile--small .video-element {
-  object-fit: cover;
+.video-tile--strip .video-label {
+  bottom: 4px;
+  left: 5px;
+  max-width: calc(100% - 10px);
+  font-size: 10px;
+  padding: 1px 6px;
 }
 
 /* ── In-call controls ─────────────────────────────────────────── */
@@ -131,60 +164,30 @@
   font-size: 12px;
 }
 
-/* ── Layout toggle button ─────────────────────────────────────── */
+/* ── Layout toggle button (in the top bar) ────────────────────── */
 .video-layout-toggle {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 20;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   cursor: pointer;
-  backdrop-filter: blur(4px);
   transition: background 0.15s;
   line-height: 1;
 }
 .video-layout-toggle:hover {
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ── Spotlight layout ─────────────────────────────────────────── */
-.video-container--spotlight {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  overflow: hidden;
-}
-
-.video-spotlight-main {
-  flex: 1;
-  min-width: 0;
-  position: relative;
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.video-spotlight-sidebar {
-  width: 160px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-y: auto;
-}
-
-.video-tile--sidebar {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  flex-shrink: 0;
+/* The big tile and the thumbnails are tiles like the others, placed by videoLayout.js */
+.video-tile--main {
+  z-index: 1;
 }
 
 .video-tile--clickable {
@@ -198,6 +201,18 @@
   border: 2px solid var(--primary);
   border-radius: var(--radius);
   pointer-events: none;
+}
+
+/* "+N": more thumbnails than places in the strip; opens the grid, where everybody fits */
+.video-tile--more {
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.video-tile--more:hover {
+  background: var(--surface-3);
 }
 
 /* ── Network stats badge ──────────────────────────────────────── */
@@ -243,8 +258,9 @@
 
 /* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .video-self-preview {
-    width: 80px;
-    height: 60px;
+  .video-label {
+    font-size: 10px;
+    bottom: 5px;
+    left: 6px;
   }
 }

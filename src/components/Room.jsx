@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
 import { decryptDM, encryptDM } from '../p2p/dm-crypto.js'
@@ -24,6 +25,26 @@ import VideoControls from './VideoControls.jsx'
 import ThreadPanel from './ThreadPanel.jsx'
 import { containsMention } from '../p2p/notifications.js'
 import '../styles/room.css'
+
+/** Copies the styles of a document into another one (a new window starts without any). */
+function copyStyleSheets(from, to) {
+  for (const sheet of Array.from(from.styleSheets)) {
+    try {
+      const style = to.createElement('style')
+      style.textContent = Array.from(sheet.cssRules)
+        .map((rule) => rule.cssText)
+        .join('\n')
+      ;(to.head ?? to.documentElement).appendChild(style)
+    } catch {
+      // A sheet from another origin cannot be read: link it instead
+      if (!sheet.href) continue
+      const link = to.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = sheet.href
+      ;(to.head ?? to.documentElement).appendChild(link)
+    }
+  }
+}
 
 /**
  * Room view — active chat and optional video call.
@@ -128,6 +149,8 @@ export default function Room({
   const [remoteScreens, setRemoteScreens] = useState({}) // peerId → screen-share MediaStream
   const [audioMuted, setAudioMutedState] = useState(false)
   const [videoMuted, setVideoMutedState] = useState(false)
+  const videoMutedRef = useRef(false) // read by ensureRTCPeer, which may run from a stale closure
+  const [remoteVideoOff, setRemoteVideoOff] = useState({}) // peerId → true while their camera is off
   const [screenSharing, setScreenSharing] = useState(false)
   const [layout, setLayout] = useState('grid') // 'grid' | 'spotlight'
   const [spotlightPeerId, setSpotlightPeerId] = useState(null)
@@ -150,6 +173,7 @@ export default function Room({
   const pipHandlersRef = useRef(null) // always-fresh toggle handlers
   const openDocPiPRef = useRef(null) // always-fresh openDocumentPiP fn
   const [pipActive, setPipActive] = useState(false)
+  const [pipHost, setPipHost] = useState(null) // element of the Document PiP window the call is drawn into
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false)
 
   // Thread state
@@ -245,6 +269,7 @@ export default function Room({
         next.delete(id)
         return next
       })
+      clearRemoteVideoOff(id)
       setIncomingCall((prev) => (prev?.peerId === id ? null : prev))
       setSpotlightPeerId((prev) => (prev === id ? null : prev))
       if (typingPeersRef.current.has(id)) {
@@ -275,6 +300,7 @@ export default function Room({
     function onCallEnd(e) {
       const { peerId } = e.detail
       cleanupRTCPeer(peerId)
+      clearRemoteVideoOff(peerId)
       setCallPeerIds((prev) => {
         const next = new Set(prev)
         next.delete(peerId)
@@ -285,7 +311,12 @@ export default function Room({
 
     async function onVideoOffer(e) {
       if (!callActiveRef.current) return
-      const peer = await ensureRTCPeer(e.detail.peerId, false)
+      const { peerId } = e.detail
+      const existing = rtcPeersRef.current[peerId]
+      // Both sides offered at once: the polite side drops its unanswered connection and answers on a
+      // fresh one. A rollback while ICE is gathering can leave the connection stuck in "new".
+      if (existing?.polite && existing.isInitiator && !existing.established) cleanupRTCPeer(peerId)
+      const peer = await ensureRTCPeer(peerId, false)
       await peer.handleOffer(e.detail.sdp)
     }
     async function onVideoAnswer(e) {
@@ -337,6 +368,17 @@ export default function Room({
       else if (message.op === 'delete') msgStore.receiveDelete(message)
       else if (message.op === 'reaction') applyReaction(message)
       else msgStore.receiveMessage(message)
+    }
+
+    function onVideoState(e) {
+      const { peerId, off } = e.detail
+      setRemoteVideoOff((prev) => {
+        if (Boolean(prev[peerId]) === off) return prev
+        const next = { ...prev }
+        if (off) next[peerId] = true
+        else delete next[peerId]
+        return next
+      })
     }
 
     function onScreenShareStart(e) {
@@ -416,6 +458,7 @@ export default function Room({
     swarm.addEventListener('history-req', onHistoryReq)
     swarm.addEventListener('chat-message', onChatMessage)
     if (isDM) swarm.addEventListener('dm-message', onDMMessage)
+    swarm.addEventListener('video-state', onVideoState)
     swarm.addEventListener('screen-share-start', onScreenShareStart)
     swarm.addEventListener('screen-share-end', onScreenShareEnd)
     swarm.addEventListener('error', onSwarmError)
@@ -437,6 +480,7 @@ export default function Room({
       swarm.removeEventListener('history-req', onHistoryReq)
       swarm.removeEventListener('chat-message', onChatMessage)
       if (isDM) swarm.removeEventListener('dm-message', onDMMessage)
+      swarm.removeEventListener('video-state', onVideoState)
       swarm.removeEventListener('screen-share-start', onScreenShareStart)
       swarm.removeEventListener('screen-share-end', onScreenShareEnd)
       swarm.removeEventListener('error', onSwarmError)
@@ -631,7 +675,7 @@ export default function Room({
     const all = [...document.querySelectorAll('.video-element')]
     const playing = (v) => !v.paused && v.readyState >= 2
     return (
-      document.querySelector('.video-spotlight-main video') ||
+      document.querySelector('.video-tile--main video') ||
       all.find((v) => !v.muted && playing(v)) ||
       all.find((v) => playing(v)) ||
       all.find((v) => !v.muted && v.readyState >= 1) ||
@@ -639,49 +683,26 @@ export default function Room({
     )
   }
 
-  // Opens a Document PiP window and moves the already-playing video element into it.
-  // Chrome's recommended pattern: move the existing DOM element rather than
-  // creating a new one with srcObject (new elements don't inherit playback state).
+  // Opens a Document PiP window showing the whole call, laid out like the main window (see the portal below).
+  // The window gets its own silent copy of the tiles: the sound keeps coming from the videos of the page.
   // Assigned to openDocPiPRef.current on every render so event listeners are always fresh.
-  async function openDocumentPiP(videoEl) {
+  async function openDocumentPiP() {
     try {
-      const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 240 })
+      const win = await window.documentPictureInPicture.requestWindow({ width: 420, height: 320 })
       pipWindowRef.current = win
       setPipActive(true)
 
       // ── Set up PiP window ────────────────────────────────────────────────
       const doc = win.document
+      copyStyleSheets(document, doc)
       doc.documentElement.style.cssText = 'height:100vh;margin:0;padding:0'
       doc.body.style.cssText =
         'margin:0;padding:0;background:#111;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:sans-serif'
 
-      // ── Save original position so we can restore on close ────────────────
-      const origParent = videoEl.parentElement
-      const origNext = videoEl.nextSibling
-      const origStyle = videoEl.style.cssText
-
-      // Insert a placeholder where the video was so the tile doesn't collapse
-      const placeholder = document.createElement('div')
-      placeholder.style.cssText =
-        'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#555;font-size:11px;pointer-events:none'
-      placeholder.textContent = '📺 In PiP'
-      origParent.insertBefore(placeholder, videoEl)
-
-      // ── Video wrapper ────────────────────────────────────────────────────
-      const wrapper = doc.createElement('div')
-      wrapper.style.cssText = 'flex:1;min-height:0;position:relative;overflow:hidden;background:#000'
-
-      videoEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
-      wrapper.appendChild(videoEl) // move the playing element into PiP
-
-      // Derive label from the sibling .video-label span in the original tile
-      const labelText = origParent.querySelector('.video-label')?.textContent ?? (videoEl.muted ? 'You' : 'Remote')
-      const lbl = doc.createElement('span')
-      lbl.style.cssText =
-        'position:absolute;bottom:4px;left:6px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
-      lbl.textContent = labelText
-      wrapper.appendChild(lbl)
-      doc.body.appendChild(wrapper)
+      // ── The call ─────────────────────────────────────────────────────────
+      const host = doc.createElement('div')
+      host.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;background:#000'
+      doc.body.appendChild(host)
 
       // ── Controls bar ─────────────────────────────────────────────────────
       const bar = doc.createElement('div')
@@ -714,16 +735,11 @@ export default function Room({
       doc.body.appendChild(bar)
       pipBtnsRef.current = { aBtn, vBtn }
 
-      // ── Restore on close ─────────────────────────────────────────────────
+      setPipHost(host)
+
+      // ── Clean up on close ────────────────────────────────────────────────
       win.addEventListener('pagehide', () => {
-        // Move the video element back to its original position
-        videoEl.style.cssText = origStyle
-        if (origNext && origNext.parentNode === origParent) {
-          origParent.insertBefore(videoEl, origNext)
-        } else {
-          origParent.appendChild(videoEl)
-        }
-        placeholder.remove()
+        setPipHost(null)
         pipWindowRef.current = null
         pipBtnsRef.current = null
         setPipActive(false)
@@ -760,7 +776,7 @@ export default function Room({
       return
     }
 
-    await openDocPiPRef.current(videoEl)
+    await openDocPiPRef.current()
   }
 
   // Auto-trigger: when the tab/window is hidden, open Document PiP automatically
@@ -776,7 +792,7 @@ export default function Room({
       if (!video) return
 
       if ('documentPictureInPicture' in window) {
-        openDocPiPRef.current(video)
+        openDocPiPRef.current()
       } else if (!document.pictureInPictureElement) {
         video.requestPictureInPicture().catch((err) => {
           console.warn('[pip] auto-trigger failed:', err.message)
@@ -844,6 +860,8 @@ export default function Room({
     if (screenStream) {
       swarmRef.current?.sendToPeer(peerId, { type: 'SCREEN_SHARE_START', streamId: screenStream.id })
     }
+    // Late joiner while our camera is off: it cannot see that from the video
+    if (videoMutedRef.current) swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_STATE', off: true })
 
     // ── Event handlers for WebRTC signaling ────────────────────────────────
 
@@ -892,6 +910,15 @@ export default function Room({
     // Initialize the peer connection (triggers offer/answer exchange if initiator)
     await rtcPeer.init()
     return rtcPeer
+  }
+
+  function clearRemoteVideoOff(peerId) {
+    setRemoteVideoOff((prev) => {
+      if (!prev[peerId]) return prev
+      const next = { ...prev }
+      delete next[peerId]
+      return next
+    })
   }
 
   function cleanupRTCPeer(peerId) {
@@ -1060,6 +1087,8 @@ export default function Room({
       setLocalStream(stream)
       // Start from fresh TURN credentials (a tab can stay open for days)
       await swarmRef.current?.refreshIceConfig?.().catch(() => {})
+      // Set the ref now: signalling that arrives before the next render must not be dropped
+      callActiveRef.current = true
       setCallActive(true)
       setCallStartedAt(Date.now())
 
@@ -1090,12 +1119,15 @@ export default function Room({
     remoteScreenIdsRef.current = {}
     setRemoteStreams({})
     setRemoteScreens({})
+    setRemoteVideoOff({})
     stopLocalStream()
     setLocalStream(null)
+    callActiveRef.current = false
     setCallActive(false)
     setCallStartedAt(null)
     setAudioMutedState(false)
     setVideoMutedState(false)
+    videoMutedRef.current = false
     setScreenSharing(false)
     setLayout('grid')
     setSpotlightPeerId(null)
@@ -1120,6 +1152,9 @@ export default function Room({
     const next = !videoMuted
     setVideoMuted(next)
     setVideoMutedState(next)
+    videoMutedRef.current = next
+    // A disabled camera track only sends black frames: tell the others, so they can show an avatar instead
+    swarmRef.current?.sendToAll({ type: 'VIDEO_STATE', off: next })
   }
 
   async function handleSwitchCamera() {
@@ -1334,20 +1369,18 @@ export default function Room({
         </aside>
       )}
 
-      {/* ── Center: video grid (only during call) ── */}
+      {/* ── Center: video area (only during call) ── */}
       {callActive && (
         <main className="room-main">
-          {callElapsed && (
-            <div className="room-call-timer" aria-label="Call duration" aria-live="off">
-              {callElapsed}
-            </div>
-          )}
           <VideoGrid
             localStream={localStream}
             remoteStreams={remoteStreams}
             remoteScreens={remoteScreens}
             peers={peers}
             localUsername={identity.username}
+            localVideoMuted={videoMuted}
+            remoteVideoOff={remoteVideoOff}
+            callElapsed={embedded ? '' : callElapsed}
             showStats={showStats}
             peerStats={peerStats}
             layout={layout}
@@ -1358,6 +1391,54 @@ export default function Room({
           />
         </main>
       )}
+
+      {/* ── Mobile call controls: the sidebar with the usual ones is hidden on a phone ── */}
+      {callActive && mobileView && !embedded && (
+        <div className="room-mobile-callbar">
+          <button
+            className={`btn-mobile-control${audioMuted ? ' btn-mobile-control--active' : ''}`}
+            onClick={handleToggleAudio}
+            aria-pressed={audioMuted}
+            aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+          >
+            {audioMuted ? '🔇' : '🎙️'}
+            <span>{audioMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+          <button
+            className={`btn-mobile-control${videoMuted ? ' btn-mobile-control--active' : ''}`}
+            onClick={handleToggleVideo}
+            aria-pressed={videoMuted}
+            aria-label={videoMuted ? 'Turn on camera' : 'Turn off camera'}
+          >
+            {videoMuted ? '📵' : '📷'}
+            <span>{videoMuted ? 'Cam on' : 'Cam off'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* The call in the Document PiP window: same layout as above, with the window's own size and no sound */}
+      {callActive &&
+        pipHost &&
+        createPortal(
+          <VideoGrid
+            pip
+            localStream={localStream}
+            remoteStreams={remoteStreams}
+            remoteScreens={remoteScreens}
+            peers={peers}
+            localUsername={identity.username}
+            localVideoMuted={videoMuted}
+            remoteVideoOff={remoteVideoOff}
+            showStats={false}
+            peerStats={{}}
+            layout={layout}
+            spotlightPeerId={spotlightPeerId}
+            onLayoutChange={setLayout}
+            onSpotlightChange={setSpotlightPeerId}
+            mirrorVideo={mirrorVideo}
+          />,
+          pipHost
+        )}
 
       {/* ── Right: chat (always visible) ── */}
       <section className={`room-chat ${chatOpen ? '' : 'room-chat--collapsed'}`}>

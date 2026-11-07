@@ -16,6 +16,7 @@ import userEvent from '@testing-library/user-event'
 import Room from '../../src/components/Room.jsx'
 import { createRoomSwarm } from '../../src/p2p/swarm.js'
 import * as media from '../../src/webrtc/media.js'
+import { WebRTCPeer } from '../../src/webrtc/peer.js'
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -642,5 +643,78 @@ describe('Room — thread panel', () => {
 
     await userEvent.click(screen.getByLabelText(/close thread/i))
     expect(screen.queryByLabelText('Thread')).not.toBeInTheDocument()
+  })
+})
+
+// ── Both sides send an offer at once ──────────────────────────────────────────
+
+describe('Room — offers that cross', () => {
+  let instances
+
+  beforeEach(() => {
+    instances = []
+    WebRTCPeer.mockImplementation(function (peerId, isInitiator, _stream, _screen, polite) {
+      const instance = Object.assign(new EventTarget(), {
+        peerId,
+        isInitiator,
+        polite,
+        established: false,
+        init: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+        handleOffer: vi.fn().mockResolvedValue(undefined),
+        handleAnswer: vi.fn(),
+        handleIceCandidate: vi.fn(),
+      })
+      instances.push(instance)
+      return instance
+    })
+  })
+
+  async function startCallWithPeer(peerId) {
+    await setup()
+    swarmMock.getPeers.mockReturnValue([{ id: peerId, username: 'bob' }])
+    await userEvent.click(screen.getByText(/start video call/i))
+    await waitFor(() => expect(instances).toHaveLength(1))
+  }
+
+  const sdp = { type: 'offer', sdp: 'x' }
+
+  it('the polite side drops its unanswered connection and answers on a fresh one', async () => {
+    await startCallWithPeer('zzzz') // our id is lower than theirs: we are polite
+    expect(instances[0]).toMatchObject({ isInitiator: true, polite: true })
+
+    await act(async () => {
+      await fireSwarmEvent('video-offer', { peerId: 'zzzz', sdp })
+    })
+
+    expect(instances[0].close).toHaveBeenCalled()
+    expect(instances).toHaveLength(2)
+    expect(instances[1].isInitiator).toBe(false)
+    expect(instances[1].handleOffer).toHaveBeenCalledWith(sdp)
+  })
+
+  it('the impolite side keeps its connection, which ignores the offer', async () => {
+    await startCallWithPeer('00') // our id is higher than theirs: we are impolite
+    expect(instances[0].polite).toBe(false)
+
+    await act(async () => {
+      await fireSwarmEvent('video-offer', { peerId: '00', sdp })
+    })
+
+    expect(instances[0].close).not.toHaveBeenCalled()
+    expect(instances).toHaveLength(1)
+    expect(instances[0].handleOffer).toHaveBeenCalledWith(sdp)
+  })
+
+  it('does not drop a connection that is already established', async () => {
+    await startCallWithPeer('zzzz')
+    instances[0].established = true
+
+    await act(async () => {
+      await fireSwarmEvent('video-offer', { peerId: 'zzzz', sdp })
+    })
+
+    expect(instances[0].close).not.toHaveBeenCalled()
+    expect(instances[0].handleOffer).toHaveBeenCalledWith(sdp)
   })
 })

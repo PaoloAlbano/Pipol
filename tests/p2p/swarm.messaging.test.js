@@ -184,6 +184,27 @@ describe('RoomSwarm two-peer — HISTORY_REQ / HISTORY_RES', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('RoomSwarm two-peer — VIDEO_STATE', () => {
+  it('tells the other peer that the camera is off, and on again', () => {
+    const { swarmA, swarmB } = makeConnectedPair()
+    const states = collect(swarmB, 'video-state')
+
+    swarmA.sendToAll({ type: 'VIDEO_STATE', off: true })
+    swarmA.sendToAll({ type: 'VIDEO_STATE', off: false })
+
+    expect(states.map((s) => s.off)).toEqual([true, false])
+    expect(states[0].peerId).toBeTruthy()
+  })
+
+  it('treats anything but true as camera on', () => {
+    const { swarmA, swarmB } = makeConnectedPair()
+    const states = collect(swarmB, 'video-state')
+    swarmA.sendToAll({ type: 'VIDEO_STATE', off: 'yes' })
+    swarmA.sendToAll({ type: 'VIDEO_STATE' })
+    expect(states.map((s) => s.off)).toEqual([false, false])
+  })
+})
+
 describe('RoomSwarm two-peer — TYPING', () => {
   it('TYPING from A reaches B with channelName and username', () => {
     const { swarmA, swarmB } = makeConnectedPair()

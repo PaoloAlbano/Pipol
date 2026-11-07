@@ -4,7 +4,7 @@
  * and visibility handling, using a fake WebRTCPeer and a fake MessageStore.
  */
 
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as crypto from 'hypercore-crypto'
 import Room from '../../src/components/Room.jsx'
@@ -377,6 +377,36 @@ describe('Room — remote streams', () => {
     expect(screen.queryByText('peer-1')).toBeNull()
   })
 
+  it('shows an avatar instead of the video while the peer has the camera off', async () => {
+    setPeers('peer-1')
+    await startCall()
+    await act(async () => {
+      rtcPeers[0].dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: camStream } }))
+    })
+    expect(document.querySelectorAll('.video-avatar')).toHaveLength(0)
+
+    await fire('video-state', { peerId: 'peer-1', off: true })
+    expect(document.querySelectorAll('.video-avatar')).toHaveLength(1)
+
+    await fire('video-state', { peerId: 'peer-1', off: false })
+    expect(document.querySelectorAll('.video-avatar')).toHaveLength(0)
+  })
+
+  it('forgets that the camera was off when the peer leaves the call', async () => {
+    setPeers('peer-1')
+    await startCall()
+    await act(async () => {
+      rtcPeers[0].dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: camStream } }))
+    })
+    await fire('video-state', { peerId: 'peer-1', off: true })
+    await fire('call-end', { peerId: 'peer-1' })
+    await fire('call-init', { peerId: 'peer-1' })
+    await act(async () => {
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: camStream } }))
+    })
+    expect(document.querySelectorAll('.video-avatar')).toHaveLength(0)
+  })
+
   it('announces an active screen share to a peer that connects later', async () => {
     media.getActiveScreenStream.mockReturnValue({ id: 'my-screen' })
     await startCall()
@@ -447,6 +477,27 @@ describe('Room — local screen share and camera', () => {
     await userEvent.click(screen.getByTitle(/turn off camera/i))
     expect(media.setVideoMuted).toHaveBeenCalledWith(true)
     expect(screen.getByTitle(/turn on camera/i)).toBeInTheDocument()
+  })
+
+  it('tells the other peers when the camera goes off and on', async () => {
+    await startCall()
+    await userEvent.click(screen.getByTitle(/turn off camera/i))
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'VIDEO_STATE', off: true })
+    await userEvent.click(screen.getByTitle(/turn on camera/i))
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'VIDEO_STATE', off: false })
+  })
+
+  it('tells a peer that connects later that the camera is off', async () => {
+    await startCall()
+    await userEvent.click(screen.getByTitle(/turn off camera/i))
+    await fire('call-init', { peerId: 'peer-9' })
+    expect(swarmMock.sendToPeer).toHaveBeenCalledWith('peer-9', { type: 'VIDEO_STATE', off: true })
+  })
+
+  it('says nothing to a peer that connects later while the camera is on', async () => {
+    await startCall()
+    await fire('call-init', { peerId: 'peer-9' })
+    expect(swarmMock.sendToPeer).not.toHaveBeenCalledWith('peer-9', expect.objectContaining({ type: 'VIDEO_STATE' }))
   })
 
   it('replaces the camera track on every peer after switching camera', async () => {
@@ -1026,5 +1077,58 @@ describe('Room — TURN credentials', () => {
     })
     expect(rtcPeers[0].updateIceServers).not.toHaveBeenCalled()
     expect(screen.getByTitle(/mute microphone/i)).toBeInTheDocument()
+  })
+})
+
+// ── Phone layout: the sidebar with the controls is hidden ─────────────────────
+
+describe('Room — call controls on a phone', () => {
+  const realWidth = window.innerWidth
+
+  beforeEach(() => {
+    window.innerWidth = 400
+  })
+  afterEach(() => {
+    window.innerWidth = realWidth
+  })
+
+  it('has microphone and camera buttons under the video', async () => {
+    await startCall()
+    const bar = document.querySelector('.room-mobile-callbar')
+    expect(bar).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: /mute microphone/i })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: /turn off camera/i })).toBeInTheDocument()
+  })
+
+  it('mutes and unmutes the microphone', async () => {
+    await startCall()
+    const bar = document.querySelector('.room-mobile-callbar')
+    await userEvent.click(within(bar).getByRole('button', { name: /mute microphone/i }))
+    expect(media.setAudioMuted).toHaveBeenCalledWith(true)
+    const unmute = within(bar).getByRole('button', { name: /unmute microphone/i })
+    expect(unmute).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(unmute)
+    expect(media.setAudioMuted).toHaveBeenLastCalledWith(false)
+  })
+
+  it('turns the camera off and on, telling the others', async () => {
+    await startCall()
+    const bar = document.querySelector('.room-mobile-callbar')
+    await userEvent.click(within(bar).getByRole('button', { name: /turn off camera/i }))
+    expect(media.setVideoMuted).toHaveBeenCalledWith(true)
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'VIDEO_STATE', off: true })
+    await userEvent.click(within(bar).getByRole('button', { name: /turn on camera/i }))
+    expect(media.setVideoMuted).toHaveBeenLastCalledWith(false)
+  })
+
+  it('is not there before the call', async () => {
+    await setup()
+    expect(document.querySelector('.room-mobile-callbar')).toBeNull()
+  })
+
+  it('is not there on a wide screen, where the sidebar has the controls', async () => {
+    window.innerWidth = realWidth
+    await startCall()
+    expect(document.querySelector('.room-mobile-callbar')).toBeNull()
   })
 })

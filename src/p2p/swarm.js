@@ -22,6 +22,7 @@
  *   peer-left     { id }
  *   call-init     { peerId }
  *   call-end      { peerId }
+ *   video-state   { peerId, off }   the peer turned their camera off or on during a call
  *   error         { detail: Error }
  */
 
@@ -268,7 +269,8 @@ export class RoomSwarm extends EventTarget {
   // ── WebRTC connection setup ─────────────────────────────────────────────────
 
   async _initiateConnection(remotePeerId) {
-    if (this.peers.has(remotePeerId)) return
+    // A peer auto-registered by a relay HELLO has no pc yet: it still needs the WebRTC connection
+    if (this.peers.get(remotePeerId)?.pc) return
 
     const pc = new RTCPeerConnection(this._dataIceConfig)
     const dc = pc.createDataChannel('p2p-chat', { ordered: true })
@@ -298,7 +300,7 @@ export class RoomSwarm extends EventTarget {
     if (!signal) return
 
     if (signal.type === 'offer') {
-      if (this.peers.has(remotePeerId)) return // already connected
+      if (this.peers.get(remotePeerId)?.pc) return // already connected (a relay-only peer has no pc yet)
 
       const pc = new RTCPeerConnection(this._dataIceConfig)
       const expectedFingerprint = signal.fingerprint || null
@@ -366,15 +368,17 @@ export class RoomSwarm extends EventTarget {
   }
 
   _registerPeer(remotePeerId, pc, expectedFingerprint = null) {
+    // Keep what a relay HELLO may already have told us about this peer
+    const existing = this.peers.get(remotePeerId)
     this.peers.set(remotePeerId, {
       id: remotePeerId,
-      username: '…',
-      messageCoreKey: null,
+      username: existing?.username ?? '…',
+      messageCoreKey: existing?.messageCoreKey ?? null,
       pc,
       dc: null,
       sendControl: null,
       expectedFingerprint,
-      _joinedFired: false,
+      _joinedFired: existing?._joinedFired ?? false,
     })
 
     pc.addEventListener('connectionstatechange', () => {
@@ -525,6 +529,9 @@ export class RoomSwarm extends EventTarget {
         break
       case 'SCREEN_SHARE_END':
         this.dispatchEvent(new CustomEvent('screen-share-end', { detail: { peerId: remoteId } }))
+        break
+      case 'VIDEO_STATE':
+        this.dispatchEvent(new CustomEvent('video-state', { detail: { peerId: remoteId, off: msg.off === true } }))
         break
       case 'WORKSPACE_META':
         this.dispatchEvent(new CustomEvent('workspace-meta', { detail: { peerId: remoteId, channels: msg.channels } }))

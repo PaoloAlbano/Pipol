@@ -79,48 +79,11 @@ const defaultProps = {
   onOpenSettings: vi.fn(),
 }
 
-/** Minimal mock for a Document PiP window returned by requestWindow(). */
+/** Fake Document PiP window returned by requestWindow(): a real, separate document the call is drawn into. */
 function makeFakePiPWindow() {
   const pagehideListeners = []
-  function makeEl() {
-    const el = {
-      style: { cssText: '' },
-      appendChild: vi.fn(),
-      addEventListener: vi.fn(),
-      querySelector: vi.fn().mockReturnValue(null),
-      insertBefore: vi.fn(),
-    }
-    // Allow innerHTML / textContent assignments (used by makeBtn)
-    Object.defineProperty(el, 'innerHTML', {
-      get() {
-        return this._html ?? ''
-      },
-      set(v) {
-        this._html = v
-      },
-      configurable: true,
-    })
-    Object.defineProperty(el, 'textContent', {
-      get() {
-        return this._text ?? ''
-      },
-      set(v) {
-        this._text = v
-      },
-      configurable: true,
-    })
-    return el
-  }
-
   const win = {
-    document: {
-      documentElement: { style: { cssText: '' } },
-      body: {
-        style: { cssText: '' },
-        appendChild: vi.fn(),
-      },
-      createElement: vi.fn().mockImplementation(() => makeEl()),
-    },
+    document: document.implementation.createHTMLDocument('pip'),
     addEventListener: vi.fn((evt, cb) => {
       if (evt === 'pagehide') pagehideListeners.push(cb)
     }),
@@ -375,5 +338,77 @@ describe('Room PiP — manual button', () => {
     })
     await renderWithActiveCall()
     expect(screen.queryByTitle(/picture-in-picture/i)).toBeNull()
+  })
+})
+
+// ── What the PiP window shows ─────────────────────────────────────────────────
+
+describe('Room PiP — the whole call is in the window', () => {
+  let pipWin
+
+  beforeEach(() => {
+    pipWin = makeFakePiPWindow()
+    window.documentPictureInPicture = { requestWindow: vi.fn().mockResolvedValue(pipWin) }
+  })
+
+  afterEach(() => {
+    delete window.documentPictureInPicture
+    setVisibilityState('visible')
+  })
+
+  it('draws every tile of the call, yours included, not just one video', async () => {
+    const { user } = await renderWithActiveCall()
+    injectVideoElement()
+
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+
+    await waitFor(() => expect(pipWin.document.querySelectorAll('.video-tile').length).toBeGreaterThan(0))
+    expect(pipWin.document.body.textContent).toContain('tester (you)')
+  })
+
+  it('keeps the pictures of the window silent: the sound comes from the page', async () => {
+    const { user } = await renderWithActiveCall()
+    injectVideoElement()
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+
+    await waitFor(() => expect(pipWin.document.querySelectorAll('video').length).toBeGreaterThan(0))
+    for (const video of pipWin.document.querySelectorAll('video')) expect(video.muted).toBe(true)
+  })
+
+  it('has no timer or layout button in the window, which only has room for the picture', async () => {
+    const { user } = await renderWithActiveCall()
+    injectVideoElement()
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+
+    await waitFor(() => expect(pipWin.document.querySelector('.video-container--pip')).not.toBeNull())
+    expect(pipWin.document.querySelector('.video-topbar')).toBeNull()
+  })
+
+  it('copies the styles of the page into the window', async () => {
+    const style = document.createElement('style')
+    style.textContent = '.pip-marker { color: red; }'
+    document.head.appendChild(style)
+    try {
+      const { user } = await renderWithActiveCall()
+      injectVideoElement()
+      await user.click(screen.getByTitle(/open picture-in-picture/i))
+
+      await waitFor(() => expect(pipWin.document.querySelectorAll('style').length).toBeGreaterThan(0))
+      expect([...pipWin.document.querySelectorAll('style')].map((s) => s.textContent).join('')).toContain('.pip-marker')
+    } finally {
+      style.remove()
+    }
+  })
+
+  it('stops drawing into the window once it is closed', async () => {
+    const { user } = await renderWithActiveCall()
+    injectVideoElement()
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+    await waitFor(() => expect(pipWin.document.querySelectorAll('.video-tile').length).toBeGreaterThan(0))
+
+    await act(async () => pipWin.close())
+
+    expect(pipWin.document.querySelectorAll('.video-tile')).toHaveLength(0)
+    expect(screen.getByTitle(/open picture-in-picture/i)).toBeInTheDocument()
   })
 })
