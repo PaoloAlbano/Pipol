@@ -487,8 +487,18 @@ describe('VideoGrid — stats overlay: connection route', () => {
       relayed: false,
     })
     const route = container.querySelector('.video-stats-route')
-    expect(route.textContent).toBe('direct')
+    expect(route.textContent).toBe('direct · internet')
     expect(route.className).not.toContain('--relay')
+  })
+
+  it('tells a direct connection inside the same local network from one over the internet', () => {
+    const { container } = renderWithStats({ localType: 'host', remoteType: 'host', relayed: false })
+    expect(container.querySelector('.video-stats-route').textContent).toBe('direct · same network')
+  })
+
+  it('explains the route in a tooltip', () => {
+    const { container } = renderWithStats({ localType: 'relay', remoteType: 'host', relayed: true })
+    expect(container.querySelector('.video-stats-route').title).toMatch(/TURN relay server/)
   })
 
   it('highlights a connection relayed through TURN, with its protocol', () => {

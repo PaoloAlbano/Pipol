@@ -384,10 +384,30 @@ export class RoomSwarm extends EventTarget {
     pc.addEventListener('connectionstatechange', () => {
       const state = pc.connectionState
       console.info('[swarm] peer', remotePeerId.slice(0, 16) + '… connectionState:', state)
-      if (state === 'failed' || state === 'closed') {
-        this._handleDisconnect(remotePeerId)
-      }
+      if (state === 'failed' || state === 'closed') this._handleDirectLinkLost(remotePeerId, { pc })
     })
+  }
+
+  /**
+   * The WebRTC link to a peer ended (it could not connect, or dropped). That is not the peer leaving: while the
+   * signaling connection is up, the relay tells us when they really leave, and everything keeps going through the
+   * relay meanwhile. Without signaling nobody can say, so the peer is dropped.
+   * `pc` / `dc` identify the link that ended, so that the end of a link already replaced is ignored.
+   */
+  _handleDirectLinkLost(remoteId, { pc, dc } = {}) {
+    const peer = this.peers.get(remoteId)
+    if (!peer || (pc && peer.pc !== pc) || (dc && peer.dc !== dc)) return
+    if (this._ws?.readyState !== WebSocket.OPEN) {
+      this._handleDisconnect(remoteId)
+      return
+    }
+    console.info('[swarm] direct link with', remoteId.slice(0, 16) + '… ended, continuing through the relay')
+    const { dc: oldDc, pc: oldPc } = peer
+    peer.dc = null
+    peer.pc = null
+    peer.sendControl = null
+    oldDc?.close()
+    oldPc?.close()
   }
 
   _setupDataChannel(remotePeerId, dc) {
@@ -431,7 +451,7 @@ export class RoomSwarm extends EventTarget {
 
     dc.addEventListener('close', () => {
       console.info('[swarm] DataChannel closed with', remotePeerId.slice(0, 16) + '…')
-      this._handleDisconnect(remotePeerId)
+      this._handleDirectLinkLost(remotePeerId, { dc })
     })
 
     dc.addEventListener('error', (e) => {

@@ -16,6 +16,14 @@ class FakePC {
     this.senders = []
     pcs.push(this)
   }
+  getTransceivers() {
+    return this.senders.map((sender) => ({ mid: sender.mid ?? null, sender }))
+  }
+  // Like a browser: the m-lines of an offer take the transceivers that are not placed yet, in order
+  placeSenders(count = this.senders.length) {
+    for (const sender of this.senders.filter((s) => s.mid == null).slice(0, count))
+      sender.mid = String(this.senders.indexOf(sender))
+  }
   addTrack(track, stream) {
     const sender = { track, stream, replaceTrack: vi.fn().mockResolvedValue(undefined) }
     this.senders.push(sender)
@@ -32,10 +40,12 @@ class FakePC {
   }
   async setLocalDescription(desc) {
     this.localDescription = desc
+    if (desc.type === 'offer') this.placeSenders()
     this.signalingState = desc.type === 'offer' ? 'have-local-offer' : 'stable'
   }
   async setRemoteDescription(desc) {
     this.remoteDescription = desc
+    if (desc.type === 'offer') this.placeSenders(desc.mlines)
     this.signalingState = desc.type === 'offer' ? 'have-remote-offer' : 'stable'
   }
   async addIceCandidate() {}
@@ -166,6 +176,37 @@ describe('WebRTCPeer — screen share', () => {
     expect(offers).toHaveLength(0)
   })
 
+  describe('answering while sharing the screen', () => {
+    async function answerer(mlines) {
+      const screen = stream(track('video'))
+      const peer = new WebRTCPeer('p', false, stream(track('audio'), track('video')), screen, false)
+      const sent = []
+      peer.addEventListener('answer', () => sent.push('answer'))
+      peer.addEventListener('offer', () => sent.push('offer'))
+      await peer.init()
+      await peer.handleOffer({ type: 'offer', sdp: 'x', mlines })
+      return sent
+    }
+
+    it('offers the screen itself when the offer had no m-line for it', async () => {
+      // The one who joins offers audio and camera only; our screen has no place in the answer
+      expect(await answerer(2)).toEqual(['answer', 'offer'])
+    })
+
+    it('does not offer again when the offer had a place for every track', async () => {
+      expect(await answerer(3)).toEqual(['answer'])
+    })
+
+    it('does not offer when there is no screen', async () => {
+      const peer = new WebRTCPeer('p', false, stream(track('audio'), track('video')), null, false)
+      const sent = []
+      peer.addEventListener('offer', () => sent.push('offer'))
+      await peer.init()
+      await peer.handleOffer({ type: 'offer', sdp: 'x', mlines: 2 })
+      expect(sent).toEqual([])
+    })
+  })
+
   it('the impolite side wins even when it is not the initiator', async () => {
     const peer = new WebRTCPeer('p', false, stream(track('audio')), null, false)
     await peer.init()
@@ -234,6 +275,58 @@ describe('WebRTCPeer — screen share', () => {
     it('flags a connection relayed through our TURN allocation, with its protocol', async () => {
       const stats = await statsFor({ candidateType: 'relay', relayProtocol: 'udp' }, { candidateType: 'host' })
       expect(stats).toMatchObject({ relayed: true, relayProtocol: 'udp' })
+    })
+
+    it('follows the pair the transport says is selected, whatever the nominated flags', async () => {
+      const peer = new WebRTCPeer('p', true, stream(track('audio')))
+      await peer.init()
+      const entries = [
+        { type: 'transport', id: 't', selectedCandidatePairId: 'sel' },
+        {
+          type: 'candidate-pair',
+          id: 'old',
+          nominated: true,
+          state: 'succeeded',
+          localCandidateId: 'l1',
+          remoteCandidateId: 'r1',
+        },
+        { type: 'candidate-pair', id: 'sel', state: 'succeeded', localCandidateId: 'l2', remoteCandidateId: 'r2' },
+        { type: 'local-candidate', id: 'l1', candidateType: 'relay' },
+        { type: 'remote-candidate', id: 'r1', candidateType: 'host' },
+        { type: 'local-candidate', id: 'l2', candidateType: 'host' },
+        { type: 'remote-candidate', id: 'r2', candidateType: 'host' },
+      ]
+      pcs[0].getStats = async () => new Map(entries.map((e) => [e.id, e]))
+      expect(await peer.getConnectionStats()).toMatchObject({ localType: 'host', remoteType: 'host', relayed: false })
+    })
+
+    it('finds the pair in use by its traffic in a browser that flags nothing', async () => {
+      const peer = new WebRTCPeer('p', true, stream(track('audio')))
+      await peer.init()
+      const entries = [
+        { type: 'candidate-pair', id: 'idle', state: 'succeeded', localCandidateId: 'l1', remoteCandidateId: 'r1' },
+        {
+          type: 'candidate-pair',
+          id: 'busy',
+          state: 'succeeded',
+          bytesSent: 10,
+          localCandidateId: 'l2',
+          remoteCandidateId: 'r2',
+        },
+        { type: 'local-candidate', id: 'l1', candidateType: 'host' },
+        { type: 'remote-candidate', id: 'r1', candidateType: 'host' },
+        { type: 'local-candidate', id: 'l2', candidateType: 'relay', relayProtocol: 'tcp' },
+        { type: 'remote-candidate', id: 'r2', candidateType: 'srflx' },
+      ]
+      pcs[0].getStats = async () => new Map(entries.map((e) => [e.id, e]))
+      expect(await peer.getConnectionStats()).toMatchObject({ relayed: true, relayProtocol: 'tcp' })
+    })
+
+    it('reports nothing before a pair has succeeded', async () => {
+      const peer = new WebRTCPeer('p', true, stream(track('audio')))
+      await peer.init()
+      pcs[0].getStats = async () => new Map([['x', { type: 'candidate-pair', id: 'x', state: 'in-progress' }]])
+      expect(await peer.getConnectionStats()).toBeNull()
     })
 
     it('flags a connection relayed by the other side', async () => {
