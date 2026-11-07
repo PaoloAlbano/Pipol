@@ -48,6 +48,7 @@ vi.mock('../../src/webrtc/media.js', () => ({
 
 import SettingsModal from '../../src/components/SettingsModal.jsx'
 import * as storage from '../../src/p2p/storage.js'
+import * as media from '../../src/webrtc/media.js'
 
 const DEFAULT_IDENTITY = {
   username: 'swift-fox',
@@ -88,6 +89,27 @@ describe('SettingsModal — rendering', () => {
     expect(screen.getByText('1080p')).toBeInTheDocument()
     expect(screen.getByText('720p')).toBeInTheDocument()
     expect(screen.getByText('480p')).toBeInTheDocument()
+    expect(screen.getByText('Max')).toBeInTheDocument()
+  })
+
+  it('explains the Max quality when it is chosen', async () => {
+    const user = userEvent.setup()
+    setup()
+    expect(screen.queryByText(/direct connections only/i)).toBeNull()
+
+    await user.click(screen.getByText('Max'))
+
+    expect(screen.getByText(/direct connections only/i)).toBeInTheDocument()
+  })
+
+  it('saves and applies the Max quality', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByText('Max'))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    expect(storage.setVideoQuality).toHaveBeenCalledWith('max')
+    expect(media.applyVideoQuality).toHaveBeenCalledWith('max')
   })
 
   it('displays network stats toggle', () => {

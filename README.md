@@ -14,12 +14,41 @@
 ## Features
 
 - **Group chat** — persistent, encrypted message history via Hypercore
-- **Video calls** — WebRTC mesh with mute, camera toggle, and screen sharing
-- **Layouts** — adaptive grid and spotlight (pin) view, auto-switches on screen share
+- **Video calls** — WebRTC mesh with mute, camera toggle (the others see your avatar), screen sharing, a highlight on whoever is speaking, and Picture-in-Picture of the whole call
+- **Layouts** — adaptive grid and spotlight view that fit any screen, phones included; spotlight switches on by itself when somebody shares their screen
+- **Video quality** — 480p, 720p, 1080p, or **Max** (up to 4K at 60 fps on direct connections), see [Video calls](#video-calls)
+- **Calls that survive a change of network** — the connection restarts by itself when a device moves from Wi-Fi to 4G or drops for a moment
 - **E2E encrypted by design** — all traffic is encrypted end-to-end; no server can read your messages, not even the relay when it has to forward them
 - **Signed messages** — messages, edits, deletions and reactions are signed with the author's key: nobody can write as, or change the messages of, another member ([details](docs/security.md))
 - **Installable PWA** — works offline, installable on desktop and mobile
 - **No account required** — identity is a local cryptographic keypair
+
+## Video calls
+
+Everybody in a call connects to everybody else (a full mesh): there is no media server. Camera and microphone controls, screen sharing and the layout switch are in the call bar; on a phone, the microphone and camera buttons are under the video.
+
+**Video quality** (Settings → Video quality, it can be changed during a call):
+
+| Profile | Camera | What is sent |
+|---------|--------|--------------|
+| 480p | 640×480, about 20 fps | the browser decides |
+| 720p | 1280×720, about 20 fps | the browser decides |
+| 1080p (default) | 1920×1080, about 20 fps | the browser decides |
+| Max | the biggest picture the camera has, up to 4K, at 60 fps | up to 60 fps on a **direct** connection; through a TURN relay that connection goes down to 1080p at 25 fps |
+
+Max encodes the video once per direct connection, so it needs a powerful device when several people are in the call.
+
+**Network changes.** If the connection to somebody drops or the device changes network, the call restarts its connection on its own (a few tries, a few seconds apart) instead of ending.
+
+**Picture-in-Picture.** The button in the call bar opens a small window with the whole call and the mute, camera and end-call buttons. It opens by itself when you switch to another tab. Browsers without Document Picture-in-Picture show only one video in a standard Picture-in-Picture window.
+
+**Where the video passes.** Turn on *Show network stats overlay* in Settings to see, on each tile, whether the video goes `direct · same network`, `direct · internet` or `via TURN`.
+
+### Browser requirements
+
+- A recent Chromium-based browser (Chrome or Edge) gives the full experience. Document Picture-in-Picture needs Chrome or Edge 116 or later.
+- Camera, microphone and storage need HTTPS or `localhost`.
+- Screen sharing is not available in most mobile browsers.
 
 ## Architecture
 
@@ -125,6 +154,7 @@ make dev           # start dev server
 make test          # run tests once
 make test-watch    # watch mode
 make coverage      # test coverage report
+make e2e           # browser tests with Playwright (two or more real browsers, fake camera)
 make lint          # ESLint
 make format        # Prettier
 ```
@@ -134,7 +164,7 @@ make format        # Prettier
 |------|-----------|----------------------|
 | **Browser P2P** | Hyperswarm requires the Holepunch DHT relay for browser peers (no raw UDP in browsers). Data is still E2E encrypted; relay nodes only assist with discovery.
 | **Multi-writer convergence** | Messages are merged by timestamp — concurrent writes with identical timestamps may appear in non-deterministic order. | Integrate [Autobase v6](https://github.com/holepunchto/autobase) for true causal-order convergence. |
-| **Group video (large rooms)** | WebRTC mesh means N×(N-1)/2 connections. Practical limit ≈ 4–6 peers. | Integrate a Selective Forwarding Unit (SFU) such as [LiveKit](https://livekit.io). |
+| **Group video (large rooms)** | WebRTC mesh means N×(N-1)/2 connections. Practical limit ≈ 4–6 peers, fewer with the Max quality, which encodes up to 4K at 60 fps once per direct connection. | Integrate a Selective Forwarding Unit (SFU) such as [LiveKit](https://livekit.io). |
 | **TURN is optional** | Without a configured TURN server only public STUN is used and connections behind symmetric NATs may fail. | See [TURN server](#turn-server-calls-behind-strict-nats-and-firewalls). |
 | **OPFS availability** | OPFS requires HTTPS or localhost and is not available in all browsers. Falls back to RAM with a console warning. | Show a persistent UI warning if persistence is unavailable. |
 | **Key storage** | Identity keypair is stored in `localStorage`. | Encrypt with a user passphrase via Web Crypto (`SubtleCrypto` + AES-GCM). |

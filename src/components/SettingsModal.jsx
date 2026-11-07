@@ -33,7 +33,8 @@ import '../styles/settings.css'
 const QUALITIES = [
   { value: '480p', label: '480p', desc: 'Low bandwidth' },
   { value: '720p', label: '720p', desc: 'Balanced' },
-  { value: '1080p', label: '1080p', desc: 'Best quality' },
+  { value: '1080p', label: '1080p', desc: 'High quality' },
+  { value: 'max', label: 'Max', desc: 'Up to 4K · 60 fps' },
 ]
 
 export default function SettingsModal({
@@ -232,6 +233,12 @@ export default function SettingsModal({
                 </label>
               ))}
             </div>
+            {quality === 'max' && (
+              <p className="settings-hint">
+                The best picture your camera has, at 60 fps, on direct connections only. Through a TURN relay each
+                connection goes down to 1080p at 25 fps. It needs a powerful device.
+              </p>
+            )}
           </div>
 
           <div className="settings-section">

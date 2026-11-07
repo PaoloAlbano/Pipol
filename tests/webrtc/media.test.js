@@ -262,3 +262,128 @@ describe('screen share alongside the camera', () => {
     expect(media.isScreenSharing()).toBe(false)
   })
 })
+
+// ── "max" video quality ───────────────────────────────────────────────────────
+
+describe('"max" video quality', () => {
+  const overconstrained = () => Object.assign(new Error('no such mode'), { name: 'OverconstrainedError' })
+  const videoOf = (call) => call[0].video
+
+  beforeEach(() => {
+    localStorage.setItem('p2p-chat:video-quality', 'max')
+  })
+  afterEach(() => localStorage.removeItem('p2p-chat:video-quality'))
+
+  it('asks first for the biggest picture at 60 fps (at least 50)', async () => {
+    await media.getLocalStream()
+    const [first] = navigator.mediaDevices.getUserMedia.mock.calls
+    expect(videoOf(first)).toMatchObject({
+      width: { ideal: 3840 },
+      height: { ideal: 2160 },
+      frameRate: { min: 50, ideal: 60, max: 60 },
+      facingMode: 'user',
+    })
+  })
+
+  it('goes down to a smaller picture that the camera can do at 60 fps', async () => {
+    navigator.mediaDevices.getUserMedia
+      .mockRejectedValueOnce(overconstrained())
+      .mockRejectedValueOnce(overconstrained())
+      .mockResolvedValueOnce(fakeStream)
+    await media.getLocalStream()
+
+    const heights = navigator.mediaDevices.getUserMedia.mock.calls.map((c) => videoOf(c).height.ideal)
+    expect(heights).toEqual([2160, 1440, 1080])
+    expect(media.getActiveLocalStream()).toBe(fakeStream)
+  })
+
+  it('takes the biggest picture the camera has when it cannot do 60 fps at any size', async () => {
+    navigator.mediaDevices.getUserMedia
+      .mockRejectedValueOnce(overconstrained())
+      .mockRejectedValueOnce(overconstrained())
+      .mockRejectedValueOnce(overconstrained())
+      .mockResolvedValueOnce(fakeStream)
+    await media.getLocalStream()
+
+    const last = videoOf(navigator.mediaDevices.getUserMedia.mock.calls.at(-1))
+    expect(last.frameRate).toEqual({ ideal: 60, max: 60 })
+    expect(last.height).toEqual({ ideal: 2160 })
+    expect(media.getActiveLocalStream()).toBe(fakeStream)
+  })
+
+  it('does not go on asking when the failure is not about the constraints (permission denied)', async () => {
+    navigator.mediaDevices.getUserMedia.mockRejectedValue(Object.assign(new Error('no'), { name: 'NotAllowedError' }))
+    await expect(media.getLocalStream()).rejects.toMatchObject({ name: 'NotAllowedError' })
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledOnce()
+  })
+
+  it('tells the encoder to favour smoothness (motion)', async () => {
+    await media.getLocalStream()
+    expect(fakeVideoTrack.contentHint).toBe('motion')
+  })
+
+  it('does not set that hint for the other qualities', async () => {
+    localStorage.setItem('p2p-chat:video-quality', '1080p')
+    await media.getLocalStream()
+    expect(fakeVideoTrack.contentHint).toBe('')
+  })
+
+  it('applies "max" to the running camera during a call, going down the sizes as needed', async () => {
+    await media.getLocalStream()
+    fakeVideoTrack.applyConstraints = vi.fn().mockRejectedValueOnce(overconstrained()).mockResolvedValue(undefined)
+
+    await media.applyVideoQuality('max')
+
+    expect(fakeVideoTrack.applyConstraints).toHaveBeenCalledTimes(2)
+    expect(fakeVideoTrack.applyConstraints.mock.calls[1][0].height.ideal).toBe(1440)
+    expect(fakeVideoTrack.contentHint).toBe('motion')
+  })
+
+  it('goes back to a normal profile during a call', async () => {
+    await media.getLocalStream()
+    fakeVideoTrack.applyConstraints = vi.fn().mockResolvedValue(undefined)
+
+    await media.applyVideoQuality('720p')
+
+    expect(fakeVideoTrack.applyConstraints).toHaveBeenCalledWith(
+      expect.objectContaining({ height: { ideal: 720, max: 720 } })
+    )
+    expect(fakeVideoTrack.contentHint).toBe('')
+  })
+
+  it('lets the connections know about a change of quality, until they stop listening', async () => {
+    await media.getLocalStream()
+    fakeVideoTrack.applyConstraints = vi.fn().mockResolvedValue(undefined)
+    const seen = vi.fn()
+    const stop = media.onVideoQualityChange(seen)
+
+    await media.applyVideoQuality('720p')
+    expect(seen).toHaveBeenCalledWith('720p')
+
+    stop()
+    await media.applyVideoQuality('max')
+    expect(seen).toHaveBeenCalledOnce()
+  })
+
+  it('keeps going when the camera refuses every size', async () => {
+    await media.getLocalStream()
+    fakeVideoTrack.applyConstraints = vi.fn().mockRejectedValue(overconstrained())
+    await expect(media.applyVideoQuality('max')).resolves.toBeUndefined()
+  })
+
+  it('uses the same sizes when switching camera', async () => {
+    await media.getLocalStream()
+    const newTrack = makeFakeTrack('video')
+    navigator.mediaDevices.getUserMedia.mockClear()
+    navigator.mediaDevices.getUserMedia
+      .mockRejectedValueOnce(overconstrained())
+      .mockResolvedValueOnce(makeFakeStream([newTrack]))
+
+    const result = await media.switchCamera()
+
+    expect(result.videoTrack).toBe(newTrack)
+    const calls = navigator.mediaDevices.getUserMedia.mock.calls.map((c) => videoOf(c).height.ideal)
+    expect(calls).toEqual([2160, 1440])
+    expect(newTrack.contentHint).toBe('motion')
+  })
+})
