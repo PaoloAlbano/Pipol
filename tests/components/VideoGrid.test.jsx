@@ -277,6 +277,51 @@ describe('VideoGrid — layout spotlight', () => {
 
 // ── Own camera off, speaking, timer ───────────────────────────────────────────
 
+describe('VideoGrid — Picture-in-Picture window', () => {
+  const peers = [
+    { id: 'peer-1', username: 'alice' },
+    { id: 'peer-2', username: 'bob' },
+  ]
+
+  function pipSetup(overrides = {}) {
+    return render(
+      <VideoGrid
+        pip
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-1': makeFakeStream(), 'peer-2': makeFakeStream() }}
+        peers={peers}
+        localUsername="swift-fox"
+        callElapsed="01:00"
+        layout="grid"
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+        {...overrides}
+      />
+    )
+  }
+
+  it('shows every tile, with no top bar', () => {
+    const { container } = pipSetup()
+    expect(container.querySelectorAll('.video-tile')).toHaveLength(3)
+    expect(container.querySelector('.video-topbar')).toBeNull()
+    expect(container.querySelector('.video-container--pip')).toBeInTheDocument()
+  })
+
+  it('keeps every video silent, so the sound is not played twice', () => {
+    const { container } = pipSetup()
+    for (const video of container.querySelectorAll('video')) {
+      expect(video.muted).toBe(true)
+      expect(video).not.toHaveAttribute('autopictureinpicture')
+    }
+  })
+
+  it('does not listen to the sound of the streams', () => {
+    useSpeaking.mockClear()
+    pipSetup()
+    expect(useSpeaking.mock.calls.every(([stream]) => stream === null)).toBe(true)
+  })
+})
+
 describe('VideoGrid — avatar, speaking and timer', () => {
   const peer1 = { id: 'peer-1', username: 'alice' }
 

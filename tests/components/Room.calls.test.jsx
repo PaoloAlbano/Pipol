@@ -4,7 +4,7 @@
  * and visibility handling, using a fake WebRTCPeer and a fake MessageStore.
  */
 
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as crypto from 'hypercore-crypto'
 import Room from '../../src/components/Room.jsx'
@@ -1077,5 +1077,58 @@ describe('Room — TURN credentials', () => {
     })
     expect(rtcPeers[0].updateIceServers).not.toHaveBeenCalled()
     expect(screen.getByTitle(/mute microphone/i)).toBeInTheDocument()
+  })
+})
+
+// ── Phone layout: the sidebar with the controls is hidden ─────────────────────
+
+describe('Room — call controls on a phone', () => {
+  const realWidth = window.innerWidth
+
+  beforeEach(() => {
+    window.innerWidth = 400
+  })
+  afterEach(() => {
+    window.innerWidth = realWidth
+  })
+
+  it('has microphone and camera buttons under the video', async () => {
+    await startCall()
+    const bar = document.querySelector('.room-mobile-callbar')
+    expect(bar).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: /mute microphone/i })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: /turn off camera/i })).toBeInTheDocument()
+  })
+
+  it('mutes and unmutes the microphone', async () => {
+    await startCall()
+    const bar = document.querySelector('.room-mobile-callbar')
+    await userEvent.click(within(bar).getByRole('button', { name: /mute microphone/i }))
+    expect(media.setAudioMuted).toHaveBeenCalledWith(true)
+    const unmute = within(bar).getByRole('button', { name: /unmute microphone/i })
+    expect(unmute).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(unmute)
+    expect(media.setAudioMuted).toHaveBeenLastCalledWith(false)
+  })
+
+  it('turns the camera off and on, telling the others', async () => {
+    await startCall()
+    const bar = document.querySelector('.room-mobile-callbar')
+    await userEvent.click(within(bar).getByRole('button', { name: /turn off camera/i }))
+    expect(media.setVideoMuted).toHaveBeenCalledWith(true)
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'VIDEO_STATE', off: true })
+    await userEvent.click(within(bar).getByRole('button', { name: /turn on camera/i }))
+    expect(media.setVideoMuted).toHaveBeenLastCalledWith(false)
+  })
+
+  it('is not there before the call', async () => {
+    await setup()
+    expect(document.querySelector('.room-mobile-callbar')).toBeNull()
+  })
+
+  it('is not there on a wide screen, where the sidebar has the controls', async () => {
+    window.innerWidth = realWidth
+    await startCall()
+    expect(document.querySelector('.room-mobile-callbar')).toBeNull()
   })
 })

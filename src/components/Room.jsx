@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { createRoomSwarm } from '../p2p/swarm.js'
 import { MessageStore } from '../p2p/autobase.js'
 import { decryptDM, encryptDM } from '../p2p/dm-crypto.js'
@@ -24,6 +25,26 @@ import VideoControls from './VideoControls.jsx'
 import ThreadPanel from './ThreadPanel.jsx'
 import { containsMention } from '../p2p/notifications.js'
 import '../styles/room.css'
+
+/** Copies the styles of a document into another one (a new window starts without any). */
+function copyStyleSheets(from, to) {
+  for (const sheet of Array.from(from.styleSheets)) {
+    try {
+      const style = to.createElement('style')
+      style.textContent = Array.from(sheet.cssRules)
+        .map((rule) => rule.cssText)
+        .join('\n')
+      ;(to.head ?? to.documentElement).appendChild(style)
+    } catch {
+      // A sheet from another origin cannot be read: link it instead
+      if (!sheet.href) continue
+      const link = to.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = sheet.href
+      ;(to.head ?? to.documentElement).appendChild(link)
+    }
+  }
+}
 
 /**
  * Room view — active chat and optional video call.
@@ -152,6 +173,7 @@ export default function Room({
   const pipHandlersRef = useRef(null) // always-fresh toggle handlers
   const openDocPiPRef = useRef(null) // always-fresh openDocumentPiP fn
   const [pipActive, setPipActive] = useState(false)
+  const [pipHost, setPipHost] = useState(null) // element of the Document PiP window the call is drawn into
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false)
 
   // Thread state
@@ -653,7 +675,7 @@ export default function Room({
     const all = [...document.querySelectorAll('.video-element')]
     const playing = (v) => !v.paused && v.readyState >= 2
     return (
-      document.querySelector('.video-spotlight-main video') ||
+      document.querySelector('.video-tile--main video') ||
       all.find((v) => !v.muted && playing(v)) ||
       all.find((v) => playing(v)) ||
       all.find((v) => !v.muted && v.readyState >= 1) ||
@@ -661,49 +683,26 @@ export default function Room({
     )
   }
 
-  // Opens a Document PiP window and moves the already-playing video element into it.
-  // Chrome's recommended pattern: move the existing DOM element rather than
-  // creating a new one with srcObject (new elements don't inherit playback state).
+  // Opens a Document PiP window showing the whole call, laid out like the main window (see the portal below).
+  // The window gets its own silent copy of the tiles: the sound keeps coming from the videos of the page.
   // Assigned to openDocPiPRef.current on every render so event listeners are always fresh.
-  async function openDocumentPiP(videoEl) {
+  async function openDocumentPiP() {
     try {
-      const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 240 })
+      const win = await window.documentPictureInPicture.requestWindow({ width: 420, height: 320 })
       pipWindowRef.current = win
       setPipActive(true)
 
       // ── Set up PiP window ────────────────────────────────────────────────
       const doc = win.document
+      copyStyleSheets(document, doc)
       doc.documentElement.style.cssText = 'height:100vh;margin:0;padding:0'
       doc.body.style.cssText =
         'margin:0;padding:0;background:#111;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:sans-serif'
 
-      // ── Save original position so we can restore on close ────────────────
-      const origParent = videoEl.parentElement
-      const origNext = videoEl.nextSibling
-      const origStyle = videoEl.style.cssText
-
-      // Insert a placeholder where the video was so the tile doesn't collapse
-      const placeholder = document.createElement('div')
-      placeholder.style.cssText =
-        'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#555;font-size:11px;pointer-events:none'
-      placeholder.textContent = '📺 In PiP'
-      origParent.insertBefore(placeholder, videoEl)
-
-      // ── Video wrapper ────────────────────────────────────────────────────
-      const wrapper = doc.createElement('div')
-      wrapper.style.cssText = 'flex:1;min-height:0;position:relative;overflow:hidden;background:#000'
-
-      videoEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
-      wrapper.appendChild(videoEl) // move the playing element into PiP
-
-      // Derive label from the sibling .video-label span in the original tile
-      const labelText = origParent.querySelector('.video-label')?.textContent ?? (videoEl.muted ? 'You' : 'Remote')
-      const lbl = doc.createElement('span')
-      lbl.style.cssText =
-        'position:absolute;bottom:4px;left:6px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
-      lbl.textContent = labelText
-      wrapper.appendChild(lbl)
-      doc.body.appendChild(wrapper)
+      // ── The call ─────────────────────────────────────────────────────────
+      const host = doc.createElement('div')
+      host.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;background:#000'
+      doc.body.appendChild(host)
 
       // ── Controls bar ─────────────────────────────────────────────────────
       const bar = doc.createElement('div')
@@ -736,16 +735,11 @@ export default function Room({
       doc.body.appendChild(bar)
       pipBtnsRef.current = { aBtn, vBtn }
 
-      // ── Restore on close ─────────────────────────────────────────────────
+      setPipHost(host)
+
+      // ── Clean up on close ────────────────────────────────────────────────
       win.addEventListener('pagehide', () => {
-        // Move the video element back to its original position
-        videoEl.style.cssText = origStyle
-        if (origNext && origNext.parentNode === origParent) {
-          origParent.insertBefore(videoEl, origNext)
-        } else {
-          origParent.appendChild(videoEl)
-        }
-        placeholder.remove()
+        setPipHost(null)
         pipWindowRef.current = null
         pipBtnsRef.current = null
         setPipActive(false)
@@ -782,7 +776,7 @@ export default function Room({
       return
     }
 
-    await openDocPiPRef.current(videoEl)
+    await openDocPiPRef.current()
   }
 
   // Auto-trigger: when the tab/window is hidden, open Document PiP automatically
@@ -798,7 +792,7 @@ export default function Room({
       if (!video) return
 
       if ('documentPictureInPicture' in window) {
-        openDocPiPRef.current(video)
+        openDocPiPRef.current()
       } else if (!document.pictureInPictureElement) {
         video.requestPictureInPicture().catch((err) => {
           console.warn('[pip] auto-trigger failed:', err.message)
@@ -1397,6 +1391,54 @@ export default function Room({
           />
         </main>
       )}
+
+      {/* ── Mobile call controls: the sidebar with the usual ones is hidden on a phone ── */}
+      {callActive && mobileView && !embedded && (
+        <div className="room-mobile-callbar">
+          <button
+            className={`btn-mobile-control${audioMuted ? ' btn-mobile-control--active' : ''}`}
+            onClick={handleToggleAudio}
+            aria-pressed={audioMuted}
+            aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+          >
+            {audioMuted ? '🔇' : '🎙️'}
+            <span>{audioMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+          <button
+            className={`btn-mobile-control${videoMuted ? ' btn-mobile-control--active' : ''}`}
+            onClick={handleToggleVideo}
+            aria-pressed={videoMuted}
+            aria-label={videoMuted ? 'Turn on camera' : 'Turn off camera'}
+          >
+            {videoMuted ? '📵' : '📷'}
+            <span>{videoMuted ? 'Cam on' : 'Cam off'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* The call in the Document PiP window: same layout as above, with the window's own size and no sound */}
+      {callActive &&
+        pipHost &&
+        createPortal(
+          <VideoGrid
+            pip
+            localStream={localStream}
+            remoteStreams={remoteStreams}
+            remoteScreens={remoteScreens}
+            peers={peers}
+            localUsername={identity.username}
+            localVideoMuted={videoMuted}
+            remoteVideoOff={remoteVideoOff}
+            showStats={false}
+            peerStats={{}}
+            layout={layout}
+            spotlightPeerId={spotlightPeerId}
+            onLayoutChange={setLayout}
+            onSpotlightChange={setSpotlightPeerId}
+            mirrorVideo={mirrorVideo}
+          />,
+          pipHost
+        )}
 
       {/* ── Right: chat (always visible) ── */}
       <section className={`room-chat ${chatOpen ? '' : 'room-chat--collapsed'}`}>

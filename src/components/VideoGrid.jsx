@@ -13,6 +13,9 @@ import '../styles/video.css'
  * tile while the camera moves to the strip. Your own tile is always there, last, so nobody is covered by it.
  *
  * Tiles are placed with absolute positions computed from the real size of the area (see videoLayout.js).
+ *
+ * With `pip` the same layout is drawn in the Picture-in-Picture window: no top bar and no sound (the videos of the
+ * page keep playing it), only the picture.
  */
 
 const PADDING = 6
@@ -37,6 +40,7 @@ export default function VideoGrid({
   onLayoutChange,
   onSpotlightChange,
   mirrorVideo = true,
+  pip = false,
 }) {
   const stageRef = useRef(null)
   const size = useElementSize(stageRef)
@@ -141,8 +145,10 @@ export default function VideoGrid({
   )
 
   return (
-    <div className={`video-container${isSpotlight ? ' video-container--spotlight' : ''}`}>
-      {(callElapsed || layoutToggle) && (
+    <div
+      className={`video-container${isSpotlight ? ' video-container--spotlight' : ''}${pip ? ' video-container--pip' : ''}`}
+    >
+      {!pip && (callElapsed || layoutToggle) && (
         <div className="video-topbar">
           {callElapsed ? (
             <span className="video-call-timer" aria-label="Call duration" aria-live="off">
@@ -180,7 +186,8 @@ export default function VideoGrid({
               name={tile.name}
               rect={rect}
               role={role}
-              muted={Boolean(tile.local)}
+              muted={Boolean(tile.local) || pip}
+              silent={pip}
               mirror={Boolean(tile.local) && mirrorVideo}
               videoOff={tile.local ? localVideoMuted : Boolean(tile.videoOff)}
               fit={tile.screen ? 'contain' : isMain ? cameraFit(rect.width, rect.height) : 'cover'}
@@ -232,6 +239,7 @@ function VideoTile({
   muted = false,
   mirror = false,
   videoOff = false,
+  silent = false,
   fit = 'cover',
   stats = null,
   onClick,
@@ -240,7 +248,7 @@ function VideoTile({
   // Listening to the sound of a remote stream before its video has started playing can keep the video from ever
   // starting in Chrome: the level is only read once the stream is really playing.
   const [playingStream, setPlayingStream] = useState(null)
-  const speaking = useSpeaking(playingStream === stream ? stream : null)
+  const speaking = useSpeaking(!silent && playingStream === stream ? stream : null)
 
   useEffect(() => {
     if (videoRef.current && stream) {

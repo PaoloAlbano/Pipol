@@ -95,6 +95,23 @@ describe('useElementSize', () => {
     expect(observers[0].disconnect).toHaveBeenCalled()
   })
 
+  it('observes with the ResizeObserver of the window the element is in', () => {
+    const windowObservers = []
+    class WindowObserver extends FakeResizeObserver {
+      constructor(callback) {
+        super(callback)
+        windowObservers.push(this)
+      }
+    }
+    const spy = vi.spyOn(document, 'defaultView', 'get').mockReturnValue({ ResizeObserver: WindowObserver })
+    try {
+      render(<Probe />)
+      expect(windowObservers).toHaveLength(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('works without ResizeObserver', () => {
     vi.stubGlobal('ResizeObserver', undefined)
     rect = { width: 500, height: 300 }

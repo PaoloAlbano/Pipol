@@ -24,8 +24,11 @@ export function useElementSize(ref, fallback = FALLBACK) {
     }
 
     measure()
-    if (typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver(measure)
+    // The observer of the window the element is in: one of the main window does not follow an element that has been
+    // moved to another window (Picture-in-Picture)
+    const Observer = el.ownerDocument?.defaultView?.ResizeObserver ?? globalThis.ResizeObserver
+    if (typeof Observer === 'undefined') return undefined
+    const observer = new Observer(measure)
     observer.observe(el)
     return () => observer.disconnect()
   }, [ref])

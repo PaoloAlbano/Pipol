@@ -8,6 +8,13 @@
   flex-direction: column;
 }
 
+/* Inside the Picture-in-Picture window the call fills what the controls bar leaves */
+.video-container--pip {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
 /* Timer and layout button sit in their own slim bar, so they never cover anybody's face */
 .video-topbar {
   flex: 0 0 auto;
