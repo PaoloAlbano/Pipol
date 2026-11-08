@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event'
 import * as crypto from 'hypercore-crypto'
 import Room from '../../src/components/Room.jsx'
 import { createRoomSwarm } from '../../src/p2p/swarm.js'
+import { MessageStore } from '../../src/p2p/autobase.js'
 import { WebRTCPeer } from '../../src/webrtc/peer.js'
 import { reconnectDelay } from '../../src/webrtc/reconnect.js'
 import * as media from '../../src/webrtc/media.js'
@@ -652,6 +653,71 @@ describe('Room — chat messages', () => {
     expect(onMessageSent).toHaveBeenCalled()
   })
 
+  describe('before the message store is open', () => {
+    /** The next store opens only when `open()` is called. */
+    function slowStore() {
+      let open
+      const gate = new Promise((resolve) => (open = resolve))
+      MessageStore.mockImplementationOnce(function () {
+        const store = {
+          init: vi.fn(() => gate),
+          on: vi.fn(),
+          getHistory: vi.fn().mockResolvedValue([]),
+          getSignedHistory: vi.fn().mockResolvedValue([]),
+          getLastTimestamp: vi.fn().mockResolvedValue(0),
+          getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
+          addMessage: vi.fn().mockResolvedValue({ id: 'late1', content: 'typed early', timestamp: 1 }),
+          receiveMessage: vi.fn(),
+          close: vi.fn().mockResolvedValue(undefined),
+        }
+        stores.push(store)
+        return store
+      })
+      return open
+    }
+
+    it('keeps a message typed in the meantime and sends it once the store is open', async () => {
+      const open = slowStore()
+      render(<Room {...baseProps} />)
+      const editor = await screen.findByRole('textbox')
+      editor.focus()
+      await userEvent.type(editor, 'typed early{Enter}')
+      expect(stores[0].addMessage).not.toHaveBeenCalled() // nothing to store it in yet
+
+      await act(async () => open())
+
+      await waitFor(() => expect(stores[0].addMessage).toHaveBeenCalledWith('typed early'))
+      await waitFor(() => expect(swarmMock.sendToAll).toHaveBeenCalledWith(expect.objectContaining({ type: 'MSG' })))
+    })
+
+    it('does not wait when the store is already open', async () => {
+      await setup()
+      const editor = screen.getByRole('textbox')
+      editor.focus()
+      await userEvent.type(editor, 'hi{Enter}')
+      await waitFor(() => expect(stores[0].addMessage).toHaveBeenCalledWith('hi'))
+    })
+
+    it('gives up with a warning when the store never opens, and does not send anything', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        slowStore() // never opened
+        render(<Room {...baseProps} />)
+        const editor = await screen.findByRole('textbox')
+        editor.focus()
+        await userEvent.type(editor, 'lost{Enter}', { advanceTimers: vi.advanceTimersByTime })
+        await act(async () => vi.advanceTimersByTime(10_001))
+
+        await waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('did not open in time')))
+        expect(swarmMock.sendToAll).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'MSG' }))
+      } finally {
+        vi.useRealTimers()
+        warn.mockRestore()
+      }
+    })
+  })
+
   it('broadcasts typing notifications, throttled', async () => {
     await setup()
     const editor = screen.getByRole('textbox')
@@ -1204,8 +1270,14 @@ describe('Room — reconnecting to somebody in the call', () => {
     return () => rtcPeers.at(-1)
   }
 
+  // The tests that check that NO new connection is made give the wait a safe length: whatever stops the retry
+  // (the person leaving, the call ending) has to happen before it is over, on a slow machine too.
+  const SLOW_WAIT = 1000
+  const afterTheWait = () => tick(SLOW_WAIT + 400)
+
   beforeEach(() => {
     reconnectDelay.mockClear()
+    reconnectDelay.mockReturnValue(30)
   })
 
   it('connects again, as the one who offers, when a connection could not be kept', async () => {
@@ -1270,38 +1342,42 @@ describe('Room — reconnecting to somebody in the call', () => {
 
   it('does not connect again when the person leaves in the meantime', async () => {
     const current = await callWith('peer-1')
+    reconnectDelay.mockReturnValue(SLOW_WAIT)
     const before = rtcPeers.length
     await closeWith(current(), 'failed')
     await fire('peer-left', { id: 'peer-1' })
-    await tick()
+    await afterTheWait()
     expect(rtcPeers).toHaveLength(before)
   })
 
   it('does not connect again when the person ends their call in the meantime', async () => {
     const current = await callWith('peer-1')
+    reconnectDelay.mockReturnValue(SLOW_WAIT)
     const before = rtcPeers.length
     await closeWith(current(), 'failed')
     await fire('call-end', { peerId: 'peer-1' })
-    await tick()
+    await afterTheWait()
     expect(rtcPeers).toHaveLength(before)
   })
 
   it('does not connect again after we end the call', async () => {
     const current = await callWith('peer-1')
+    reconnectDelay.mockReturnValue(SLOW_WAIT)
     const before = rtcPeers.length
     await closeWith(current(), 'failed')
     await userEvent.click(screen.getByTitle(/leave video call/i))
-    await tick()
+    await afterTheWait()
     expect(rtcPeers).toHaveLength(before)
   })
 
   it('leaves it to the other side when they connected to us first', async () => {
+    reconnectDelay.mockReturnValue(SLOW_WAIT)
     const current = await callWith('peer-1')
     await closeWith(current(), 'failed')
     // Their offer arrives before our wait is over: a new connection is made to answer it
     await fire('video-offer', { peerId: 'peer-1', sdp: { type: 'offer', sdp: 'x' } })
     const during = rtcPeers.length
-    await tick()
+    await afterTheWait()
     expect(rtcPeers).toHaveLength(during)
   })
 
