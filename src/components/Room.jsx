@@ -8,6 +8,7 @@ import { signOp, verifyOp } from '../p2p/signing.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
 import { sdpFingerprint } from '../webrtc/sdp.js'
 import { reconnectDelay } from '../webrtc/reconnect.js'
+import { useWakeLock } from '../webrtc/useWakeLock.js'
 import {
   getLocalStream,
   stopLocalStream,
@@ -207,6 +208,9 @@ export default function Room({
     if (startCallTrigger > 0 && !callActiveRef.current) handleStartCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startCallTrigger])
+
+  // The screen stays on during a call (a phone that locks itself stops the camera and drops the call)
+  useWakeLock(callActive)
 
   // ── Keep TURN credentials valid during a call ─────────────────────────────
   // Credentials expire (the relay's /ice endpoint hands out short-lived ones): renew them on the live

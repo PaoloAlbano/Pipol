@@ -38,6 +38,8 @@ Everybody in a call connects to everybody else (a full mesh): there is no media 
 
 Max encodes the video once per direct connection, so it needs a powerful device when several people are in the call.
 
+**Screen on.** The screen stays on during a call, so a phone does not lock itself and drop the camera (in browsers that support the Screen Wake Lock; it is taken again if you leave the page and come back).
+
 **Network changes and dropped connections.** If the connection to somebody drops or the device changes network, the call restarts its connection on its own (a few tries, a few seconds apart) instead of ending. If it cannot be kept, or never connects, the call connects to that person again, waiting a little longer after each failure (2 s, 4 s, … up to 30 s), for as long as they are in the call.
 
 **What you see.** Everybody in the call has a tile from the moment they join: *Connecting…* while their picture has not arrived, *Reconnecting…* while a connection that worked is being recovered, and a *Weak connection* badge when the round trip is slow or many packets are lost.

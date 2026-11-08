@@ -1446,3 +1446,36 @@ describe('Room — an offer from a connection we have never seen', () => {
     expect(rtcPeers[0].handleOffer).toHaveBeenCalled()
   })
 })
+
+// ── Screen kept on during the call ────────────────────────────────────────────
+
+describe('Room — screen wake lock', () => {
+  let request
+  let lock
+
+  beforeEach(() => {
+    lock = Object.assign(new EventTarget(), { release: vi.fn().mockResolvedValue(undefined) })
+    request = vi.fn().mockResolvedValue(lock)
+    Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true })
+  })
+  afterEach(() => {
+    delete navigator.wakeLock
+  })
+
+  it('keeps the screen on once the call starts, and not before', async () => {
+    await setup()
+    expect(request).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByText(/start video call/i))
+    await waitFor(() => expect(request).toHaveBeenCalledWith('screen'))
+  })
+
+  it('lets the screen go when the call ends', async () => {
+    await startCall()
+    await waitFor(() => expect(request).toHaveBeenCalled())
+
+    await userEvent.click(screen.getByTitle(/leave video call/i))
+
+    await waitFor(() => expect(lock.release).toHaveBeenCalled())
+  })
+})
