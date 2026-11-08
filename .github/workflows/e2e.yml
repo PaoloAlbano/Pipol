@@ -48,8 +48,9 @@ jobs:
           CI: true
           PLAYWRIGHT_HTML_OPEN: never
 
+      # Also when everything passed: a test that failed once and passed on the retry ("flaky") leaves its trace here
       - name: Upload report
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
@@ -57,6 +58,7 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+          if-no-files-found: ignore
 
   # The tests in the other browsers: they show what only breaks there, and must not mark the commit as failed
   e2e-browsers:
@@ -97,7 +99,7 @@ jobs:
           PLAYWRIGHT_HTML_OPEN: never
 
       - name: Upload report
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.browser }}
@@ -105,3 +107,4 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+          if-no-files-found: ignore
