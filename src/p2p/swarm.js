@@ -61,6 +61,26 @@ function signalUrl(override) {
 
 // ─── RoomSwarm ────────────────────────────────────────────────────────────────
 
+/**
+ * What goes through the relay while the signaling connection is down is lost, unless it is something nobody would
+ * ask for again: the signaling of a connection (SDP and ICE of the chat link and of the calls) and the messages that
+ * start, end and describe a call. Chat messages are not kept: the history is synced when a peer is seen again.
+ */
+const KEPT_WHILE_OFFLINE = new Set([
+  'VIDEO_OFFER',
+  'VIDEO_ANSWER',
+  'VIDEO_ICE',
+  'CALL_INIT',
+  'CALL_END',
+  'SCREEN_SHARE_START',
+  'SCREEN_SHARE_END',
+  'VIDEO_STATE',
+])
+/** Signaling that waited longer than this (ms) is no longer worth sending: the connection it was for is gone. */
+export const OUTBOX_TTL_MS = 30_000
+/** At most this many are kept; the oldest go first. */
+export const OUTBOX_MAX = 200
+
 export class RoomSwarm extends EventTarget {
   /**
    * @param {string} roomCode
@@ -91,6 +111,7 @@ export class RoomSwarm extends EventTarget {
     this._identity = null
     this._leaving = false // true while leave() is in progress
     this._wsReconnectTimer = null // reconnect back-off timer
+    this._outbox = [] // signaling that could not be sent because the relay connection was down
 
     // ICE candidates buffered before remote description is set
     this._pendingCandidates = new Map() // peerId → [candidate, ...]
@@ -677,11 +698,36 @@ export class RoomSwarm extends EventTarget {
   }
 
   // Everything that leaves through the relay WebSocket goes through here, sealed. Without a key nothing is sent.
-  _sendRelay(type, to, payload) {
-    if (this._ws?.readyState !== WebSocket.OPEN || !this._relayCipher || !this._localPeerId) return
+  // While the connection is down, signaling is kept (see KEPT_WHILE_OFFLINE) and sent once it is back.
+  _sendRelay(type, to, payload, queuedAt = null) {
+    if (!this._relayCipher || !this._localPeerId) return false
+    if (this._ws?.readyState !== WebSocket.OPEN) {
+      this._keepForLater(type, to, payload, queuedAt)
+      return false
+    }
     const sealed = this._relayCipher.seal(payload, this._localPeerId, to)
     const frame = type === 'signal' ? { type, to, signal: sealed } : { type, ...(to ? { to } : {}), data: sealed }
     this._ws.send(JSON.stringify(frame))
+    return true
+  }
+
+  _keepForLater(type, to, payload, queuedAt) {
+    if (this._leaving) return
+    if (type !== 'signal' && !KEPT_WHILE_OFFLINE.has(payload?.type)) return
+    this._outbox.push({ type, to, payload, at: queuedAt ?? Date.now() })
+    if (this._outbox.length > OUTBOX_MAX) this._outbox.shift()
+  }
+
+  /** Sends what was kept while the relay connection was down, in order, leaving out what has become too old. */
+  _flushOutbox() {
+    const pending = this._outbox
+    this._outbox = []
+    const now = Date.now()
+    for (const item of pending) {
+      if (now - item.at > OUTBOX_TTL_MS) continue
+      // If the connection drops again in the middle, the rest is kept again (with its original age)
+      this._sendRelay(item.type, item.to, item.payload, item.at)
+    }
   }
 
   _sendSignal(to, signal) {
@@ -736,6 +782,8 @@ export class RoomSwarm extends EventTarget {
       } catch {
         return
       }
+      // Back in the room: now what was kept can go
+      if (msg.type === 'joined') this._flushOutbox()
       this._handleSignal(msg)
     })
 
@@ -790,6 +838,7 @@ export class RoomSwarm extends EventTarget {
 
   async leave() {
     this._leaving = true
+    this._outbox = []
     clearTimeout(this._wsReconnectTimer)
     this._ws?.close()
     for (const peer of this.peers.values()) {

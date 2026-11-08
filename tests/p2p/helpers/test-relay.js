@@ -89,6 +89,7 @@ export async function createTestRelay() {
       if (!peerId || !roomCode) return
       const room = rooms.get(roomCode)
       if (!room) return
+      if (room.get(peerId) !== ws) return // the peer has reconnected: this is their old connection
       room.delete(peerId)
       if (room.size === 0) rooms.delete(roomCode)
       for (const [, peerWs] of room) {

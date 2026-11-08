@@ -90,7 +90,7 @@ Pricing: the first 1,000 GB per month are free, then $0.05 per GB (traffic from 
 2. Put the same secret in coturn's `static-auth-secret` and in the relay's `TURN_SECRET`.
 3. On the relay: `TURN_PROVIDER=coturn`, `TURN_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp,turns:turn.example.com:5349?transport=tcp`, `TURN_SECRET=…`.
 
-The relay gives each request its own credential id, so coturn's `user-quota` applies per issuance and each allocation is attributable in the coturn logs. Hosts that only expose HTTP (such as Render) cannot run a TURN server: use a VPS with the UDP/TCP ports open. `make turn-e2e` starts a throw-away hardened coturn in Docker and checks the whole chain.
+The relay gives each request its own credential id, so coturn's `user-quota` applies per issuance and each allocation is attributable in the coturn logs. Hosts that only expose HTTP (such as Render) cannot run a TURN server: use a VPS with the UDP/TCP ports open. `make turn-e2e` starts a throw-away hardened coturn in Docker and checks the whole chain, including video calls between two browsers that may only use it (connecting, restarting ICE after a change of network, and connecting again after a failure).
 
 ### Metered, Xirsys or another service
 

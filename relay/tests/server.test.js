@@ -214,6 +214,22 @@ test('notifies remaining peers when someone leaves', async () => {
   assert.equal((await a.next(ofType('peer-left'))).peerId, 'peer-b')
 })
 
+test('a late close of an old connection does not remove the peer that has already reconnected', async () => {
+  const oldA = await join('room-reconnect', 'peer-a')
+  const b = await join('room-reconnect', 'peer-b')
+  await oldA.next(ofType('peer-joined'))
+
+  // The peer comes back before the server noticed that its old connection is dead
+  const newA = await join('room-reconnect', 'peer-a')
+
+  // The old connection is finally closed
+  oldA.ws.close()
+  assert.ok(await b.stays(ofType('peer-left')), 'peer-a is still there: nobody is told it left')
+
+  b.send({ type: 'relay-data-to', to: 'peer-a', data: 'still routed to the new connection' })
+  assert.equal((await newA.next(ofType('relay-data'))).data, 'still routed to the new connection')
+})
+
 test('ignores malformed messages and keeps serving', async () => {
   const a = await join('room-bad', 'peer-a')
   a.ws.send('not json')

@@ -72,7 +72,7 @@ e2e:
 e2e-headed:
 	pnpm exec playwright test --headed
 
-# Needs Docker: runs a real coturn and checks the TURN setup end to end
+# Needs Docker: runs a real coturn and checks the TURN setup end to end, including video calls that may only use it
 turn-e2e:
 	TURN_E2E=1 pnpm exec playwright test e2e/turn.test.js
 
