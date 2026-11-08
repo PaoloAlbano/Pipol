@@ -159,6 +159,7 @@ make test          # run tests once
 make test-watch    # watch mode
 make coverage      # test coverage report
 make e2e           # browser tests with Playwright (two or more real browsers, fake camera)
+make e2e-browsers  # the same tests in WebKit (Safari's engine) and Firefox; first: pnpm exec playwright install webkit firefox
 make lint          # ESLint
 make format        # Prettier
 ```

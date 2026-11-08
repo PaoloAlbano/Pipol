@@ -3,6 +3,9 @@ name: E2E
 # Browser tests with real Chromium, the relay and two peers. They run after a merge to main (and on demand),
 # never on pull requests, so they cannot block a merge: a failure shows up as a red mark on the commit.
 # Visual tests are left out (their snapshots are for macOS) and so are the coturn tests (they need Docker).
+# The same tests also run in WebKit (the engine of Safari) and Firefox, as a separate job that never fails the run.
+# WebKit on Linux skips the tests with a call (its video does not play in a container, see playwright.config.js),
+# so a third job runs WebKit on macOS, where all of them run.
 on:
   push:
     branches: [main]
@@ -46,8 +49,9 @@ jobs:
           CI: true
           PLAYWRIGHT_HTML_OPEN: never
 
+      # Also when everything passed: a test that failed once and passed on the retry ("flaky") leaves its trace here
       - name: Upload report
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
@@ -55,3 +59,97 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+          if-no-files-found: ignore
+
+  # The tests in the other browsers: they show what only breaks there, and must not mark the commit as failed
+  e2e-browsers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    continue-on-error: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [webkit, firefox]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install relay dependencies
+        run: npm ci
+        working-directory: relay
+
+      - name: Install ${{ matrix.browser }}
+        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run e2e tests in ${{ matrix.browser }}
+        run: pnpm exec playwright test --project=${{ matrix.browser }} --grep-invert Visual --reporter=list,html --trace=retain-on-failure
+        env:
+          CI: true
+          E2E_BROWSERS: ${{ matrix.browser }}
+          PLAYWRIGHT_HTML_OPEN: never
+
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # WebKit on macOS: the engine of Safari on the system it is made for, with the calls that WebKit on Linux cannot run
+  e2e-macos:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install relay dependencies
+        run: npm ci
+        working-directory: relay
+
+      - name: Install WebKit
+        run: pnpm exec playwright install webkit
+
+      - name: Run e2e tests in WebKit on macOS
+        run: pnpm exec playwright test --project=webkit --grep-invert Visual --reporter=list,html --trace=retain-on-failure
+        env:
+          CI: true
+          E2E_BROWSERS: webkit
+          PLAYWRIGHT_HTML_OPEN: never
+
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-macos-webkit
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore

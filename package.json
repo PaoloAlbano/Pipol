@@ -17,6 +17,7 @@
     "format:check": "prettier --print-width 120 --check \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\"",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",
+    "e2e:browsers": "E2E_BROWSERS=all playwright test --project=webkit --project=firefox --grep-invert Visual",
     "e2e:update": "playwright test --update-snapshots=all"
   },
   "dependencies": {

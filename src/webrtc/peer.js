@@ -184,7 +184,9 @@ export class WebRTCPeer extends EventTarget {
       )
     }
 
-    this._pc.onconnectionstatechange = () => {
+    // addEventListener, not the `onconnectionstatechange` property: some browsers (WebKit on Linux) never call that one,
+    // and a call that cannot tell it has connected is closed by the connect timeout
+    this._pc.addEventListener('connectionstatechange', () => {
       const state = this._pc?.connectionState
       console.info(`[webrtc] ${this.peerId.slice(0, 12)}… state: ${state}`)
       this.dispatchEvent(new CustomEvent('connection-state', { detail: { state } }))
@@ -194,7 +196,7 @@ export class WebRTCPeer extends EventTarget {
       else if (state === 'closed')
         this.close('failed') // closed from outside: we did not ask for it
       else if (this._everConnected) this._setStatus('reconnecting') // 'connecting' again after it had worked
-    }
+    })
 
     this._watchNetwork()
     this._armConnectTimers()

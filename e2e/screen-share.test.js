@@ -41,12 +41,22 @@ test.describe('Screen share', () => {
     const pageB = await ctxB.newPage()
 
     try {
+      // The fake screen is a canvas captured as a stream; some browsers (WebKit on Linux) give a stream without video
+      await pageA.goto('/')
+      const canCapture = await pageA.evaluate(
+        () => document.createElement('canvas').captureStream?.(1)?.getVideoTracks().length > 0
+      )
+      test.skip(!canCapture, 'this browser captures no video from a canvas, so there is no fake screen to share')
+
       await Promise.all([joinQuickRoom(pageA, room, 'alice-e2e'), joinQuickRoom(pageB, room, 'bob-e2e')])
       await pageA.waitForTimeout(2500)
 
       // Alice starts the call and shares her screen before Bob is in the call
       await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
-      await pageA.getByTitle(/share screen/i).first().click()
+      await pageA
+        .getByTitle(/share screen/i)
+        .first()
+        .click()
       await expect(pageA.getByTitle(/stop screen share/i).first()).toBeVisible()
 
       // Bob joins: he sees the screen
@@ -54,7 +64,10 @@ test.describe('Screen share', () => {
       await screenIsPlaying(pageB)
 
       // Bob leaves and joins again while Alice keeps sharing
-      await pageB.getByTitle(/leave video call/i).first().click()
+      await pageB
+        .getByTitle(/leave video call/i)
+        .first()
+        .click()
       await expect(pageB.locator('.video-tile')).toHaveCount(0)
       await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
       await screenIsPlaying(pageB)

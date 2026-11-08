@@ -49,6 +49,15 @@ function copyStyleSheets(from, to) {
   }
 }
 
+/** How long a message typed before the message store is ready waits for it (ms). */
+const STORE_WAIT_MS = 10_000
+
+function deferred() {
+  let resolve
+  const promise = new Promise((r) => (resolve = r))
+  return { promise, resolve }
+}
+
 /**
  * Room view — active chat and optional video call.
  *
@@ -156,6 +165,7 @@ export default function Room({
   const [remoteVideoOff, setRemoteVideoOff] = useState({}) // peerId → true while their camera is off
   const [peerStatus, setPeerStatus] = useState({}) // peerId → 'connecting' | 'connected' | 'poor' | 'reconnecting'
   const callPeerIdsRef = useRef(new Set()) // the same as callPeerIds, for code that outlives a render
+  const storeReadyRef = useRef(deferred()) // resolves with the message store once it is open
   const reconnectRef = useRef({}) // peerId → { attempts, timer, connected }
   const [screenSharing, setScreenSharing] = useState(false)
   const [layout, setLayout] = useState('grid') // 'grid' | 'spotlight'
@@ -524,6 +534,7 @@ export default function Room({
         const msgStore = new MessageStore(roomCode, identity)
         await msgStore.init()
         msgStoreRef.current = msgStore
+        storeReadyRef.current.resolve(msgStore)
 
         msgStore.on('messages', (msgs) => {
           if (!cancelled) setMessages(msgs)
@@ -1046,13 +1057,27 @@ export default function Room({
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
+  /**
+   * The message store, waiting a little if it is still being opened: a message typed right after the room (or a
+   * direct message) is opened must not be lost because the store was not ready yet.
+   */
+  const getStore = useCallback(async () => {
+    if (msgStoreRef.current) return msgStoreRef.current
+    let timer
+    const timeout = new Promise((resolve) => (timer = setTimeout(() => resolve(null), STORE_WAIT_MS)))
+    const store = await Promise.race([storeReadyRef.current.promise, timeout])
+    clearTimeout(timer)
+    if (!store) console.warn('[room] the message store did not open in time: message not sent')
+    return store
+  }, [])
+
   const handleSendMessage = useCallback(
     async (content) => {
       // Clear our typing state when we send + notify peers immediately
       clearTimeout(typingThrottleRef.current)
       typingThrottleRef.current = null
       swarmRef.current?.sendToAll({ type: 'TYPING', username: identity?.username ?? 'unknown', stopped: true })
-      const msg = await msgStoreRef.current?.addMessage(content)
+      const msg = await (await getStore())?.addMessage(content)
       if (msg) {
         if (isDM) {
           // Encrypt and send as DM — only the recipient can decrypt
@@ -1076,6 +1101,7 @@ export default function Room({
       channelName,
       roomCode,
       onMessageSent,
+      getStore,
     ]
   )
 
