@@ -577,7 +577,7 @@ export class WebRTCPeer extends EventTarget {
     if (this._pc.remoteDescription) {
       await this._pc
         .addIceCandidate(new RTCIceCandidate(candidate))
-        .catch((err) => console.warn('[webrtc] addIceCandidate error', err))
+        .catch((err) => console.warn(`[webrtc] addIceCandidate error: ${err?.name}: ${err?.message}`))
     } else {
       this._pendingCandidates.push(candidate)
     }
@@ -598,6 +598,7 @@ export class WebRTCPeer extends EventTarget {
   close(reason = 'closed') {
     if (this._closed) return
     this._closed = true
+    console.info(`[webrtc] ${this.peerId.slice(0, 12)}… closed (${reason})`)
     clearTimeout(this._disconnectTimer)
     clearTimeout(this._retryTimer)
     clearTimeout(this._connectTimer)
