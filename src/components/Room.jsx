@@ -6,6 +6,9 @@ import { decryptDM, encryptDM } from '../p2p/dm-crypto.js'
 import { sendImageFile, FileReceiver } from '../p2p/file-transfer.js'
 import { signOp, verifyOp } from '../p2p/signing.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
+import { sdpFingerprint } from '../webrtc/sdp.js'
+import { reconnectDelay } from '../webrtc/reconnect.js'
+import { useWakeLock } from '../webrtc/useWakeLock.js'
 import {
   getLocalStream,
   stopLocalStream,
@@ -151,6 +154,9 @@ export default function Room({
   const [videoMuted, setVideoMutedState] = useState(false)
   const videoMutedRef = useRef(false) // read by ensureRTCPeer, which may run from a stale closure
   const [remoteVideoOff, setRemoteVideoOff] = useState({}) // peerId → true while their camera is off
+  const [peerStatus, setPeerStatus] = useState({}) // peerId → 'connecting' | 'connected' | 'poor' | 'reconnecting'
+  const callPeerIdsRef = useRef(new Set()) // the same as callPeerIds, for code that outlives a render
+  const reconnectRef = useRef({}) // peerId → { attempts, timer, connected }
   const [screenSharing, setScreenSharing] = useState(false)
   const [layout, setLayout] = useState('grid') // 'grid' | 'spotlight'
   const [spotlightPeerId, setSpotlightPeerId] = useState(null)
@@ -188,6 +194,10 @@ export default function Room({
     callActiveRef.current = callActive
   }, [callActive])
 
+  useEffect(() => {
+    callPeerIdsRef.current = callPeerIds
+  }, [callPeerIds])
+
   // Notify parent when call starts/ends (used by ChannelHeader in embedded mode)
   useEffect(() => {
     onCallActiveChange?.(callActive)
@@ -198,6 +208,9 @@ export default function Room({
     if (startCallTrigger > 0 && !callActiveRef.current) handleStartCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startCallTrigger])
+
+  // The screen stays on during a call (a phone that locks itself stops the camera and drops the call)
+  useWakeLock(callActive)
 
   // ── Keep TURN credentials valid during a call ─────────────────────────────
   // Credentials expire (the relay's /ice endpoint hands out short-lived ones): renew them on the live
@@ -260,6 +273,7 @@ export default function Room({
 
     function onPeerLeft(e) {
       const { id } = e.detail
+      clearReconnect(id)
       cleanupRTCPeer(id)
       setPeers(swarm.getPeers())
       const count = swarm.getPeers().length
@@ -299,6 +313,7 @@ export default function Room({
 
     function onCallEnd(e) {
       const { peerId } = e.detail
+      clearReconnect(peerId)
       cleanupRTCPeer(peerId)
       clearRemoteVideoOff(peerId)
       setCallPeerIds((prev) => {
@@ -316,6 +331,12 @@ export default function Room({
       // Both sides offered at once: the polite side drops its unanswered connection and answers on a
       // fresh one. A rollback while ICE is gathering can leave the connection stuck in "new".
       if (existing?.polite && existing.isInitiator && !existing.established) resetRTCPeer(peerId)
+      // An offer from a connection we have never seen: they made a new one (after theirs failed, before we noticed
+      // that ours did). The old one cannot take it, so it is replaced.
+      else if (existing?.established) {
+        const offered = sdpFingerprint(e.detail.sdp)
+        if (offered && existing.remoteFingerprint && offered !== existing.remoteFingerprint) resetRTCPeer(peerId)
+      }
       const peer = await ensureRTCPeer(peerId, false)
       await peer.handleOffer(e.detail.sdp)
     }
@@ -892,8 +913,23 @@ export default function Room({
       }
     })
 
+    // How the connection is doing, shown on the tile of that peer
+    setPeerStatus((prev) => ({
+      ...prev,
+      [peerId]: prev[peerId] === 'reconnecting' ? 'reconnecting' : (rtcPeer.status ?? 'connecting'),
+    }))
+    rtcPeer.addEventListener('status', (e) => {
+      if (e.detail.status === 'closed') return // a closing is handled by the 'closed' event below
+      setPeerStatus((prev) => ({ ...prev, [peerId]: e.detail.status }))
+      if (e.detail.status === 'connected') {
+        // It works: the next failure starts again from the short waits
+        const entry = reconnectRef.current[peerId]
+        reconnectRef.current[peerId] = { attempts: 0, timer: entry?.timer ?? null, connected: true }
+      }
+    })
+
     // When connection closes, remove the remote streams from state
-    rtcPeer.addEventListener('closed', () => {
+    rtcPeer.addEventListener('closed', (e) => {
       delete remoteScreenIdsRef.current[peerId]
       setRemoteStreams((prev) => {
         const next = { ...prev }
@@ -905,6 +941,11 @@ export default function Room({
         delete next[peerId]
         return next
       })
+      // A closed connection must not stay in the list: it would be returned for the next call to that peer
+      const isCurrent = rtcPeersRef.current[peerId] === rtcPeer
+      if (isCurrent) delete rtcPeersRef.current[peerId]
+      // One that could not be kept (not one we closed ourselves) is tried again while the peer is in the call
+      if (isCurrent && (e.detail?.reason === 'failed' || e.detail?.reason === 'timeout')) scheduleReconnect(peerId)
     })
 
     // Initialize the peer connection (triggers offer/answer exchange if initiator)
@@ -919,6 +960,53 @@ export default function Room({
       delete next[peerId]
       return next
     })
+  }
+
+  function clearReconnect(peerId) {
+    const entry = reconnectRef.current[peerId]
+    if (entry) clearTimeout(entry.timer)
+    delete reconnectRef.current[peerId]
+    setPeerStatus((prev) => {
+      if (!(peerId in prev)) return prev
+      const next = { ...prev }
+      delete next[peerId]
+      return next
+    })
+  }
+
+  function clearAllReconnects() {
+    Object.keys(reconnectRef.current).forEach(clearReconnect)
+    setPeerStatus({})
+  }
+
+  const isInCallWith = (peerId) =>
+    callActiveRef.current && callPeerIdsRef.current.has(peerId) && Boolean(swarmRef.current?.peers?.has(peerId))
+
+  /**
+   * Connects to a peer again after the connection to them was given up, with a growing wait, for as long as they
+   * are in the call. Both sides may do it: whoever offers first wins (see onVideoOffer).
+   */
+  function scheduleReconnect(peerId) {
+    if (!isInCallWith(peerId)) return
+    const entry = (reconnectRef.current[peerId] ??= { attempts: 0, timer: null, connected: false })
+    if (entry.timer) return
+    const polite = myPubkeyHexRef.current ? myPubkeyHexRef.current < peerId : false
+    setPeerStatus((prev) => ({ ...prev, [peerId]: entry.connected ? 'reconnecting' : 'connecting' }))
+    entry.timer = setTimeout(
+      async () => {
+        entry.timer = null
+        // They left, or the other side has already connected to us in the meantime
+        if (!isInCallWith(peerId) || rtcPeersRef.current[peerId]) return
+        entry.attempts++
+        try {
+          await ensureRTCPeer(peerId, true)
+        } catch (err) {
+          console.warn('[room] could not reconnect to', peerId.slice(0, 8), err)
+          scheduleReconnect(peerId)
+        }
+      },
+      reconnectDelay(entry.attempts, polite)
+    )
   }
 
   // Replaces the connection with a peer by a new one: what they announced about their screen share still holds
@@ -945,6 +1033,7 @@ export default function Room({
   }
 
   async function teardown() {
+    clearAllReconnects()
     swarmDetachRef.current?.()
     swarmDetachRef.current = null
     Object.values(rtcPeersRef.current).forEach((p) => p.close())
@@ -1120,6 +1209,7 @@ export default function Room({
   }
 
   function handleEndCall() {
+    clearAllReconnects()
     swarmRef.current?.sendToAll({ type: 'CALL_END' })
     Object.values(rtcPeersRef.current).forEach((p) => p.close())
     rtcPeersRef.current = {}
@@ -1220,6 +1310,10 @@ export default function Room({
   // ── Render ────────────────────────────────────────────────────────────────
 
   const callInProgress = callPeerIds.size > 0 && !callActive
+  // People in the call we have no picture of yet: still connecting, or the connection is being recovered
+  const pendingPeerIds = callActive
+    ? [...callPeerIds].filter((id) => !remoteStreams[id] && id !== myPubkeyHexRef.current)
+    : []
 
   return (
     <div className={`room-layout ${callActive ? 'room-layout--call' : ''}`}>
@@ -1388,6 +1482,8 @@ export default function Room({
             localUsername={identity.username}
             localVideoMuted={videoMuted}
             remoteVideoOff={remoteVideoOff}
+            peerStatus={peerStatus}
+            pendingPeerIds={pendingPeerIds}
             callElapsed={embedded ? '' : callElapsed}
             showStats={showStats}
             peerStats={peerStats}
@@ -1437,6 +1533,8 @@ export default function Room({
             localUsername={identity.username}
             localVideoMuted={videoMuted}
             remoteVideoOff={remoteVideoOff}
+            peerStatus={peerStatus}
+            pendingPeerIds={pendingPeerIds}
             showStats={false}
             peerStats={{}}
             layout={layout}

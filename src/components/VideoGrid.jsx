@@ -32,6 +32,8 @@ export default function VideoGrid({
   localUsername,
   localVideoMuted = false,
   remoteVideoOff = {},
+  peerStatus = {},
+  pendingPeerIds = [],
   callElapsed = '',
   showStats,
   peerStats,
@@ -65,9 +67,22 @@ export default function VideoGrid({
       stream,
       screen: false,
       videoOff: Boolean(remoteVideoOff[peerId]),
+      status: peerStatus[peerId],
       name: nameOf(peerId),
       label: nameOf(peerId),
     })),
+    // People in the call whose picture has not arrived (yet): a tile with their avatar and how it is going
+    ...pendingPeerIds
+      .filter((peerId) => !remoteStreams[peerId])
+      .map((peerId) => ({
+        key: peerId,
+        peerId,
+        stream: null,
+        screen: false,
+        status: peerStatus[peerId] ?? 'connecting',
+        name: nameOf(peerId),
+        label: nameOf(peerId),
+      })),
     ...Object.entries(remoteScreens).map(([peerId, stream]) => ({
       key: `${peerId}:screen`,
       peerId,
@@ -123,7 +138,7 @@ export default function VideoGrid({
       })
     })
   } else {
-    const all = count === 0 ? [selfTile] : [...tiles, selfTile]
+    const all = [...tiles, selfTile]
     const grid = layoutGrid(all.length, area.width, area.height)
     all.forEach((tile, i) => placed.push({ key: tile.key, tile, rect: place(grid.rects[i]), role: 'grid' }))
   }
@@ -190,6 +205,7 @@ export default function VideoGrid({
               silent={pip}
               mirror={Boolean(tile.local) && mirrorVideo}
               videoOff={tile.local ? localVideoMuted : Boolean(tile.videoOff)}
+              status={tile.local || tile.screen ? undefined : tile.status}
               fit={tile.screen ? 'contain' : isMain ? cameraFit(rect.width, rect.height) : 'cover'}
               stats={statsOf(tile, rect)}
               onClick={role === 'strip' && !tile.local ? () => onSpotlightChange(tile.peerId) : undefined}
@@ -242,6 +258,25 @@ function Avatar({ name, size }) {
   )
 }
 
+const STATUS_TEXT = {
+  connecting: 'Connecting…',
+  reconnecting: 'Reconnecting…',
+  poor: 'Weak connection',
+}
+
+/** How the connection to somebody is going, when it is not fine: over the tile while there is no (good) picture. */
+function ConnectionStatus({ status }) {
+  const text = STATUS_TEXT[status]
+  if (!text) return null
+  const busy = status === 'connecting' || status === 'reconnecting'
+  return (
+    <div className={`video-status video-status--${status}`} role="status">
+      {busy && <span className="video-status-spinner" aria-hidden="true" />}
+      <span>{text}</span>
+    </div>
+  )
+}
+
 function VideoTile({
   stream,
   label,
@@ -252,6 +287,7 @@ function VideoTile({
   mirror = false,
   videoOff = false,
   silent = false,
+  status,
   fit = 'cover',
   stats = null,
   onClick,
@@ -299,6 +335,7 @@ function VideoTile({
       )}
       {!showVideo && <Avatar name={name} size={Math.min(rect.width, rect.height)} />}
       <span className="video-label">{label}</span>
+      <ConnectionStatus status={status} />
       {stats && (
         <div className="video-stats-badge">
           <span

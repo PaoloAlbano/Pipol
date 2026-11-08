@@ -17,7 +17,7 @@
 - **Video calls** — WebRTC mesh with mute, camera toggle (the others see your avatar), screen sharing, a highlight on whoever is speaking, and Picture-in-Picture of the whole call
 - **Layouts** — adaptive grid and spotlight view that fit any screen, phones included; spotlight switches on by itself when somebody shares their screen
 - **Video quality** — 480p, 720p, 1080p, or **Max** (up to 4K at 60 fps on direct connections), see [Video calls](#video-calls)
-- **Calls that survive a change of network** — the connection restarts by itself when a device moves from Wi-Fi to 4G or drops for a moment
+- **Calls that survive a change of network** — the connection restarts, or is made again, by itself when a device moves from Wi-Fi to 4G or drops; every tile says *Connecting…*, *Reconnecting…* or *Weak connection* when it is not fine
 - **E2E encrypted by design** — all traffic is encrypted end-to-end; no server can read your messages, not even the relay when it has to forward them
 - **Signed messages** — messages, edits, deletions and reactions are signed with the author's key: nobody can write as, or change the messages of, another member ([details](docs/security.md))
 - **Installable PWA** — works offline, installable on desktop and mobile
@@ -38,7 +38,11 @@ Everybody in a call connects to everybody else (a full mesh): there is no media 
 
 Max encodes the video once per direct connection, so it needs a powerful device when several people are in the call.
 
-**Network changes.** If the connection to somebody drops or the device changes network, the call restarts its connection on its own (a few tries, a few seconds apart) instead of ending.
+**Screen on.** The screen stays on during a call, so a phone does not lock itself and drop the camera (in browsers that support the Screen Wake Lock; it is taken again if you leave the page and come back).
+
+**Network changes and dropped connections.** If the connection to somebody drops or the device changes network, the call restarts its connection on its own (a few tries, a few seconds apart) instead of ending. If it cannot be kept, or never connects, the call connects to that person again, waiting a little longer after each failure (2 s, 4 s, … up to 30 s), for as long as they are in the call.
+
+**What you see.** Everybody in the call has a tile from the moment they join: *Connecting…* while their picture has not arrived, *Reconnecting…* while a connection that worked is being recovered, and a *Weak connection* badge when the round trip is slow or many packets are lost.
 
 **Picture-in-Picture.** The button in the call bar opens a small window with the whole call and the mute, camera and end-call buttons. It opens by itself when you switch to another tab. Browsers without Document Picture-in-Picture show only one video in a standard Picture-in-Picture window.
 

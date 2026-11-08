@@ -15,6 +15,52 @@
   width: 100%;
 }
 
+/* How the connection to somebody is going: over the tile while connecting or recovering, a badge when weak */
+.video-status {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.video-status--connecting,
+.video-status--reconnecting {
+  inset: 0;
+  flex-direction: column;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.video-status--poor {
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: rgba(180, 83, 9, 0.85);
+  font-size: 11px;
+}
+.video-status-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: video-status-spin 0.9s linear infinite;
+}
+@keyframes video-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .video-status-spinner {
+    animation-duration: 3s;
+  }
+}
+
 /* Timer and layout button sit in their own slim bar, so they never cover anybody's face */
 .video-topbar {
   flex: 0 0 auto;

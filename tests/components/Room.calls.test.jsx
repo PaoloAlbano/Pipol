@@ -10,6 +10,7 @@ import * as crypto from 'hypercore-crypto'
 import Room from '../../src/components/Room.jsx'
 import { createRoomSwarm } from '../../src/p2p/swarm.js'
 import { WebRTCPeer } from '../../src/webrtc/peer.js'
+import { reconnectDelay } from '../../src/webrtc/reconnect.js'
 import * as media from '../../src/webrtc/media.js'
 import { sendImageFile } from '../../src/p2p/file-transfer.js'
 import { encryptDM, decryptDM } from '../../src/p2p/dm-crypto.js'
@@ -72,6 +73,7 @@ vi.mock('../../src/p2p/dm-crypto.js', () => ({
 }))
 
 vi.mock('../../src/webrtc/peer.js', () => ({ WebRTCPeer: vi.fn() }))
+vi.mock('../../src/webrtc/reconnect.js', () => ({ reconnectDelay: vi.fn(() => 30) }))
 
 const mockGetLocalStream = vi.fn()
 vi.mock('../../src/webrtc/media.js', () => ({
@@ -1182,5 +1184,298 @@ describe('Room — call controls on a phone', () => {
     window.innerWidth = realWidth
     await startCall()
     expect(document.querySelector('.room-mobile-callbar')).toBeNull()
+  })
+})
+
+// ── Connecting again, and how it is going ─────────────────────────────────────
+
+describe('Room — reconnecting to somebody in the call', () => {
+  const tick = (ms = 120) => act(() => new Promise((resolve) => setTimeout(resolve, ms)))
+  const closeWith = (peer, reason) =>
+    act(async () => {
+      peer.dispatchEvent(new CustomEvent('closed', { detail: reason ? { reason } : undefined }))
+    })
+
+  /** A call with peer-1 in it (they sent CALL_INIT), connected through the last connection made. */
+  async function callWith(...ids) {
+    setPeers(...ids)
+    await startCall()
+    for (const id of ids) await fire('call-init', { peerId: id })
+    return () => rtcPeers.at(-1)
+  }
+
+  beforeEach(() => {
+    reconnectDelay.mockClear()
+  })
+
+  it('connects again, as the one who offers, when a connection could not be kept', async () => {
+    const current = await callWith('peer-1')
+    const before = rtcPeers.length
+
+    await closeWith(current(), 'failed')
+
+    await waitFor(() => expect(rtcPeers).toHaveLength(before + 1))
+    expect(current()).toMatchObject({ peerId: 'peer-1', isInitiator: true })
+    expect(current().init).toHaveBeenCalled()
+  })
+
+  it('does the same for a connection that never connected in time', async () => {
+    const current = await callWith('peer-1')
+    const before = rtcPeers.length
+    await closeWith(current(), 'timeout')
+    await waitFor(() => expect(rtcPeers).toHaveLength(before + 1))
+  })
+
+  it('does not, for a connection closed on purpose', async () => {
+    const current = await callWith('peer-1')
+    const before = rtcPeers.length
+    await closeWith(current(), 'closed')
+    await closeWith(current())
+    await tick()
+    expect(rtcPeers).toHaveLength(before)
+  })
+
+  it('does not, for somebody who is not in the call', async () => {
+    setPeers('peer-1')
+    await startCall() // peer-1 never sent CALL_INIT
+    const before = rtcPeers.length
+    await closeWith(rtcPeers.at(-1), 'timeout')
+    await tick()
+    expect(rtcPeers).toHaveLength(before)
+  })
+
+  it('waits longer at every try, and starts again from the short wait once connected', async () => {
+    const current = await callWith('peer-1')
+    await closeWith(current(), 'failed')
+    await waitFor(() => expect(reconnectDelay).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(rtcPeers.length).toBeGreaterThan(2))
+
+    await closeWith(current(), 'failed')
+    await waitFor(() => expect(reconnectDelay).toHaveBeenCalledTimes(2))
+    expect(reconnectDelay.mock.calls.map((c) => c[0])).toEqual([0, 1])
+
+    await waitFor(() => expect(rtcPeers.length).toBeGreaterThan(3))
+    await act(async () => current().dispatchEvent(new CustomEvent('status', { detail: { status: 'connected' } })))
+    await closeWith(current(), 'failed')
+    await waitFor(() => expect(reconnectDelay).toHaveBeenCalledTimes(3))
+    expect(reconnectDelay.mock.calls[2][0]).toBe(0)
+  })
+
+  it('tells which side gives way, so that the two do not offer at once', async () => {
+    const current = await callWith('zzzz') // their id is above ours: we are the polite side
+    await closeWith(current(), 'failed')
+    await waitFor(() => expect(reconnectDelay).toHaveBeenCalled())
+    expect(reconnectDelay.mock.calls[0][1]).toBe(true)
+  })
+
+  it('does not connect again when the person leaves in the meantime', async () => {
+    const current = await callWith('peer-1')
+    const before = rtcPeers.length
+    await closeWith(current(), 'failed')
+    await fire('peer-left', { id: 'peer-1' })
+    await tick()
+    expect(rtcPeers).toHaveLength(before)
+  })
+
+  it('does not connect again when the person ends their call in the meantime', async () => {
+    const current = await callWith('peer-1')
+    const before = rtcPeers.length
+    await closeWith(current(), 'failed')
+    await fire('call-end', { peerId: 'peer-1' })
+    await tick()
+    expect(rtcPeers).toHaveLength(before)
+  })
+
+  it('does not connect again after we end the call', async () => {
+    const current = await callWith('peer-1')
+    const before = rtcPeers.length
+    await closeWith(current(), 'failed')
+    await userEvent.click(screen.getByTitle(/leave video call/i))
+    await tick()
+    expect(rtcPeers).toHaveLength(before)
+  })
+
+  it('leaves it to the other side when they connected to us first', async () => {
+    const current = await callWith('peer-1')
+    await closeWith(current(), 'failed')
+    // Their offer arrives before our wait is over: a new connection is made to answer it
+    await fire('video-offer', { peerId: 'peer-1', sdp: { type: 'offer', sdp: 'x' } })
+    const during = rtcPeers.length
+    await tick()
+    expect(rtcPeers).toHaveLength(during)
+  })
+
+  it('lets a connection be made to the same person again after one closed (it is not kept in the list)', async () => {
+    const current = await callWith('peer-1')
+    await closeWith(current(), 'closed')
+    const before = rtcPeers.length
+    await fire('video-offer', { peerId: 'peer-1', sdp: { type: 'offer', sdp: 'x' } })
+    expect(rtcPeers).toHaveLength(before + 1)
+  })
+})
+
+describe('Room — how the connections are going', () => {
+  const statusOf = (peer, status) =>
+    act(async () => {
+      peer.dispatchEvent(new CustomEvent('status', { detail: { status } }))
+    })
+
+  it('shows a tile "Connecting…" for somebody in the call whose picture has not arrived', async () => {
+    setPeers('peer-1')
+    await startCall()
+    expect(screen.queryByText('Connecting…')).toBeNull() // not in the call yet
+
+    await fire('call-init', { peerId: 'peer-1' })
+    expect(screen.getByText('Connecting…')).toBeInTheDocument()
+    expect(screen.getByText('peer-1')).toBeInTheDocument()
+  })
+
+  it('replaces it with the picture once it arrives', async () => {
+    setPeers('peer-1')
+    await startCall()
+    await fire('call-init', { peerId: 'peer-1' })
+    await act(async () => {
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: { id: 'cam-1' } } }))
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('status', { detail: { status: 'connected' } }))
+    })
+    expect(screen.queryByText('Connecting…')).toBeNull()
+    expect(screen.getByText('peer-1')).toBeInTheDocument()
+  })
+
+  it('says "Reconnecting…" over the tile while a connection that worked is recovered', async () => {
+    setPeers('peer-1')
+    await startCall()
+    await fire('call-init', { peerId: 'peer-1' })
+    await act(async () => {
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: { id: 'cam-1' } } }))
+    })
+    await statusOf(rtcPeers.at(-1), 'reconnecting')
+    expect(screen.getByText('Reconnecting…')).toBeInTheDocument()
+
+    await statusOf(rtcPeers.at(-1), 'connected')
+    expect(screen.queryByText('Reconnecting…')).toBeNull()
+  })
+
+  it('says "Weak connection" for a connection that works badly', async () => {
+    setPeers('peer-1')
+    await startCall()
+    await fire('call-init', { peerId: 'peer-1' })
+    await act(async () => {
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: { id: 'cam-1' } } }))
+    })
+    await statusOf(rtcPeers.at(-1), 'poor')
+    expect(screen.getByText('Weak connection')).toBeInTheDocument()
+  })
+
+  it('shows the tile as reconnecting, not missing, between the failure and the next try', async () => {
+    reconnectDelay.mockReturnValue(60_000) // the next try is far away
+    setPeers('peer-1')
+    await startCall()
+    await fire('call-init', { peerId: 'peer-1' })
+    await act(async () => {
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: { id: 'cam-1' } } }))
+    })
+    await statusOf(rtcPeers.at(-1), 'connected')
+    await act(async () => {
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('closed', { detail: { reason: 'failed' } }))
+    })
+
+    expect(screen.getByText('Reconnecting…')).toBeInTheDocument()
+    expect(screen.getByText('peer-1')).toBeInTheDocument()
+    reconnectDelay.mockReturnValue(30)
+  })
+
+  it('drops the tile of somebody who leaves', async () => {
+    setPeers('peer-1')
+    await startCall()
+    await fire('call-init', { peerId: 'peer-1' })
+    expect(screen.getByText('Connecting…')).toBeInTheDocument()
+
+    await fire('peer-left', { id: 'peer-1' })
+    expect(screen.queryByText('Connecting…')).toBeNull()
+  })
+})
+
+describe('Room — an offer from a connection we have never seen', () => {
+  const offerWith = (fingerprint) => ({ type: 'offer', sdp: `v=0\r\na=fingerprint:sha-256 ${fingerprint}\r\n` })
+
+  async function establishedWith(id, fingerprint) {
+    setPeers(id)
+    await startCall()
+    rtcPeers[0].established = true
+    rtcPeers[0].remoteFingerprint = fingerprint
+    return rtcPeers[0]
+  }
+
+  it('replaces the connection when they made a new one (theirs failed before ours did)', async () => {
+    const old = await establishedWith('peer-1', 'aa:bb')
+    const before = rtcPeers.length
+
+    await fire('video-offer', { peerId: 'peer-1', sdp: offerWith('CC:DD') })
+
+    expect(old.close).toHaveBeenCalled()
+    expect(rtcPeers).toHaveLength(before + 1)
+    expect(rtcPeers.at(-1).handleOffer).toHaveBeenCalled()
+    expect(old.handleOffer).not.toHaveBeenCalled()
+  })
+
+  it('keeps the connection for an offer of the same one (renegotiation, ICE restart)', async () => {
+    const old = await establishedWith('peer-1', 'aa:bb')
+    const before = rtcPeers.length
+
+    await fire('video-offer', { peerId: 'peer-1', sdp: offerWith('AA:BB') })
+
+    expect(old.close).not.toHaveBeenCalled()
+    expect(rtcPeers).toHaveLength(before)
+    expect(old.handleOffer).toHaveBeenCalled()
+  })
+
+  it('keeps it when the fingerprint cannot be read on either side', async () => {
+    const old = await establishedWith('peer-1', null)
+    await fire('video-offer', { peerId: 'peer-1', sdp: { type: 'offer', sdp: 'v=0' } })
+    expect(old.close).not.toHaveBeenCalled()
+  })
+
+  it('does not touch a connection that is not established yet', async () => {
+    setPeers('peer-1')
+    await startCall()
+    rtcPeers[0].remoteFingerprint = 'aa:bb'
+    rtcPeers[0].polite = false // not the case of two offers crossing, which has its own rule
+    await fire('video-offer', { peerId: 'peer-1', sdp: offerWith('CC:DD') })
+    expect(rtcPeers[0].close).not.toHaveBeenCalled()
+    expect(rtcPeers[0].handleOffer).toHaveBeenCalled()
+  })
+})
+
+// ── Screen kept on during the call ────────────────────────────────────────────
+
+describe('Room — screen wake lock', () => {
+  let request
+  let lock
+
+  beforeEach(() => {
+    lock = Object.assign(new EventTarget(), { release: vi.fn().mockResolvedValue(undefined) })
+    request = vi.fn().mockResolvedValue(lock)
+    Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true })
+  })
+  afterEach(() => {
+    delete navigator.wakeLock
+  })
+
+  it('keeps the screen on once the call starts, and not before', async () => {
+    await setup()
+    expect(request).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByText(/start video call/i))
+    await waitFor(() => expect(request).toHaveBeenCalledWith('screen'))
+  })
+
+  it('lets the screen go when the call ends', async () => {
+    await startCall()
+    await waitFor(() => expect(request).toHaveBeenCalled())
+
+    await userEvent.click(screen.getByTitle(/leave video call/i))
+
+    await waitFor(() => expect(lock.release).toHaveBeenCalled())
   })
 })
