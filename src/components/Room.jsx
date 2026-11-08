@@ -1167,6 +1167,7 @@ export default function Room({
   async function handleSwitchCamera() {
     const result = await switchCamera()
     if (!result) return
+    setVideoMuted(videoMuted) // the new camera starts enabled: keep it off if the user turned it off
     setLocalStream(result.stream)
     for (const rtcPeer of Object.values(rtcPeersRef.current)) {
       await rtcPeer.replaceVideoTrack(result.videoTrack)

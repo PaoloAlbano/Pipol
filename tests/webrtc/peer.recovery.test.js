@@ -10,6 +10,8 @@ import {
   RESTART_RETRY_MS,
   MAX_ICE_RESTARTS,
   NETWORK_CHANGE_DEBOUNCE_MS,
+  ROUTE_LOG_DELAY_MS,
+  ROUTE_LOG_DELAY_MS,
   QUALITY_POLL_MS,
 } from '../../src/webrtc/peer.js'
 
@@ -515,5 +517,35 @@ describe('WebRTCPeer — what the camera sends', () => {
     await advance(0)
 
     expect(pcs[0].closed).toBe(false)
+  })
+})
+
+// ── Route in the console ──────────────────────────────────────────────────────
+
+describe('WebRTCPeer — route in the console', () => {
+  const routeLines = () => console.info.mock.calls.map((c) => c[0]).filter((m) => String(m).includes('route:'))
+
+  it('says which pair carries the media once the connection has settled', async () => {
+    const { pc } = await establishedPeer()
+    pc.route = { local: 'relay', remote: 'host' }
+    console.info.mockClear()
+
+    pc.setState('connected')
+    await advance(ROUTE_LOG_DELAY_MS - 1)
+    expect(routeLines()).toHaveLength(0)
+    await advance(1)
+
+    expect(routeLines()).toHaveLength(1)
+    expect(routeLines()[0]).toContain('relay<->host=succeeded*')
+  })
+
+  it('says nothing for a connection closed in the meantime', async () => {
+    const { peer, pc } = await establishedPeer()
+    console.info.mockClear()
+    pc.setState('connected')
+    peer.close()
+    await advance(ROUTE_LOG_DELAY_MS * 2)
+
+    expect(routeLines()).toHaveLength(0)
   })
 })

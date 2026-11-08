@@ -533,6 +533,39 @@ describe('Room — local screen share and camera', () => {
     await waitFor(() => expect(rtcPeers[0].replaceVideoTrack).toHaveBeenCalledWith(videoTrack))
     Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
   })
+
+  it('keeps the camera off after switching camera when the user had turned it off', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { enumerateDevices: vi.fn().mockResolvedValue([{ kind: 'videoinput' }, { kind: 'videoinput' }]) },
+      configurable: true,
+    })
+    media.switchCamera.mockResolvedValue({ stream: new MediaStream(), videoTrack: { kind: 'video' }, switched: true })
+    await startCall()
+    await userEvent.click(screen.getByTitle(/turn off camera/i))
+    media.setVideoMuted.mockClear()
+
+    await waitFor(() => screen.getByTitle(/switch camera/i))
+    await userEvent.click(screen.getByTitle(/switch camera/i))
+
+    await waitFor(() => expect(media.setVideoMuted).toHaveBeenCalledWith(true))
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
+  })
+
+  it('leaves the camera on after switching camera when it was on', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { enumerateDevices: vi.fn().mockResolvedValue([{ kind: 'videoinput' }, { kind: 'videoinput' }]) },
+      configurable: true,
+    })
+    media.switchCamera.mockResolvedValue({ stream: new MediaStream(), videoTrack: { kind: 'video' }, switched: true })
+    await startCall()
+    media.setVideoMuted.mockClear()
+
+    await waitFor(() => screen.getByTitle(/switch camera/i))
+    await userEvent.click(screen.getByTitle(/switch camera/i))
+
+    await waitFor(() => expect(media.setVideoMuted).toHaveBeenCalledWith(false))
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })
+  })
 })
 
 // ── Visibility ────────────────────────────────────────────────────────────────

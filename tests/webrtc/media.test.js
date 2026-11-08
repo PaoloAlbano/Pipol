@@ -387,3 +387,145 @@ describe('"max" video quality', () => {
     expect(newTrack.contentHint).toBe('motion')
   })
 })
+
+// ── switching camera ──────────────────────────────────────────────────────────
+
+describe('switchCamera', () => {
+  const overconstrained = () => Object.assign(new Error('no such camera'), { name: 'OverconstrainedError' })
+
+  function camera(deviceId, facingMode) {
+    const track = makeFakeTrack('video')
+    track.getSettings = () => ({ deviceId, ...(facingMode ? { facingMode } : {}) })
+    return track
+  }
+  const streamOf = (track) => makeFakeStream([track])
+  const gUM = () => navigator.mediaDevices.getUserMedia
+  const facingOf = (call) => call[0].video.facingMode
+
+  let front, back, mic
+
+  /** Starts with the front camera, as a phone does. */
+  async function startWithFront() {
+    front = camera('front-id', 'user')
+    back = camera('back-id', 'environment')
+    mic = makeFakeTrack('audio')
+    gUM().mockReset()
+    gUM().mockResolvedValueOnce(makeFakeStream([mic, front]))
+    await media.getLocalStream()
+    gUM().mockReset()
+    navigator.mediaDevices.enumerateDevices = vi.fn().mockResolvedValue([
+      { kind: 'videoinput', deviceId: 'front-id' },
+      { kind: 'videoinput', deviceId: 'back-id' },
+      { kind: 'audioinput', deviceId: 'mic-id' },
+    ])
+  }
+
+  it('does nothing without a running stream', async () => {
+    expect(await media.switchCamera()).toBeNull()
+  })
+
+  it('lets go of the current camera before opening the other (many phones cannot open two)', async () => {
+    await startWithFront()
+    gUM().mockResolvedValue(streamOf(back))
+
+    await media.switchCamera()
+
+    expect(front.stop).toHaveBeenCalled()
+    expect(front.stop.mock.invocationCallOrder[0]).toBeLessThan(gUM().mock.invocationCallOrder[0])
+  })
+
+  it('opens the camera that faces the other way and keeps the microphone', async () => {
+    await startWithFront()
+    gUM().mockResolvedValue(streamOf(back))
+
+    const result = await media.switchCamera()
+
+    expect(facingOf(gUM().mock.calls[0])).toEqual({ exact: 'environment' })
+    expect(result).toMatchObject({ videoTrack: back, switched: true })
+    expect(result.stream.getTracks()).toEqual([back, mic])
+    expect(media.getActiveLocalStream()).toBe(result.stream)
+  })
+
+  it('goes back to the front camera on the next switch', async () => {
+    await startWithFront()
+    gUM().mockResolvedValueOnce(streamOf(back))
+    await media.switchCamera()
+
+    gUM().mockResolvedValueOnce(streamOf(camera('front-id', 'user')))
+    await media.switchCamera()
+
+    expect(facingOf(gUM().mock.calls[1])).toEqual({ exact: 'user' })
+  })
+
+  it('asks again without "exact" when the phone refuses it', async () => {
+    await startWithFront()
+    gUM().mockRejectedValueOnce(overconstrained()).mockResolvedValueOnce(streamOf(back))
+
+    const result = await media.switchCamera()
+
+    expect(facingOf(gUM().mock.calls[1])).toBe('environment')
+    expect(result.switched).toBe(true)
+  })
+
+  it('moves on to the next camera of the device when the facing mode just gives the same one', async () => {
+    await startWithFront()
+    gUM()
+      .mockResolvedValueOnce(streamOf(camera('front-id', 'user'))) // "exact environment" gives the front again
+      .mockResolvedValueOnce(streamOf(camera('front-id', 'user'))) // and so does the plain request
+      .mockResolvedValueOnce(streamOf(back))
+
+    const result = await media.switchCamera()
+
+    expect(gUM().mock.calls[2][0].video.deviceId).toEqual({ exact: 'back-id' })
+    expect(result).toMatchObject({ videoTrack: back, switched: true })
+  })
+
+  it('stops the pictures it did not use', async () => {
+    await startWithFront()
+    const sameAgain = camera('front-id', 'user')
+    gUM().mockResolvedValueOnce(streamOf(sameAgain)).mockResolvedValueOnce(streamOf(sameAgain))
+    gUM().mockResolvedValueOnce(streamOf(back))
+
+    await media.switchCamera()
+
+    expect(sameAgain.stop).toHaveBeenCalled()
+  })
+
+  it('opens the camera it had again when no other can be opened, so the call keeps its picture', async () => {
+    await startWithFront()
+    navigator.mediaDevices.enumerateDevices.mockResolvedValue([{ kind: 'videoinput', deviceId: 'front-id' }])
+    const again = camera('front-id', 'user')
+    gUM()
+      .mockRejectedValueOnce(overconstrained())
+      .mockRejectedValueOnce(overconstrained())
+      .mockResolvedValueOnce(streamOf(again))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = await media.switchCamera()
+
+    expect(result).toMatchObject({ videoTrack: again, switched: false })
+    expect(gUM().mock.calls.at(-1)[0].video.deviceId).toEqual({ exact: 'front-id' })
+    expect(media.getActiveLocalStream().getTracks()).toEqual([again, mic])
+  })
+
+  it('gives up when even the old camera cannot be reopened', async () => {
+    await startWithFront()
+    navigator.mediaDevices.enumerateDevices.mockResolvedValue([])
+    gUM().mockRejectedValue(overconstrained())
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(await media.switchCamera()).toBeNull()
+  })
+
+  it('keeps the facing it reports, not the one it asked for', async () => {
+    await startWithFront()
+    // The phone answers "environment" with a camera that says it faces the user (a wrongly labelled device)
+    gUM().mockResolvedValueOnce(streamOf(camera('other-id', 'user')))
+    await media.switchCamera()
+
+    gUM().mockResolvedValueOnce(streamOf(camera('third-id', 'environment')))
+    await media.switchCamera()
+
+    expect(facingOf(gUM().mock.calls[1])).toEqual({ exact: 'environment' })
+  })
+})
