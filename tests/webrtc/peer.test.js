@@ -49,6 +49,7 @@ class FakePC {
     this.signalingState = desc.type === 'offer' ? 'have-remote-offer' : 'stable'
   }
   async addIceCandidate() {}
+  addEventListener() {}
   close() {}
 }
 

@@ -39,6 +39,7 @@ class FakePC {
     this.localDescription = null
     this.senders = []
     this.offerOptions = []
+    this.listeners = new Map()
     this.route = { local: 'host', remote: 'host' }
     this.rtt = 0.02 // seconds
     this.inbound = [] // cumulative counters of what is received, as the browser reports them
@@ -106,7 +107,11 @@ class FakePC {
   /** Moves the connection to a state, as the browser does. */
   setState(state) {
     this.connectionState = state
-    this.onconnectionstatechange?.()
+    this.listeners.get('connectionstatechange')?.forEach((fn) => fn())
+  }
+  addEventListener(type, fn) {
+    if (!this.listeners.has(type)) this.listeners.set(type, [])
+    this.listeners.get(type).push(fn)
   }
 }
 
