@@ -10,6 +10,16 @@ const externalApp = process.env.E2E_BASE_URL
 const wanted = (process.env.E2E_BROWSERS ?? '').split(',').map((b) => b.trim())
 const withBrowser = (name) => wanted.includes('all') || wanted.includes(name)
 
+// Tests with a call. WebKit on Linux (WebKitGTK, what runs on GitHub) cannot play the video of a call in a container:
+// the picture stalls and the page sometimes crashes. WebKit on macOS runs them all.
+const NEED_VIDEO_PLAYBACK = [
+  '**/video-call.test.js',
+  '**/video-quality.test.js',
+  '**/screen-share.test.js',
+  '**/ice-restart.test.js',
+  '**/call-reconnect.test.js',
+  '**/wake-lock.test.js',
+]
 // Pictures to compare with are only kept for Chromium on macOS
 const VISUAL = ['**/visual.test.js']
 
@@ -55,7 +65,7 @@ export default defineConfig({
       ? [
           {
             name: 'webkit',
-            testIgnore: VISUAL,
+            testIgnore: [...VISUAL, ...(process.platform === 'linux' ? NEED_VIDEO_PLAYBACK : [])],
             // WebKit serves a mock camera and microphone once the permission is granted
             use: { ...devices['Desktop Safari'], permissions: ['camera', 'microphone'] },
           },

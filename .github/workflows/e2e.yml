@@ -4,6 +4,7 @@ name: E2E
 # never on pull requests, so they cannot block a merge: a failure shows up as a red mark on the commit.
 # Visual tests are left out (their snapshots are for macOS) and so are the coturn tests (they need Docker).
 # The same tests also run in WebKit (the engine of Safari) and Firefox, as a separate job that never fails the run.
+# WebKit on Linux skips the tests with a call (its video does not play in a container, see playwright.config.js).
 on:
   push:
     branches: [main]
