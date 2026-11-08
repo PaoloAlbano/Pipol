@@ -11,6 +11,11 @@ import {
   MAX_ICE_RESTARTS,
   NETWORK_CHANGE_DEBOUNCE_MS,
   ROUTE_LOG_DELAY_MS,
+  CONNECT_TIMEOUT_MS,
+  OFFER_RESEND_MS,
+  HEALTH_POLL_MS,
+  POOR_RTT_MS,
+  HEALTH_SAMPLES,
   ROUTE_LOG_DELAY_MS,
   QUALITY_POLL_MS,
 } from '../../src/webrtc/peer.js'
@@ -35,6 +40,8 @@ class FakePC {
     this.senders = []
     this.offerOptions = []
     this.route = { local: 'host', remote: 'host' }
+    this.rtt = 0.02 // seconds
+    this.inbound = [] // cumulative counters of what is received, as the browser reports them
     this.closed = false
     pcs.push(this)
   }
@@ -77,9 +84,20 @@ class FakePC {
     const { local, remote } = this.route
     return new Map([
       ['t', { type: 'transport', id: 't', selectedCandidatePairId: 'p' }],
-      ['p', { type: 'candidate-pair', id: 'p', state: 'succeeded', localCandidateId: 'l', remoteCandidateId: 'r' }],
+      [
+        'p',
+        {
+          type: 'candidate-pair',
+          id: 'p',
+          state: 'succeeded',
+          localCandidateId: 'l',
+          remoteCandidateId: 'r',
+          currentRoundTripTime: this.rtt,
+        },
+      ],
       ['l', { type: 'local-candidate', id: 'l', candidateType: local }],
       ['r', { type: 'remote-candidate', id: 'r', candidateType: remote }],
+      ...this.inbound.map((s, i) => [`in${i}`, { type: 'inbound-rtp', id: `in${i}`, ...s }]),
     ])
   }
   close() {
@@ -547,5 +565,243 @@ describe('WebRTCPeer — route in the console', () => {
     await advance(ROUTE_LOG_DELAY_MS * 2)
 
     expect(routeLines()).toHaveLength(0)
+  })
+})
+
+// ── Giving up ─────────────────────────────────────────────────────────────────
+
+describe('WebRTCPeer — why a connection is closed', () => {
+  const unanswered = async (options = {}) => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio')), null, true, undefined, { quality: '1080p' })
+    const events = { closed: [], offers: [] }
+    peer.addEventListener('closed', (e) => events.closed.push(e.detail.reason))
+    peer.addEventListener('offer', (e) => events.offers.push(e.detail.sdp))
+    await peer.init()
+    return { peer, pc: pcs.at(-1), events, ...options }
+  }
+
+  it('says "closed" when the caller closes it', async () => {
+    const { peer, events } = await unanswered()
+    peer.close()
+    expect(events.closed).toEqual(['closed'])
+  })
+
+  it('says "failed" when a connection that never worked fails', async () => {
+    const { pc, events } = await unanswered()
+    pc.setState('failed')
+    expect(events.closed).toEqual(['failed'])
+  })
+
+  it('says "failed" when the restarts do not help', async () => {
+    const { peer, pc, closed } = await establishedPeer()
+    const reasons = []
+    peer.addEventListener('closed', (e) => reasons.push(e.detail.reason))
+    pc.setState('failed')
+    for (let i = 0; i < MAX_ICE_RESTARTS; i++) {
+      await peer.handleAnswer({ type: 'answer', sdp: 'a' })
+      await advance(RESTART_RETRY_MS)
+    }
+    expect(closed).toHaveBeenCalledOnce()
+    expect(reasons).toEqual(['failed'])
+  })
+
+  it('says "failed" when the browser closes the connection from outside', async () => {
+    const { pc, events } = await unanswered()
+    pc.setState('closed')
+    expect(events.closed).toEqual(['failed'])
+  })
+
+  it('gives up with "timeout" a connection that does not connect in time', async () => {
+    const { events } = await unanswered()
+    await advance(CONNECT_TIMEOUT_MS - 1)
+    expect(events.closed).toEqual([])
+    await advance(1)
+    expect(events.closed).toEqual(['timeout'])
+  })
+
+  it('also gives up a connection that waits for an offer which never comes', async () => {
+    const peer = new WebRTCPeer('p', false, stream(track('audio')), null, true, undefined, { quality: '1080p' })
+    const reasons = []
+    peer.addEventListener('closed', (e) => reasons.push(e.detail.reason))
+    await peer.init()
+    await advance(CONNECT_TIMEOUT_MS)
+    expect(reasons).toEqual(['timeout'])
+  })
+
+  it('does not give up a connection that connected, even long after', async () => {
+    const { closed } = await establishedPeer()
+    await advance(CONNECT_TIMEOUT_MS * 3)
+    expect(closed).not.toHaveBeenCalled()
+  })
+
+  it('sends an offer nobody answered once more, in case the first was lost', async () => {
+    const { events } = await unanswered()
+    expect(events.offers).toHaveLength(1)
+    await advance(OFFER_RESEND_MS)
+    expect(events.offers).toHaveLength(2)
+    expect(events.offers[1]).toBe(events.offers[0])
+    await advance(CONNECT_TIMEOUT_MS)
+    expect(events.offers).toHaveLength(2) // only once
+  })
+
+  it('does not send it again once it was answered', async () => {
+    const { peer, events } = await unanswered()
+    await peer.handleAnswer({ type: 'answer', sdp: 'a' })
+    await advance(OFFER_RESEND_MS * 2)
+    expect(events.offers).toHaveLength(1)
+  })
+})
+
+// ── Status ────────────────────────────────────────────────────────────────────
+
+describe('WebRTCPeer — status', () => {
+  const watch = (peer) => {
+    const seen = []
+    peer.addEventListener('status', (e) => seen.push(e.detail.status))
+    return seen
+  }
+
+  it('is "connecting" until it connects, then "connected"', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio'), track('video')), null, true, undefined, {
+      quality: '1080p',
+    })
+    const seen = watch(peer)
+    await peer.init()
+    expect(peer.status).toBe('connecting')
+    pcs[0].setState('connecting')
+    expect(peer.status).toBe('connecting') // never worked, so it is not a "re-connecting"
+
+    await peer.handleAnswer({ type: 'answer', sdp: 'a' })
+    pcs[0].setState('connected')
+    expect(peer.status).toBe('connected')
+    expect(seen).toEqual(['connected'])
+  })
+
+  it('is "reconnecting" while a connection that worked is being recovered, then "connected" again', async () => {
+    const { peer, pc } = await establishedPeer()
+    const seen = watch(peer)
+
+    pc.setState('disconnected')
+    expect(peer.status).toBe('connected') // short drops are not worth showing
+    await advance(DISCONNECT_GRACE_MS)
+    expect(peer.status).toBe('reconnecting')
+
+    pc.setState('connected')
+    expect(peer.status).toBe('connected')
+    expect(seen).toEqual(['reconnecting', 'connected'])
+  })
+
+  it('is "reconnecting" as soon as a connection that worked fails, or goes back to connecting', async () => {
+    const { peer, pc } = await establishedPeer()
+    pc.setState('connecting')
+    expect(peer.status).toBe('reconnecting')
+
+    pc.setState('connected')
+    pc.setState('failed')
+    expect(peer.status).toBe('reconnecting')
+  })
+
+  it('is "reconnecting" for a restart asked for by a change of network', async () => {
+    const { peer } = await establishedPeer()
+    peer.requestIceRestart('test')
+    expect(peer.status).toBe('reconnecting')
+  })
+
+  it('is "closed" once closed, announced once', async () => {
+    const { peer } = await establishedPeer()
+    const seen = watch(peer)
+    peer.close()
+    peer.close()
+    expect(peer.status).toBe('closed')
+    expect(seen).toEqual(['closed'])
+  })
+})
+
+// ── Health ────────────────────────────────────────────────────────────────────
+
+describe('WebRTCPeer — weak connection', () => {
+  /** Lets one more check go by, with the given counters since the last one. */
+  async function check(pc, { rtt = 0.02, lost = 0, received = 100 } = {}) {
+    const total = pc.inbound[0] ?? { packetsLost: 0, packetsReceived: 0 }
+    pc.inbound = [{ packetsLost: total.packetsLost + lost, packetsReceived: total.packetsReceived + received }]
+    pc.rtt = rtt
+    await advance(HEALTH_POLL_MS)
+  }
+
+  it('is not shown for one bad check, only for several in a row', async () => {
+    const { peer, pc } = await establishedPeer()
+    await check(pc) // baseline
+    await check(pc, { rtt: (POOR_RTT_MS + 100) / 1000 })
+    expect(peer.status).toBe('connected')
+    await check(pc, { rtt: (POOR_RTT_MS + 100) / 1000 })
+    expect(peer.status).toBe('poor')
+  })
+
+  it('is shown when many packets are lost', async () => {
+    const { peer, pc } = await establishedPeer()
+    await check(pc)
+    for (let i = 0; i < HEALTH_SAMPLES; i++) await check(pc, { lost: 20, received: 80 })
+    expect(peer.status).toBe('poor')
+  })
+
+  it('does not count a few packets lost out of a handful', async () => {
+    const { peer, pc } = await establishedPeer()
+    await check(pc)
+    for (let i = 0; i < HEALTH_SAMPLES + 2; i++) await check(pc, { lost: 5, received: 5 }) // 50% of too few
+    expect(peer.status).toBe('connected')
+  })
+
+  it('goes away once the connection is fine again, after several good checks', async () => {
+    const { peer, pc } = await establishedPeer()
+    await check(pc)
+    for (let i = 0; i < HEALTH_SAMPLES; i++) await check(pc, { rtt: 1 })
+    expect(peer.status).toBe('poor')
+
+    await check(pc)
+    expect(peer.status).toBe('poor')
+    await check(pc)
+    expect(peer.status).toBe('connected')
+  })
+
+  it('announces the changes', async () => {
+    const { peer, pc } = await establishedPeer()
+    const seen = []
+    peer.addEventListener('status', (e) => seen.push(e.detail.status))
+    await check(pc)
+    for (let i = 0; i < HEALTH_SAMPLES; i++) await check(pc, { rtt: 1 })
+    for (let i = 0; i < HEALTH_SAMPLES; i++) await check(pc)
+    expect(seen).toEqual(['poor', 'connected'])
+  })
+
+  it('does not call it weak while it is reconnecting, and stops checking once closed', async () => {
+    const { peer, pc } = await establishedPeer()
+    pc.setState('disconnected')
+    await advance(DISCONNECT_GRACE_MS)
+    for (let i = 0; i < 4; i++) await check(pc, { rtt: 1 })
+    expect(peer.status).toBe('reconnecting')
+
+    peer.close()
+    const spy = vi.spyOn(pc, 'getStats')
+    await advance(HEALTH_POLL_MS * 3)
+    expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+// ── Fingerprint of the other side ─────────────────────────────────────────────
+
+describe('WebRTCPeer — remote fingerprint', () => {
+  it('is the fingerprint of the description we have from the other side', async () => {
+    const { pc, peer } = await establishedPeer()
+    expect(peer.remoteFingerprint).toBeNull() // the fake answer has none
+
+    pc.remoteDescription = { type: 'answer', sdp: 'a=fingerprint:sha-256 AB:CD' }
+    expect(peer.remoteFingerprint).toBe('ab:cd')
+  })
+
+  it('is null once closed', async () => {
+    const { peer, pc } = await establishedPeer()
+    pc.remoteDescription = { type: 'answer', sdp: 'a=fingerprint:sha-256 AB:CD' }
+    peer.close()
+    expect(peer.remoteFingerprint).toBeNull()
   })
 })

@@ -685,3 +685,116 @@ describe('VideoGrid — screen share', () => {
     expect(strip).not.toContain('(screen)')
   })
 })
+
+// ── Connection status ─────────────────────────────────────────────────────────
+
+describe('VideoGrid — connection status', () => {
+  const alice = { id: 'peer-1', username: 'alice' }
+  const bob = { id: 'peer-2', username: 'bob' }
+
+  function statusSetup(overrides = {}) {
+    return render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{}}
+        peers={[alice, bob]}
+        localUsername="swift-fox"
+        layout="grid"
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+        {...overrides}
+      />
+    )
+  }
+
+  it('shows a tile for somebody in the call whose picture has not arrived, "Connecting…" by default', () => {
+    const { container } = statusSetup({ pendingPeerIds: ['peer-1'] })
+    expect(container.querySelectorAll('.video-tile')).toHaveLength(2)
+    expect(screen.getByText('alice')).toBeInTheDocument()
+    expect(screen.getByText('Connecting…')).toBeInTheDocument()
+    expect(container.querySelector('.video-avatar').textContent).toBe('AL')
+    expect(container.querySelectorAll('video')).toHaveLength(1) // only yours: nothing to play for alice
+  })
+
+  it('shows what is known about each: connecting, reconnecting', () => {
+    statusSetup({
+      pendingPeerIds: ['peer-1', 'peer-2'],
+      peerStatus: { 'peer-1': 'connecting', 'peer-2': 'reconnecting' },
+    })
+    expect(screen.getByText('Connecting…')).toBeInTheDocument()
+    expect(screen.getByText('Reconnecting…')).toBeInTheDocument()
+  })
+
+  it('does not add a second tile for somebody whose picture is there', () => {
+    const { container } = statusSetup({
+      remoteStreams: { 'peer-1': makeFakeStream() },
+      pendingPeerIds: ['peer-1'],
+    })
+    expect(container.querySelectorAll('.video-tile')).toHaveLength(2)
+    expect(screen.queryByText('Connecting…')).toBeNull()
+  })
+
+  it('says "Reconnecting…" over a tile that still has its (frozen) picture', () => {
+    const { container } = statusSetup({
+      remoteStreams: { 'peer-1': makeFakeStream() },
+      peerStatus: { 'peer-1': 'reconnecting' },
+    })
+    expect(screen.getByText('Reconnecting…')).toBeInTheDocument()
+    expect(container.querySelectorAll('video')).toHaveLength(2)
+  })
+
+  it('marks a weak connection with a badge, not over the whole tile', () => {
+    const { container } = statusSetup({
+      remoteStreams: { 'peer-1': makeFakeStream() },
+      peerStatus: { 'peer-1': 'poor' },
+    })
+    expect(screen.getByText('Weak connection')).toBeInTheDocument()
+    expect(container.querySelector('.video-status--poor')).toBeInTheDocument()
+    expect(container.querySelector('.video-status-spinner')).toBeNull()
+  })
+
+  it('shows nothing for a connection that is fine', () => {
+    const { container } = statusSetup({
+      remoteStreams: { 'peer-1': makeFakeStream() },
+      peerStatus: { 'peer-1': 'connected' },
+    })
+    expect(container.querySelector('.video-status')).toBeNull()
+  })
+
+  it('announces the status to screen readers, with a spinner they do not read', () => {
+    const { container } = statusSetup({ pendingPeerIds: ['peer-1'] })
+    expect(screen.getByRole('status')).toHaveTextContent('Connecting…')
+    expect(container.querySelector('.video-status-spinner')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('never shows a status on your own tile or on a screen share', () => {
+    const { container } = statusSetup({
+      remoteStreams: { 'peer-1': makeFakeStream() },
+      remoteScreens: { 'peer-1': makeFakeStream() },
+      peerStatus: { 'peer-1': 'reconnecting', __local__: 'reconnecting' },
+    })
+    const withStatus = [...container.querySelectorAll('.video-tile')].filter((t) => t.querySelector('.video-status'))
+    expect(withStatus).toHaveLength(1)
+    expect(withStatus[0].textContent).toContain('alice')
+    expect(withStatus[0].textContent).not.toContain('(screen)')
+  })
+
+  it('keeps a tile in the grid while the picture is missing, so the layout does not jump', () => {
+    const { container } = statusSetup({ pendingPeerIds: ['peer-1', 'peer-2'] })
+    const tiles = container.querySelectorAll('.video-tile--grid')
+    expect(tiles).toHaveLength(3)
+    expect(tiles[2].textContent).toContain('swift-fox')
+  })
+
+  it('also shows it in the strip of the spotlight layout', () => {
+    const { container } = statusSetup({
+      remoteStreams: { 'peer-1': makeFakeStream() },
+      pendingPeerIds: ['peer-2'],
+      layout: 'spotlight',
+      spotlightPeerId: 'peer-1',
+    })
+    const strip = [...container.querySelectorAll('.video-tile--strip')].map((t) => t.textContent).join(' ')
+    expect(strip).toContain('bob')
+    expect(strip).toContain('Connecting…')
+  })
+})

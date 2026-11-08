@@ -25,6 +25,7 @@ import { DEFAULT_ICE_SERVERS } from './ice.js'
 import { getVideoQuality } from '../p2p/storage.js'
 import { onVideoQualityChange } from './media.js'
 import { MAX_PROFILE, sendLimits, applySendLimits } from './sendQuality.js'
+import { sdpFingerprint } from './sdp.js'
 
 /** A connection that stays "disconnected" this long (ms) without healing by itself gets an ICE restart. */
 export const DISCONNECT_GRACE_MS = 4000
@@ -34,6 +35,18 @@ export const RESTART_RETRY_MS = 10_000
 export const MAX_ICE_RESTARTS = 4
 /** A change of network is acted on after this long (ms) without further changes. */
 export const NETWORK_CHANGE_DEBOUNCE_MS = 1000
+/** A connection that has not connected after this long (ms) is given up (the caller can try again). */
+export const CONNECT_TIMEOUT_MS = 25_000
+/** An offer nobody has answered after this long (ms) is sent once more: the first may have been lost. */
+export const OFFER_RESEND_MS = 8000
+/** How often (ms) the health of a connected call is looked at. */
+export const HEALTH_POLL_MS = 3000
+/** A connection is weak when the round trip takes longer than this (ms) or this share of the packets is lost. */
+export const POOR_RTT_MS = 500
+export const POOR_LOSS_RATIO = 0.1
+/** Checks in a row needed to call a connection weak, and to call it fine again (so the label does not flicker). */
+export const HEALTH_SAMPLES = 2
+
 /** The route of a new connection is written to the console this long (ms) after it connects, once the pairs settled. */
 export const ROUTE_LOG_DELAY_MS = 3000
 /** How often (ms) the route of a connection is checked, to raise or lower what the "max" profile sends. */
@@ -88,6 +101,27 @@ export class WebRTCPeer extends EventTarget {
     this._qualityTimer = null
     this._unsubscribeQuality = null
     this._routeLogTimer = null
+
+    this._status = 'connecting' // 'connecting' | 'connected' | 'poor' | 'reconnecting' | 'closed'
+    this._everConnected = false
+    this._connectTimer = null
+    this._resendTimer = null
+    this._healthTimer = null
+    this._health = { lost: 0, received: 0, bad: 0, good: 0 }
+  }
+
+  /**
+   * How the connection is doing, for the UI: 'connecting' (never connected yet), 'connected', 'poor' (connected but
+   * weak), 'reconnecting' (it worked and is being recovered) or 'closed'. Changes are announced with a 'status' event.
+   */
+  get status() {
+    return this._status
+  }
+
+  _setStatus(status) {
+    if (this._status === status) return
+    this._status = status
+    this.dispatchEvent(new CustomEvent('status', { detail: { status } }))
   }
 
   /**
@@ -102,6 +136,11 @@ export class WebRTCPeer extends EventTarget {
     } catch (err) {
       console.warn('[webrtc] could not update ICE servers', err)
     }
+  }
+
+  /** Fingerprint of the connection of the other side, once we have its description. */
+  get remoteFingerprint() {
+    return sdpFingerprint(this._pc?.remoteDescription)
   }
 
   /** True once the first offer/answer exchange has completed. */
@@ -152,10 +191,13 @@ export class WebRTCPeer extends EventTarget {
       if (state === 'connected') this._onConnected()
       else if (state === 'disconnected') this._armDisconnectTimer()
       else if (state === 'failed') this._onFailed()
-      else if (state === 'closed') this.close()
+      else if (state === 'closed')
+        this.close('failed') // closed from outside: we did not ask for it
+      else if (this._everConnected) this._setStatus('reconnecting') // 'connecting' again after it had worked
     }
 
     this._watchNetwork()
+    this._armConnectTimers()
     this._unsubscribeQuality = onVideoQualityChange((quality) => this.setQualityProfile(quality))
 
     if (this.isInitiator) {
@@ -221,6 +263,7 @@ export class WebRTCPeer extends EventTarget {
     if (this._closed || !this._pc || !this._initialDone) return false
     if (this._restartAttempts >= MAX_ICE_RESTARTS) return false
     this._restartAttempts++
+    if (this._everConnected) this._setStatus('reconnecting')
     console.info(`[webrtc] ${this.peerId.slice(0, 12)}… restarting ICE (${reason}, attempt ${this._restartAttempts})`)
     this._armRetryTimer()
 
@@ -237,10 +280,31 @@ export class WebRTCPeer extends EventTarget {
     return true
   }
 
+  /** A connection that never gets there is given up, after one more try of its offer in case that was lost. */
+  _armConnectTimers() {
+    this._resendTimer = setTimeout(() => {
+      if (this._closed || !this._pc || this._initialDone) return
+      if (this._pc.signalingState === 'have-local-offer' && !this._makingOffer && this._pc.localDescription) {
+        this.dispatchEvent(new CustomEvent('offer', { detail: { sdp: this._pc.localDescription } }))
+      }
+    }, OFFER_RESEND_MS)
+    this._connectTimer = setTimeout(() => {
+      if (this._closed || this._everConnected) return
+      console.warn(`[webrtc] ${this.peerId.slice(0, 12)}… did not connect in time`)
+      this.close('timeout')
+    }, CONNECT_TIMEOUT_MS)
+  }
+
   _onConnected() {
+    this._everConnected = true
+    clearTimeout(this._connectTimer)
+    clearTimeout(this._resendTimer)
     clearTimeout(this._disconnectTimer)
     clearTimeout(this._retryTimer)
     this._restartAttempts = 0
+    this._health = { lost: 0, received: 0, bad: 0, good: 0 }
+    this._setStatus('connected')
+    this._manageHealthPolling()
     this._syncQuality().catch(() => {})
     this._managePolling()
     clearTimeout(this._routeLogTimer)
@@ -273,13 +337,15 @@ export class WebRTCPeer extends EventTarget {
   _onFailed() {
     clearTimeout(this._disconnectTimer)
     // A connection that never worked has nothing to restart
-    if (!this.requestIceRestart('failed')) this.close()
+    if (!this.requestIceRestart('failed')) this.close('failed')
   }
 
   _armDisconnectTimer() {
     clearTimeout(this._disconnectTimer)
     this._disconnectTimer = setTimeout(() => {
-      if (this._pc?.connectionState === 'disconnected') this.requestIceRestart('disconnected')
+      if (this._pc?.connectionState !== 'disconnected') return
+      if (this._everConnected) this._setStatus('reconnecting')
+      this.requestIceRestart('disconnected')
     }, DISCONNECT_GRACE_MS)
   }
 
@@ -290,7 +356,7 @@ export class WebRTCPeer extends EventTarget {
       if (this._pc.connectionState === 'connected') {
         this._restartAttempts = 0
       } else if (!this.requestIceRestart('retry')) {
-        this.close()
+        this.close('failed')
       }
     }, RESTART_RETRY_MS)
   }
@@ -318,6 +384,54 @@ export class WebRTCPeer extends EventTarget {
       globalThis.removeEventListener?.('online', onOnline)
       connection?.removeEventListener?.('change', onChange)
     }
+  }
+
+  // ── Health of the connection ──────────────────────────────────────────────────
+
+  _manageHealthPolling() {
+    const wanted = this._pc?.connectionState === 'connected' && !this._closed
+    if (wanted && !this._healthTimer) {
+      this._healthTimer = setInterval(() => this._checkHealth().catch(() => {}), HEALTH_POLL_MS)
+    } else if (!wanted && this._healthTimer) {
+      clearInterval(this._healthTimer)
+      this._healthTimer = null
+    }
+  }
+
+  /** Looks at the round trip time and at the packets lost since the last check, to tell a weak connection. */
+  async _checkHealth() {
+    if (this._closed || !this._pc || this._pc.connectionState !== 'connected') return
+    const items = [...(await this._pc.getStats()).values()]
+    if (this._closed) return
+
+    const selectedId = items.find((s) => s.type === 'transport')?.selectedCandidatePairId
+    const pair = items.find((s) => s.type === 'candidate-pair' && s.id === selectedId)
+    const rttMs = pair?.currentRoundTripTime != null ? pair.currentRoundTripTime * 1000 : null
+
+    let lost = 0
+    let received = 0
+    for (const s of items) {
+      if (s.type !== 'inbound-rtp') continue
+      lost += Math.max(s.packetsLost ?? 0, 0)
+      received += s.packetsReceived ?? 0
+    }
+    const h = this._health
+    const newLost = Math.max(lost - h.lost, 0)
+    const newTotal = newLost + Math.max(received - h.received, 0)
+    h.lost = lost
+    h.received = received
+
+    const lossy = newTotal >= 30 && newLost / newTotal >= POOR_LOSS_RATIO
+    const slow = rttMs != null && rttMs > POOR_RTT_MS
+    if (lossy || slow) {
+      h.bad++
+      h.good = 0
+    } else {
+      h.good++
+      h.bad = 0
+    }
+    if (this._status === 'connected' && h.bad >= HEALTH_SAMPLES) this._setStatus('poor')
+    else if (this._status === 'poor' && h.good >= HEALTH_SAMPLES) this._setStatus('connected')
   }
 
   // ── What the camera sends ─────────────────────────────────────────────────────
@@ -474,12 +588,20 @@ export class WebRTCPeer extends EventTarget {
     this._pendingCandidates = []
   }
 
-  /** Cleanly close this peer connection. */
-  close() {
+  /**
+   * Close this peer connection. The 'closed' event says why: 'closed' when the caller asked for it, 'failed' or
+   * 'timeout' when the connection could not be kept (so the caller may want to connect again).
+   * @param {'closed'|'failed'|'timeout'} [reason]
+   */
+  close(reason = 'closed') {
     if (this._closed) return
     this._closed = true
     clearTimeout(this._disconnectTimer)
     clearTimeout(this._retryTimer)
+    clearTimeout(this._connectTimer)
+    clearTimeout(this._resendTimer)
+    clearInterval(this._healthTimer)
+    this._healthTimer = null
     clearTimeout(this._routeLogTimer)
     clearInterval(this._qualityTimer)
     this._qualityTimer = null
@@ -487,7 +609,8 @@ export class WebRTCPeer extends EventTarget {
     this._unsubscribeQuality?.()
     this._pc?.close()
     this._pc = null
-    this.dispatchEvent(new CustomEvent('closed'))
+    this._setStatus('closed')
+    this.dispatchEvent(new CustomEvent('closed', { detail: { reason } }))
   }
 
   get connectionState() {
