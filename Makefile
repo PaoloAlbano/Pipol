@@ -69,6 +69,9 @@ format:
 e2e:
 	pnpm exec playwright test
 
+e2e-browsers:
+	E2E_BROWSERS=all pnpm exec playwright test --project=webkit --project=firefox --grep-invert Visual
+
 e2e-headed:
 	pnpm exec playwright test --headed
 

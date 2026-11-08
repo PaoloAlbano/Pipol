@@ -5,6 +5,14 @@ import { defineConfig, devices } from '@playwright/test'
 // stack: `make docker-e2e`) instead of starting the dev server and the relay
 const externalApp = process.env.E2E_BASE_URL
 
+// E2E_BROWSERS=firefox,webkit (or "all") adds those browsers to the default Chromium, to find what only breaks
+// there: `make e2e-browsers`. They are not run by default: it takes three times as long.
+const wanted = (process.env.E2E_BROWSERS ?? '').split(',').map((b) => b.trim())
+const withBrowser = (name) => wanted.includes('all') || wanted.includes(name)
+
+// Pictures to compare with are only kept for Chromium on macOS
+const VISUAL = ['**/visual.test.js']
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 90_000,
@@ -22,6 +30,37 @@ export default defineConfig({
         },
       },
     },
+    ...(withBrowser('firefox')
+      ? [
+          {
+            name: 'firefox',
+            testIgnore: VISUAL,
+            use: {
+              ...devices['Desktop Firefox'],
+              launchOptions: {
+                // A fake camera and microphone, with no permission prompt
+                firefoxUserPrefs: {
+                  'media.navigator.streams.fake': true,
+                  'media.navigator.permission.disabled': true,
+                  // Two browsers on one machine: use real addresses (not mDNS names) and the loopback interface
+                  'media.peerconnection.ice.obfuscate_host_addresses': false,
+                  'media.peerconnection.ice.loopback': true,
+                },
+              },
+            },
+          },
+        ]
+      : []),
+    ...(withBrowser('webkit')
+      ? [
+          {
+            name: 'webkit',
+            testIgnore: VISUAL,
+            // WebKit serves a mock camera and microphone once the permission is granted
+            use: { ...devices['Desktop Safari'], permissions: ['camera', 'microphone'] },
+          },
+        ]
+      : []),
   ],
   use: {
     baseURL: externalApp || 'http://localhost:5173',
