@@ -403,3 +403,61 @@ describe('RoomSwarm — relay fallback is end-to-end encrypted', () => {
     expect(received).toHaveLength(0)
   })
 })
+
+// ── The WebSocket drops while a call is being set up ──────────────────────────
+
+describe('RoomSwarm — call signaling sent while the WebSocket is down', () => {
+  let a
+  let b
+
+  beforeEach(async () => {
+    const { getIdentity } = await import('../../src/p2p/storage.js')
+    getIdentity.mockReturnValueOnce(makeIdentity(0xa1)).mockReturnValueOnce(makeIdentity(0xb1))
+    a = new RoomSwarm('signaling-outbox-room', { relayUrl: relay.url })
+    b = new RoomSwarm('signaling-outbox-room', { relayUrl: relay.url })
+    await Promise.all([a.join(), b.join()])
+    await new Promise((r) => setTimeout(r, 150))
+  })
+
+  afterEach(() => {
+    a?.leave()
+    b?.leave()
+  })
+
+  it('reaches the other side, in order, once the connection is back', async () => {
+    const seen = []
+    b.addEventListener('video-answer', (e) => seen.push(['answer', e.detail.sdp]))
+    b.addEventListener('video-ice', (e) => seen.push(['ice', e.detail.candidate]))
+    const peerB = b._localPeerId
+
+    // The connection drops (a phone changing network); the call goes on and wants to say something
+    a._ws.close()
+    await waitFor(() => a._ws.readyState !== WebSocket.OPEN)
+    a.sendToPeer(peerB, { type: 'VIDEO_ANSWER', sdp: 'the-answer' })
+    a.sendToPeer(peerB, { type: 'VIDEO_ICE', candidate: 'candidate-1' })
+    expect(a._outbox).toHaveLength(2)
+
+    // It reconnects by itself, and only then does it send
+    await waitFor(() => seen.length === 2, 10_000)
+    expect(seen).toEqual([
+      ['answer', 'the-answer'],
+      ['ice', 'candidate-1'],
+    ])
+    expect(a._outbox).toHaveLength(0)
+  }, 15_000)
+
+  it('does not send chat messages written during the drop', async () => {
+    const chat = []
+    b.addEventListener('chat-message', (e) => chat.push(e.detail))
+    const answers = []
+    b.addEventListener('video-answer', () => answers.push(1))
+
+    a._ws.close()
+    await waitFor(() => a._ws.readyState !== WebSocket.OPEN)
+    a.sendToAll({ type: 'MSG', channelName: 'general', message: { id: 'lost-1', content: 'written offline' } })
+    a.sendToPeer(b._localPeerId, { type: 'VIDEO_ANSWER', sdp: 'x' })
+
+    await waitFor(() => answers.length === 1, 10_000)
+    expect(chat).toHaveLength(0)
+  }, 15_000)
+})

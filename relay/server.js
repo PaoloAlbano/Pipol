@@ -238,6 +238,8 @@ wssSignal.on('connection', (ws) => {
     if (!peerId || !roomCode) return
     const room = rooms.get(roomCode)
     if (!room) return
+    // The peer may have reconnected before this old connection was found dead: the newer one is theirs now
+    if (room.get(peerId) !== ws) return
     room.delete(peerId)
     if (room.size === 0) rooms.delete(roomCode)
     for (const [, peerWs] of room) {

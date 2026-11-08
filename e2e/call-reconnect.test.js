@@ -7,7 +7,7 @@
  * the other side, which never noticed anything, replaces its old connection when the new offer arrives.
  */
 import { test, expect } from '@playwright/test'
-import { joinQuickRoom } from './helpers.js'
+import { joinQuickRoom, sendMessage, waitForMessage } from './helpers.js'
 
 /** Keeps every RTCPeerConnection of the page, and tells which ones carry the call (those with our camera). */
 function recordPeerConnections() {
@@ -27,9 +27,26 @@ function recordPeerConnections() {
     window.__pcs.filter(
       (p) => !p.__failed && p.connectionState !== 'closed' && p.getSenders().some((s) => s.track?.kind === 'video')
     )
+  // The connection of the chat (it has the data channel and no camera)
+  window.__chatLink = () =>
+    window.__pcs.filter(
+      (p) =>
+        !p.__failed &&
+        p.connectionState !== 'closed' &&
+        p.sctp &&
+        !p.getSenders().some((s) => s.track?.kind === 'video')
+    )
 }
 
 const callState = () => window.__liveCall()[0]?.connectionState
+
+/** Makes the connection of the chat report "failed", as it does on a phone that cannot reach the other peer. */
+function failTheChatLink() {
+  const pc = window.__chatLink()[0]
+  pc.__failed = true
+  Object.defineProperty(pc, 'connectionState', { get: () => 'failed', configurable: true })
+  pc.dispatchEvent(new Event('connectionstatechange'))
+}
 
 /** Makes the call connection report "failed", as if ICE had given up on it. */
 function failTheCall() {
@@ -82,6 +99,49 @@ test.describe('Reconnecting', () => {
       await expect(pageA.locator('.video-tile')).toHaveCount(2)
       await expect(pageB.locator('.video-tile')).toHaveCount(2)
       expect(await pageA.evaluate(() => window.__liveCall().length)).toBe(1)
+    } finally {
+      await ctxA.close()
+      await ctxB.close()
+    }
+  })
+
+  test('the call and the chat go on when the WebRTC link of the chat fails (a phone on 4G)', async ({ browser }) => {
+    const room = `e2e-${Date.now()}-chat-link`
+    const ctxA = await browser.newContext()
+    const ctxB = await browser.newContext()
+    await ctxA.addInitScript(recordPeerConnections)
+    await ctxB.addInitScript(recordPeerConnections)
+    const pageA = await ctxA.newPage()
+    const pageB = await ctxB.newPage()
+
+    try {
+      await Promise.all([joinQuickRoom(pageA, room, 'alice-e2e'), joinQuickRoom(pageB, room, 'bob-e2e')])
+      await pageA.waitForTimeout(2500)
+      await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
+      await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+      await expect.poll(() => pageA.evaluate(callState), { timeout: 30000 }).toBe('connected')
+      await expect.poll(() => pageB.evaluate(callState), { timeout: 30000 }).toBe('connected')
+      await expect.poll(() => pageA.evaluate(() => window.__chatLink().length), { timeout: 30000 }).toBe(1)
+      await remoteVideoPlays(pageA)
+
+      // The link of the chat to the other peer cannot be kept. Only the chat needs it: the call and the
+      // presence in the room must not be taken for the peer leaving.
+      await pageA.evaluate(failTheChatLink)
+      await pageA.waitForTimeout(3000)
+
+      await expect(pageA.locator('.video-tile')).toHaveCount(2)
+      await expect(pageA.locator('.peer-item')).toHaveCount(2)
+      await expect(pageA.getByText('Reconnecting…')).toHaveCount(0)
+      expect(await pageA.evaluate(callState)).toBe('connected')
+      await remoteVideoPlays(pageA)
+
+      // The chat goes on, through the relay
+      const toBob = `hello bob ${Date.now()}`
+      await sendMessage(pageA, toBob)
+      await waitForMessage(pageB, toBob, 20000)
+      const toAlice = `hello alice ${Date.now()}`
+      await sendMessage(pageB, toAlice)
+      await waitForMessage(pageA, toAlice, 20000)
     } finally {
       await ctxA.close()
       await ctxB.close()
