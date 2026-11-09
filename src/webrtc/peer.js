@@ -46,11 +46,25 @@ export const POOR_RTT_MS = 500
 export const POOR_LOSS_RATIO = 0.1
 /** Checks in a row needed to call a connection weak, and to call it fine again (so the label does not flicker). */
 export const HEALTH_SAMPLES = 2
+/**
+ * Checks in a row without a new video frame, on a connection that was sending them, before ICE is restarted (3 s each),
+ * and the ones after that before the connection is given up so that it is made again.
+ */
+export const FROZEN_CHECKS = 3
+export const FROZEN_GIVE_UP_CHECKS = 6
 
 /** The route of a new connection is written to the console this long (ms) after it connects, once the pairs settled. */
 export const ROUTE_LOG_DELAY_MS = 3000
 /** How often (ms) the route of a connection is checked, to raise or lower what the "max" profile sends. */
 export const QUALITY_POLL_MS = 3000
+
+const newHealth = () => ({
+  lost: 0,
+  received: 0,
+  bad: 0,
+  good: 0,
+  video: { seen: false, frames: 0, bytes: 0, still: 0, restarted: false },
+})
 
 export class WebRTCPeer extends EventTarget {
   /**
@@ -107,7 +121,7 @@ export class WebRTCPeer extends EventTarget {
     this._connectTimer = null
     this._resendTimer = null
     this._healthTimer = null
-    this._health = { lost: 0, received: 0, bad: 0, good: 0 }
+    this._health = newHealth()
   }
 
   /**
@@ -304,7 +318,7 @@ export class WebRTCPeer extends EventTarget {
     clearTimeout(this._disconnectTimer)
     clearTimeout(this._retryTimer)
     this._restartAttempts = 0
-    this._health = { lost: 0, received: 0, bad: 0, good: 0 }
+    this._health = newHealth()
     this._setStatus('connected')
     this._manageHealthPolling()
     this._syncQuality().catch(() => {})
@@ -412,10 +426,18 @@ export class WebRTCPeer extends EventTarget {
 
     let lost = 0
     let received = 0
+    const video = { frames: 0, bytes: 0, reportsFrames: false }
     for (const s of items) {
       if (s.type !== 'inbound-rtp') continue
       lost += Math.max(s.packetsLost ?? 0, 0)
       received += s.packetsReceived ?? 0
+      if ((s.kind ?? s.mediaType) === 'video') {
+        video.bytes += s.bytesReceived ?? 0
+        if (typeof s.framesDecoded === 'number') {
+          video.frames += s.framesDecoded
+          video.reportsFrames = true
+        }
+      }
     }
     const h = this._health
     const newLost = Math.max(lost - h.lost, 0)
@@ -434,6 +456,50 @@ export class WebRTCPeer extends EventTarget {
     }
     if (this._status === 'connected' && h.bad >= HEALTH_SAMPLES) this._setStatus('poor')
     else if (this._status === 'poor' && h.good >= HEALTH_SAMPLES) this._setStatus('connected')
+
+    this._checkFrozenVideo(video)
+  }
+
+  /**
+   * A picture that stops while the connection still says it is connected (a path that went one-way, a receiver
+   * waiting for a frame that never comes): ICE is restarted once, and if that does not bring the frames back the
+   * connection is given up so that it is made again. Only for video that was arriving before; a tab in the
+   * background is not counted, because the browser may not be decoding for it.
+   */
+  _checkFrozenVideo({ frames, bytes, reportsFrames }) {
+    const v = this._health.video
+    const progressed = reportsFrames ? frames > v.frames : bytes > v.bytes
+    const flowing = reportsFrames ? frames > 0 : bytes > 0
+    v.frames = frames
+    v.bytes = bytes
+
+    if (!v.seen) {
+      v.seen = flowing
+      return
+    }
+    if (globalThis.document?.hidden) {
+      v.still = 0
+      return
+    }
+    if (progressed) {
+      if (v.still >= FROZEN_CHECKS) {
+        console.info(`[webrtc] ${this.peerId.slice(0, 12)}… video is moving again`)
+        if (this._status === 'reconnecting') this._setStatus('connected')
+      }
+      v.still = 0
+      v.restarted = false
+      return
+    }
+
+    v.still++
+    if (v.still === FROZEN_CHECKS && !v.restarted) {
+      console.warn(`[webrtc] ${this.peerId.slice(0, 12)}… video frozen, restarting ICE`)
+      v.restarted = true
+      if (!this.requestIceRestart('frozen')) this._setStatus('poor')
+    } else if (v.still >= FROZEN_GIVE_UP_CHECKS) {
+      console.warn(`[webrtc] ${this.peerId.slice(0, 12)}… video still frozen, connecting again`)
+      this.close('failed')
+    }
   }
 
   // ── What the camera sends ─────────────────────────────────────────────────────

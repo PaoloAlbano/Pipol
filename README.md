@@ -40,7 +40,7 @@ Max encodes the video once per direct connection, so it needs a powerful device 
 
 **Screen on.** The screen stays on during a call, so a phone does not lock itself and drop the camera (in browsers that support the Screen Wake Lock; it is taken again if you leave the page and come back).
 
-**Network changes and dropped connections.** If the connection to somebody drops or the device changes network, the call restarts its connection on its own (a few tries, a few seconds apart) instead of ending. If it cannot be kept, or never connects, the call connects to that person again, waiting a little longer after each failure (2 s, 4 s, … up to 30 s), for as long as they are in the call.
+**Network changes and dropped connections.** If the connection to somebody drops or the device changes network, the call restarts its connection on its own (a few tries, a few seconds apart) instead of ending. If it cannot be kept, or never connects, the call connects to that person again, waiting a little longer after each failure (2 s, 4 s, … up to 30 s), for as long as they are in the call. A picture that freezes while the connection still looks fine is treated the same way: the connection is restarted, and made again if that does not help. If your connection to the relay drops for a few seconds, the others are not told you left, so a call carries on meanwhile.
 
 **What you see.** Everybody in the call has a tile from the moment they join: *Connecting…* while their picture has not arrived, *Reconnecting…* while a connection that worked is being recovered, and a *Weak connection* badge when the round trip is slow or many packets are lost.
 
@@ -57,58 +57,44 @@ Max encodes the video once per direct connection, so it needs a powerful device 
 ## Architecture
 
 ```
-User A (browser)                    User B (browser)
-───────────────                     ───────────────
-  Hyperswarm DHT ←── relay node ──→ Hyperswarm DHT
-        │                                   │
-  Corestore (OPFS)              Corestore (OPFS)
-  ─ message core A ──replicate──▶ message core A
-  ◀─────────────── replicate── message core B
-        │                                   │
-  Hyperbeam (per pair)  ←────────→ Hyperbeam (per pair)
-  [WebRTC SDP/ICE]                [WebRTC SDP/ICE]
-        │                                   │
-  RTCPeerConnection ←── media ──→ RTCPeerConnection
-  [audio/video tracks]
+User A (browser)                                        User B (browser)
+────────────────                                        ────────────────
+  WebSocket ──────────────▶  relay (/signal)  ◀──────────────  WebSocket
+  [join the room; offers, answers and ICE candidates, all sealed]
+        │                                                          │
+  RTCPeerConnection ◀──── DataChannel: chat, history, files ────▶ RTCPeerConnection
+                    ◀──── audio and video (calls) ──────────────▶
+        │                                                          │
+  Local history (IndexedDB, encrypted)                    Local history (IndexedDB, encrypted)
 ```
+
+The relay is a small server that introduces the peers to each other. Once two browsers are connected, chat and calls go straight between them. If a direct connection cannot be made, chat falls back to the relay and calls can go through a TURN server; both only see data that is already end-to-end encrypted. Nothing is stored on a server.
 
 | Layer | Technology | Role |
 |-------|-----------|------|
-| Peer discovery | **Hyperswarm** | Finds peers sharing the same room-code topic via the Holepunch DHT |
-| Connection security | **NoiseSecretStream** | Encrypts all peer-to-peer traffic |
-| Multiplexing | **Protomux** | Shares a single noise stream between the control channel and Hypercore replication |
-| Message persistence | **Hypercore** | Append-only log, one per peer per room; replicated automatically |
-| Local storage | **random-access-web** (OPFS) | Browser-native persistent storage; falls back to RAM |
-| Video signaling | **Hyperbeam** | Encrypted 1-to-1 pipe per peer pair carrying WebRTC SDP + ICE candidates |
-| Media | **WebRTC** (`RTCPeerConnection`) | Full mesh topology; media never touches a relay |
+| Signaling | **WebSocket relay** (`/signal`) | Rooms: peers join with the same room name and exchange WebRTC offers, answers and ICE candidates. A connection that drops is given a few seconds to come back before the others are told the peer left |
+| Chat and files | **WebRTC DataChannel** | Messages, edits, reactions, history sync and file transfer, directly between browsers |
+| Chat fallback | **Relay** (`relay-data`) | Used only for a peer whose DataChannel cannot open (symmetric NAT, mobile networks) |
+| Relay encryption | **NaCl secretbox** | Everything sent through the relay is sealed with a key the relay does not know ([details](docs/relay.md#what-the-relay-can-see)) |
+| Authenticity | **Ed25519 signatures** | Every message, edit, deletion and reaction is signed by its author ([details](docs/security.md)) |
+| Local history | **IndexedDB** | Messages are kept in the browser, encrypted with a key derived from your identity |
+| Calls | **WebRTC** (`RTCPeerConnection`) | Full mesh: media never touches a server, except a TURN relay as a last resort |
 
-### Room code → Hyperswarm topic
+### Room code
 
-```
-topic = BLAKE2b( UTF-8(roomCode) )   // 32 bytes
-```
-
-Every peer who knows the room code independently derives the same 32-byte topic and joins that Hyperswarm topic.
+A workspace has a secret that the members share. A quick room has only its room code, which the relay never sees: it gets a hash of it as the room name, and the key that seals the traffic is derived from the code.
 
 ### Message flow
 
-1. Each peer owns one **named Hypercore** per room (`messages:{roomCode}`), keyed from the Corestore's primary key (= identity secret key).
-2. On connection, peers exchange their core keys via the `HELLO` control message.
-3. The receiving peer calls `store.get({ key })` — Corestore replicates the remote core automatically.
-4. New blocks trigger `append` events; the UI merges all cores by timestamp.
+1. When two peers connect they exchange a hello and the messages each of them has.
+2. New messages are signed, sent on the DataChannel (or through the relay when there is no DataChannel) and saved locally.
+3. Everyone checks the signature, drops what is not valid and merges the messages by time.
 
-### WebRTC signaling via Hyperbeam
+### Calls
 
-```
-CALL_INIT  ─── Hyperswarm control channel ──▶  responder
-both sides compute:
-  beamKey = BLAKE2b( sort([myPubKey, remotePubKey]).join() )
-initiator:  new Hyperbeam(beamKey) → send SDP offer
-responder:  new Hyperbeam(beamKey) → send SDP answer
-ICE candidates flow both ways on the same beam.
-```
-
-The beam key is derived symmetrically — no additional key exchange needed.
+1. Starting a call tells the others in the room; whoever joins sends an offer to each person already in it.
+2. Offers, answers and candidates travel through the relay, sealed; then the media goes directly, or through TURN.
+3. If a connection drops, ICE is restarted; if that does not help, or the picture freezes while the connection looks fine, the connection is made again.
 
 ## Getting started
 
@@ -167,7 +153,7 @@ make format        # Prettier
 
 | Area | Limitation | Potential improvement |
 |------|-----------|----------------------|
-| **Browser P2P** | Hyperswarm requires the Holepunch DHT relay for browser peers (no raw UDP in browsers). Data is still E2E encrypted; relay nodes only assist with discovery.
+| **Browser P2P** | Browsers cannot open raw UDP or TCP connections, so peers find each other through a relay server (WebSocket) that you have to run or use. Data is still E2E encrypted; the relay only introduces peers and forwards sealed data. | Chat and calls already go straight between browsers once connected; the relay is only needed to start. |
 | **Multi-writer convergence** | Messages are merged by timestamp — concurrent writes with identical timestamps may appear in non-deterministic order. | Integrate [Autobase v6](https://github.com/holepunchto/autobase) for true causal-order convergence. |
 | **Group video (large rooms)** | WebRTC mesh means N×(N-1)/2 connections. Practical limit ≈ 4–6 peers, fewer with the Max quality, which encodes up to 4K at 60 fps once per direct connection. | Integrate a Selective Forwarding Unit (SFU) such as [LiveKit](https://livekit.io). |
 | **TURN is optional** | Without a configured TURN server only public STUN is used and connections behind symmetric NATs may fail. | See [TURN server](#turn-server-calls-behind-strict-nats-and-firewalls). |

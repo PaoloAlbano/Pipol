@@ -35,6 +35,7 @@ before(async () => {
     env: {
       ...process.env,
       PORT: String(port),
+      PEER_LEFT_GRACE_MS: '0',
       CLOUDFLARE_TURN_KEY_ID: '',
       CLOUDFLARE_TURN_API_TOKEN: '',
       TURN_URLS: 'turn:turn.test:3478',

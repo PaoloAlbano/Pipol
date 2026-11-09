@@ -183,6 +183,21 @@ describe('RoomSwarm — signaling kept while the relay connection is down', () =
     expect(swarm._outbox).toHaveLength(0)
   })
 
+  it('tells the relay that it leaves on purpose, so the room is not kept waiting for it to come back', async () => {
+    const { swarm } = makeSwarm()
+    swarm._ws.close = vi.fn()
+    await swarm.leave()
+    expect(swarm._ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'leave' }))
+    expect(swarm._ws.close).toHaveBeenCalled()
+  })
+
+  it('does not try to say it when the connection is already down', async () => {
+    const { swarm } = makeSwarm()
+    offline(swarm)
+    await swarm.leave()
+    expect(swarm._ws.send).not.toHaveBeenCalled()
+  })
+
   it('does not keep anything before it has a key (nothing could be sent anyway)', () => {
     const swarm = new RoomSwarm(ROOM) // quick room that has not derived its key yet
     swarm._localPeerId = ME

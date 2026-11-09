@@ -24,6 +24,7 @@ The relay is configured only through environment variables. Nothing is required:
 | `PORT` | `8787` | Listening port |
 | `LOG_HIDE_SENSITIVE` | off | `true` stops the relay from logging who connects: the lines with client IPs, room names and peer ids are not written. See [Logs and privacy](#logs-and-privacy) |
 | `HEARTBEAT_INTERVAL_MS` | `25000` | How often each signaling connection is pinged. A client that did not answer the previous ping is dropped, so its room does not keep a dead peer; the pings also keep proxies and load balancers from closing connections that look idle |
+| `PEER_LEFT_GRACE_MS` | `10000` | How long a signaling connection that drops without saying goodbye (a phone changing network, a tunnel) can take to come back with the same peer id before the others in the room are told the peer left (`peer-left`). Meanwhile their calls carry on. A client that leaves on purpose says so and is dropped at once. `0` tells the room as soon as the connection closes |
 | `MAX_CLIENT_BUFFER_MB` | `32` | A client whose send buffer grows past this (it cannot keep up with what the room sends) is disconnected instead of using the relay's memory; it reconnects and catches up through the history sync |
 | `RELAY_STATS_INTERVAL_SEC` | off | `N` writes a line every N seconds with the load (`connections`, `rooms`, `rss`, `heap`, `slowClientsClosed`). No identifiers, so it is safe with `LOG_HIDE_SENSITIVE` |
 

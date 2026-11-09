@@ -16,6 +16,8 @@ import {
   HEALTH_POLL_MS,
   POOR_RTT_MS,
   HEALTH_SAMPLES,
+  FROZEN_CHECKS,
+  FROZEN_GIVE_UP_CHECKS,
   ROUTE_LOG_DELAY_MS,
   QUALITY_POLL_MS,
 } from '../../src/webrtc/peer.js'
@@ -789,6 +791,100 @@ describe('WebRTCPeer — weak connection', () => {
     const spy = vi.spyOn(pc, 'getStats')
     await advance(HEALTH_POLL_MS * 3)
     expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+// ── Frozen video ──────────────────────────────────────────────────────────────
+
+describe('WebRTCPeer — video that freezes on a connection that says it is fine', () => {
+  /** One more check, with the video counters moved on by the given number of frames (and packets). */
+  async function check(pc, { frames = 30, withFrames = true } = {}) {
+    const video = pc.inbound.find((s) => s.kind === 'video') ?? { kind: 'video', packetsReceived: 0, bytesReceived: 0 }
+    video.packetsReceived += frames
+    video.bytesReceived += frames * 1000
+    if (withFrames) video.framesDecoded = (video.framesDecoded ?? 0) + frames
+    pc.inbound = [video]
+    await advance(HEALTH_POLL_MS)
+  }
+
+  async function frozenAfterMoving({ withFrames = true } = {}) {
+    const ctx = await establishedPeer()
+    await check(ctx.pc, { withFrames }) // the video is arriving
+    await check(ctx.pc, { withFrames })
+    return ctx
+  }
+
+  it('restarts ICE once the frames have stopped for a few checks', async () => {
+    const { pc } = await frozenAfterMoving()
+    for (let i = 0; i < FROZEN_CHECKS - 1; i++) await check(pc, { frames: 0 })
+    expect(restarts(pc)).toBe(0)
+
+    await check(pc, { frames: 0 })
+    expect(restarts(pc)).toBe(1)
+  })
+
+  it('shows "reconnecting" meanwhile, and is fine again when the frames are back', async () => {
+    const { peer, pc } = await frozenAfterMoving()
+    for (let i = 0; i < FROZEN_CHECKS; i++) await check(pc, { frames: 0 })
+    expect(peer.status).toBe('reconnecting')
+
+    await check(pc)
+    expect(peer.status).toBe('connected')
+  })
+
+  it('restarts only once while it stays frozen, then gives the connection up so that it is made again', async () => {
+    const { pc, closed } = await frozenAfterMoving()
+    for (let i = 0; i < FROZEN_GIVE_UP_CHECKS - 1; i++) await check(pc, { frames: 0 })
+    expect(restarts(pc)).toBe(1)
+    expect(closed).not.toHaveBeenCalled()
+
+    await check(pc, { frames: 0 })
+    expect(closed).toHaveBeenCalledOnce()
+    expect(closed.mock.calls[0][0].detail).toEqual({ reason: 'failed' })
+  })
+
+  it('does it again for a second freeze after the picture came back', async () => {
+    const { peer, pc } = await frozenAfterMoving()
+    for (let i = 0; i < FROZEN_CHECKS; i++) await check(pc, { frames: 0 })
+    await peer.handleAnswer({ type: 'answer', sdp: 'a' }) // the first restart is answered
+    await check(pc)
+    for (let i = 0; i < FROZEN_CHECKS; i++) await check(pc, { frames: 0 })
+    expect(restarts(pc)).toBe(2)
+  })
+
+  it('counts the bytes when the browser does not report decoded frames', async () => {
+    const { pc } = await frozenAfterMoving({ withFrames: false })
+    for (let i = 0; i < FROZEN_CHECKS - 1; i++) await check(pc, { frames: 0, withFrames: false })
+    expect(restarts(pc)).toBe(0)
+    await check(pc, { frames: 0, withFrames: false })
+    expect(restarts(pc)).toBe(1)
+  })
+
+  it('leaves alone a connection that never sent any video (camera off, audio only)', async () => {
+    const { peer, pc, closed } = await establishedPeer()
+    for (let i = 0; i < FROZEN_GIVE_UP_CHECKS + 2; i++) await check(pc, { frames: 0 })
+    expect(restarts(pc)).toBe(0)
+    expect(closed).not.toHaveBeenCalled()
+    expect(peer.status).toBe('connected')
+  })
+
+  it('does not count the time while this tab is in the background', async () => {
+    const { pc, closed } = await frozenAfterMoving()
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    try {
+      for (let i = 0; i < FROZEN_GIVE_UP_CHECKS + 2; i++) await check(pc, { frames: 0 })
+    } finally {
+      hidden.mockRestore()
+    }
+    expect(restarts(pc)).toBe(0)
+    expect(closed).not.toHaveBeenCalled()
+  })
+
+  it('is called weak when the restart cannot be done', async () => {
+    const { peer, pc } = await frozenAfterMoving()
+    vi.spyOn(peer, 'requestIceRestart').mockReturnValue(false)
+    for (let i = 0; i < FROZEN_CHECKS; i++) await check(pc, { frames: 0 })
+    expect(peer.status).toBe('poor')
   })
 })
 
