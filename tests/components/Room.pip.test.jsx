@@ -388,9 +388,7 @@ describe('Room PiP — the whole call is in the window', () => {
 
     await waitFor(() => expect(pipWin.document.querySelectorAll('button').length).toBe(3))
     const [mic, camera, end] = pipWin.document.querySelectorAll('button')
-    expect(mic).toBeEnabled()
-    expect(camera).toBeDisabled()
-    expect(end).toBeEnabled()
+    expect([mic.disabled, camera.disabled, end.disabled]).toEqual([false, true, false])
   })
 
   it('keeps the pictures of the window silent: the sound comes from the page', async () => {
