@@ -4,6 +4,7 @@
 # Pipol
 
 [![CI](https://github.com/PaoloAlbano/Pipol/actions/workflows/ci.yml/badge.svg)](https://github.com/PaoloAlbano/Pipol/actions/workflows/ci.yml)
+[![E2E](https://github.com/PaoloAlbano/Pipol/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/PaoloAlbano/Pipol/actions/workflows/e2e.yml)
 [![Coverage](https://codecov.io/gh/PaoloAlbano/Pipol/branch/main/graph/badge.svg)](https://codecov.io/gh/PaoloAlbano/Pipol)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
 
