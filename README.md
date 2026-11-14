@@ -43,6 +43,17 @@ Max encodes the video once per direct connection, so it needs a powerful device 
 
 **Raise hand and reactions.** The hand button puts a ✋ on your tile for everybody until you lower it (or leave the call); the reaction button sends a 👍 👏 ❤️ 😂 😮 or 🎉 that rises on your tile for a few seconds.
 
+**Keyboard shortcuts** (in a call, not while typing in a text field, and never with Ctrl, Cmd or Alt, so the browser's own keys are left alone):
+
+| Key | What it does |
+|-----|--------------|
+| `M` | Mute or unmute the microphone |
+| `V` | Turn the camera off or on |
+| `H` | Raise or lower your hand |
+| Hold `Space` | Push-to-talk: while muted, the microphone is open as long as you hold the key |
+
+They work in the Picture-in-Picture window too. The buttons show their key when you hover them.
+
 **No camera or microphone.** A computer without a camera (unplugged, in use by another app) or without a microphone can still join: it joins with what it has, down to just watching and listening, and the others see an avatar for it. The buttons it cannot use are disabled, and a message says what is missing.
 
 **Screen on.** The screen stays on during a call, so a phone does not lock itself and drop the camera (in browsers that support the Screen Wake Lock; it is taken again if you leave the page and come back).

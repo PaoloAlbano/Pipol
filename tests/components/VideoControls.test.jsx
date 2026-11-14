@@ -212,13 +212,13 @@ describe('VideoControls — raise hand and reactions', () => {
     const user = userEvent.setup()
     const onToggleHand = vi.fn()
     setup({ onToggleHand })
-    await user.click(screen.getByTitle('Raise hand'))
+    await user.click(screen.getByTitle(/^raise hand/i))
     expect(onToggleHand).toHaveBeenCalledOnce()
   })
 
   it('says that the hand is up', () => {
     setup({ onToggleHand: vi.fn(), handRaised: true })
-    expect(screen.getByTitle('Lower hand')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTitle(/^lower hand/i)).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('opens the reactions, sends the one chosen and closes', async () => {

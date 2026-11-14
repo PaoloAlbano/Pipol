@@ -22,6 +22,7 @@ const NEED_VIDEO_PLAYBACK = [
   '**/no-devices.test.js',
   '**/call-setup.test.js',
   '**/hand-reactions.test.js',
+  '**/call-shortcuts.test.js',
 ]
 // Pictures to compare with are only kept for Chromium on macOS
 const VISUAL = ['**/visual.test.js']
