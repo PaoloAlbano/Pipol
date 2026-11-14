@@ -23,10 +23,13 @@
  *   call-init     { peerId }
  *   call-end      { peerId }
  *   video-state   { peerId, off }   the peer turned their camera off or on during a call
+ *   hand-raise    { peerId, raised } the peer raised or lowered their hand during a call
+ *   call-reaction { peerId, emoji }  the peer sent a reaction (one of CALL_REACTIONS) during a call
  *   error         { detail: Error }
  */
 
 import b4a from 'b4a'
+import { CALL_REACTIONS } from '../webrtc/callReactions.js'
 import { getIdentity, getRelayUrl } from './storage.js'
 import { DEFAULT_ICE_SERVERS, resolveIceConfig, chatIceConfig } from '../webrtc/ice.js'
 import { RelayCipher, deriveRoomRelayKey, roomRelayId } from './relay-crypto.js'
@@ -75,6 +78,7 @@ const KEPT_WHILE_OFFLINE = new Set([
   'SCREEN_SHARE_START',
   'SCREEN_SHARE_END',
   'VIDEO_STATE',
+  'HAND_RAISE',
 ])
 /** Signaling that waited longer than this (ms) is no longer worth sending: the connection it was for is gone. */
 export const OUTBOX_TTL_MS = 30_000
@@ -573,6 +577,14 @@ export class RoomSwarm extends EventTarget {
         break
       case 'VIDEO_STATE':
         this.dispatchEvent(new CustomEvent('video-state', { detail: { peerId: remoteId, off: msg.off === true } }))
+        break
+      case 'HAND_RAISE':
+        this.dispatchEvent(new CustomEvent('hand-raise', { detail: { peerId: remoteId, raised: msg.raised === true } }))
+        break
+      case 'CALL_REACTION':
+        if (CALL_REACTIONS.includes(msg.emoji)) {
+          this.dispatchEvent(new CustomEvent('call-reaction', { detail: { peerId: remoteId, emoji: msg.emoji } }))
+        }
         break
       case 'WORKSPACE_META':
         this.dispatchEvent(new CustomEvent('workspace-meta', { detail: { peerId: remoteId, channels: msg.channels } }))

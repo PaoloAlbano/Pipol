@@ -200,3 +200,46 @@ describe('VideoControls — PiP button', () => {
     expect(onTogglePiP).toHaveBeenCalledOnce()
   })
 })
+
+describe('VideoControls — raise hand and reactions', () => {
+  it('shows neither without the handlers', () => {
+    setup()
+    expect(screen.queryByTitle(/raise hand/i)).toBeNull()
+    expect(screen.queryByTitle(/send a reaction/i)).toBeNull()
+  })
+
+  it('raises the hand, and offers to lower it while it is up', async () => {
+    const user = userEvent.setup()
+    const onToggleHand = vi.fn()
+    setup({ onToggleHand })
+    await user.click(screen.getByTitle('Raise hand'))
+    expect(onToggleHand).toHaveBeenCalledOnce()
+  })
+
+  it('says that the hand is up', () => {
+    setup({ onToggleHand: vi.fn(), handRaised: true })
+    expect(screen.getByTitle('Lower hand')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('opens the reactions, sends the one chosen and closes', async () => {
+    const user = userEvent.setup()
+    const onReact = vi.fn()
+    setup({ onReact })
+    expect(screen.queryByRole('menu')).toBeNull()
+
+    await user.click(screen.getByTitle(/send a reaction/i))
+    expect(screen.getAllByRole('menuitem')).toHaveLength(6)
+    await user.click(screen.getByRole('menuitem', { name: 'React 🎉' }))
+
+    expect(onReact).toHaveBeenCalledWith('🎉')
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('closes the reactions when the button is clicked again', async () => {
+    const user = userEvent.setup()
+    setup({ onReact: vi.fn() })
+    await user.click(screen.getByTitle(/send a reaction/i))
+    await user.click(screen.getByTitle(/send a reaction/i))
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+})

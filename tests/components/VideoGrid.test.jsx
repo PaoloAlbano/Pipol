@@ -798,3 +798,53 @@ describe('VideoGrid — connection status', () => {
     expect(strip).toContain('Connecting…')
   })
 })
+
+describe('VideoGrid — raised hands and reactions', () => {
+  const peer1 = { id: 'peer-1', username: 'alice' }
+  const grid = (props = {}) =>
+    render(
+      <VideoGrid
+        localStream={makeFakeStream()}
+        remoteStreams={{ 'peer-1': makeFakeStream() }}
+        peers={[peer1]}
+        localUsername="swift-fox"
+        layout="grid"
+        onLayoutChange={vi.fn()}
+        onSpotlightChange={vi.fn()}
+        {...props}
+      />
+    )
+
+  it('shows a hand on the tile of whoever raised it, and on no other', () => {
+    grid({ raisedHands: { 'peer-1': true } })
+    expect(screen.getAllByRole('img', { name: /raised a hand/i })).toHaveLength(1)
+    expect(screen.getByRole('img', { name: 'alice raised a hand' })).toBeInTheDocument()
+  })
+
+  it('shows our own raised hand on our tile', () => {
+    grid({ localHandRaised: true })
+    expect(screen.getByRole('img', { name: 'swift-fox raised a hand' })).toBeInTheDocument()
+  })
+
+  it('shows the hand of somebody whose picture has not arrived yet', () => {
+    grid({ remoteStreams: {}, pendingPeerIds: ['peer-1'], raisedHands: { 'peer-1': true } })
+    expect(screen.getByRole('img', { name: 'alice raised a hand' })).toBeInTheDocument()
+  })
+
+  it('shows no hand when nobody raised one', () => {
+    grid()
+    expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
+  })
+
+  it('shows the reactions of a peer and ours on their own tiles, not on the screen tile', () => {
+    const { container } = grid({
+      remoteScreens: { 'peer-1': makeFakeStream() },
+      reactions: { 'peer-1': [{ id: 1, emoji: '👍' }], local: [{ id: 2, emoji: '🎉' }] },
+    })
+    const tileOf = (text) => [...container.querySelectorAll('.video-tile')].find((t) => t.textContent.includes(text))
+    expect(tileOf('alice').querySelectorAll('.video-reaction')).toHaveLength(1)
+    expect(tileOf('alice').textContent).toContain('👍')
+    expect(tileOf('(you)').textContent).toContain('🎉')
+    expect(tileOf('(screen)').querySelector('.video-reaction')).toBeNull()
+  })
+})

@@ -32,6 +32,9 @@ export default function VideoGrid({
   localUsername,
   localVideoMuted = false,
   remoteVideoOff = {},
+  raisedHands = {},
+  localHandRaised = false,
+  reactions = {},
   peerStatus = {},
   pendingPeerIds = [],
   callElapsed = '',
@@ -67,6 +70,7 @@ export default function VideoGrid({
       stream,
       screen: false,
       videoOff: Boolean(remoteVideoOff[peerId]),
+      handRaised: Boolean(raisedHands[peerId]),
       status: peerStatus[peerId],
       name: nameOf(peerId),
       label: nameOf(peerId),
@@ -79,6 +83,7 @@ export default function VideoGrid({
         peerId,
         stream: null,
         screen: false,
+        handRaised: Boolean(raisedHands[peerId]),
         status: peerStatus[peerId] ?? 'connecting',
         name: nameOf(peerId),
         label: nameOf(peerId),
@@ -205,6 +210,8 @@ export default function VideoGrid({
               silent={pip}
               mirror={Boolean(tile.local) && mirrorVideo}
               videoOff={tile.local ? localVideoMuted : Boolean(tile.videoOff)}
+              handRaised={tile.local ? localHandRaised : Boolean(tile.handRaised)}
+              reactions={tile.screen ? undefined : tile.local ? reactions.local : reactions[tile.peerId]}
               status={tile.local || tile.screen ? undefined : tile.status}
               fit={tile.screen ? 'contain' : isMain ? cameraFit(rect.width, rect.height) : 'cover'}
               stats={statsOf(tile, rect)}
@@ -286,6 +293,8 @@ function VideoTile({
   muted = false,
   mirror = false,
   videoOff = false,
+  handRaised = false,
+  reactions = [],
   silent = false,
   status,
   fit = 'cover',
@@ -335,6 +344,20 @@ function VideoTile({
       )}
       {!showVideo && <Avatar name={name} size={Math.min(rect.width, rect.height)} />}
       <span className="video-label">{label}</span>
+      {handRaised && (
+        <span className="video-hand" role="img" aria-label={`${name} raised a hand`}>
+          ✋
+        </span>
+      )}
+      {reactions.length > 0 && (
+        <div className="video-reactions" aria-hidden="true">
+          {reactions.map((r) => (
+            <span key={r.id} className="video-reaction" style={{ left: `${15 + ((r.id * 37) % 60)}%` }}>
+              {r.emoji}
+            </span>
+          ))}
+        </div>
+      )}
       <ConnectionStatus status={status} />
       {stats && (
         <div className="video-stats-badge">

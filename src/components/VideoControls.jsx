@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { CALL_REACTIONS } from '../webrtc/callReactions.js'
 import '../styles/video.css'
 
 /**
@@ -7,11 +9,53 @@ import '../styles/video.css'
  * @param {boolean}  videoMuted
  * @param {function} onToggleAudio
  * @param {function} onToggleVideo
+ * @param {boolean}  handRaised
+ * @param {function} onToggleHand  raise or lower the hand (the button is not shown without it)
+ * @param {function} onReact       called with the emoji chosen (the button is not shown without it)
  * @param {function} onEndCall
  */
+
+/** A button that opens the row of reactions, and sends the one chosen. `mobile`: the style of the phone bar. */
+export function ReactionPicker({ onReact, mobile = false }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={`call-reactions${mobile ? ' call-reactions--mobile' : ''}`}>
+      <button
+        className={mobile ? 'btn-mobile-control' : 'control-btn'}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title="Send a reaction"
+      >
+        😀<span className={mobile ? undefined : 'control-label'}>React</span>
+      </button>
+      {open && (
+        <div className="call-reactions__list" role="menu">
+          {CALL_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              role="menuitem"
+              className="call-reactions__emoji"
+              aria-label={`React ${emoji}`}
+              onClick={() => {
+                onReact(emoji)
+                setOpen(false)
+              }}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function VideoControls({
   audioMuted,
   videoMuted,
+  handRaised = false,
+  onToggleHand,
+  onReact,
   screenSharing,
   pipActive,
   onToggleAudio,
@@ -40,6 +84,19 @@ export default function VideoControls({
         {videoMuted ? '📵' : '📷'}
         <span className="control-label">{videoMuted ? 'Cam on' : 'Cam off'}</span>
       </button>
+
+      {onToggleHand && (
+        <button
+          className={`control-btn ${handRaised ? 'control-btn--active' : ''}`}
+          onClick={onToggleHand}
+          aria-pressed={handRaised}
+          title={handRaised ? 'Lower hand' : 'Raise hand'}
+        >
+          ✋<span className="control-label">{handRaised ? 'Lower' : 'Hand'}</span>
+        </button>
+      )}
+
+      {onReact && <ReactionPicker onReact={onReact} />}
 
       {onSwitchCamera && (
         <button className="control-btn" onClick={onSwitchCamera} title="Switch camera">

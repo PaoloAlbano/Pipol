@@ -9,6 +9,7 @@ import { WebRTCPeer } from '../webrtc/peer.js'
 import { sdpFingerprint } from '../webrtc/sdp.js'
 import { reconnectDelay } from '../webrtc/reconnect.js'
 import { getCallDefaults, setCallDefaults } from '../webrtc/callDefaults.js'
+import { REACTION_MS, MAX_REACTIONS_PER_TILE } from '../webrtc/callReactions.js'
 import { useWakeLock } from '../webrtc/useWakeLock.js'
 import {
   getLocalStream,
@@ -27,7 +28,7 @@ import {
 import ChatMessages from './ChatMessages.jsx'
 import ChatInput from './ChatInput.jsx'
 import VideoGrid from './VideoGrid.jsx'
-import VideoControls from './VideoControls.jsx'
+import VideoControls, { ReactionPicker } from './VideoControls.jsx'
 import CallSetupModal from './CallSetupModal.jsx'
 import ThreadPanel from './ThreadPanel.jsx'
 import { containsMention } from '../p2p/notifications.js'
@@ -54,6 +55,9 @@ function copyStyleSheets(from, to) {
 }
 
 /** How long a message typed before the message store is ready waits for it (ms). */
+/** Key of our own reactions in the `reactions` state (the others are keyed by peer id). */
+const LOCAL_REACTIONS = 'local'
+
 const NO_DEVICES_OFF = { camera: false, microphone: false }
 
 function missingDevicesNotice({ camera, microphone }) {
@@ -177,6 +181,12 @@ export default function Room({
   const videoMutedRef = useRef(false) // read by ensureRTCPeer, which may run from a stale closure
   const [devicesOff, setDevicesOff] = useState(NO_DEVICES_OFF) // camera and microphone with no track now: not asked for, or not there
   const [callSetup, setCallSetup] = useState(null) // { mode: 'start' | 'join', caller? } while the choice of what to start with is open
+  const [raisedHands, setRaisedHands] = useState({}) // peerId → true while their hand is raised
+  const [handRaised, setHandRaised] = useState(false)
+  const handRaisedRef = useRef(false) // read by ensureRTCPeer, which may run from a stale closure
+  const [callReactions, setCallReactions] = useState({}) // peerId (or LOCAL_REACTIONS) → [{ id, emoji }] shown on the tile
+  const reactionTimersRef = useRef(new Set())
+  const reactionIdRef = useRef(0)
   const [callNotice, setCallNotice] = useState('')
   const [remoteVideoOff, setRemoteVideoOff] = useState({}) // peerId → true while their camera is off
   const [peerStatus, setPeerStatus] = useState({}) // peerId → 'connecting' | 'connected' | 'poor' | 'reconnecting'
@@ -309,6 +319,7 @@ export default function Room({
         return next
       })
       clearRemoteVideoOff(id)
+      clearRaisedHand(id)
       setIncomingCall((prev) => (prev?.peerId === id ? null : prev))
       setSpotlightPeerId((prev) => (prev === id ? null : prev))
       if (typingPeersRef.current.has(id)) {
@@ -341,6 +352,7 @@ export default function Room({
       clearReconnect(peerId)
       cleanupRTCPeer(peerId)
       clearRemoteVideoOff(peerId)
+      clearRaisedHand(peerId)
       setCallPeerIds((prev) => {
         const next = new Set(prev)
         next.delete(peerId)
@@ -427,6 +439,21 @@ export default function Room({
       })
     }
 
+    function onHandRaise(e) {
+      const { peerId, raised } = e.detail
+      setRaisedHands((prev) => {
+        if (Boolean(prev[peerId]) === raised) return prev
+        const next = { ...prev }
+        if (raised) next[peerId] = true
+        else delete next[peerId]
+        return next
+      })
+    }
+
+    function onCallReaction(e) {
+      showReaction(e.detail.peerId, e.detail.emoji)
+    }
+
     function onScreenShareStart(e) {
       // Announced before the renegotiation so ontrack can tell screen from camera
       remoteScreenIdsRef.current[e.detail.peerId] = e.detail.streamId
@@ -505,6 +532,8 @@ export default function Room({
     swarm.addEventListener('chat-message', onChatMessage)
     if (isDM) swarm.addEventListener('dm-message', onDMMessage)
     swarm.addEventListener('video-state', onVideoState)
+    swarm.addEventListener('hand-raise', onHandRaise)
+    swarm.addEventListener('call-reaction', onCallReaction)
     swarm.addEventListener('screen-share-start', onScreenShareStart)
     swarm.addEventListener('screen-share-end', onScreenShareEnd)
     swarm.addEventListener('error', onSwarmError)
@@ -527,6 +556,8 @@ export default function Room({
       swarm.removeEventListener('chat-message', onChatMessage)
       if (isDM) swarm.removeEventListener('dm-message', onDMMessage)
       swarm.removeEventListener('video-state', onVideoState)
+      swarm.removeEventListener('hand-raise', onHandRaise)
+      swarm.removeEventListener('call-reaction', onCallReaction)
       swarm.removeEventListener('screen-share-start', onScreenShareStart)
       swarm.removeEventListener('screen-share-end', onScreenShareEnd)
       swarm.removeEventListener('error', onSwarmError)
@@ -622,6 +653,11 @@ export default function Room({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, swarmProp])
+
+  useEffect(() => {
+    const timers = reactionTimersRef.current
+    return () => timers.forEach(clearTimeout)
+  }, [])
 
   // ── Reconnect when app returns to foreground ───────────────────────────────
   useEffect(() => {
@@ -909,6 +945,8 @@ export default function Room({
     }
     // Late joiner while our camera is off: it cannot see that from the video
     if (videoMutedRef.current) swarmRef.current?.sendToPeer(peerId, { type: 'VIDEO_STATE', off: true })
+    // Late joiner while our hand is up
+    if (handRaisedRef.current) swarmRef.current?.sendToPeer(peerId, { type: 'HAND_RAISE', raised: true })
 
     // ── Event handlers for WebRTC signaling ────────────────────────────────
 
@@ -986,6 +1024,35 @@ export default function Room({
       delete next[peerId]
       return next
     })
+  }
+
+  function clearRaisedHand(peerId) {
+    setRaisedHands((prev) => {
+      if (!prev[peerId]) return prev
+      const next = { ...prev }
+      delete next[peerId]
+      return next
+    })
+  }
+
+  /** Shows a reaction on the tile of `key` (a peer id, or LOCAL_REACTIONS for ours) for a few seconds. */
+  function showReaction(key, emoji) {
+    const id = ++reactionIdRef.current
+    setCallReactions((prev) => ({
+      ...prev,
+      [key]: [...(prev[key] ?? []), { id, emoji }].slice(-MAX_REACTIONS_PER_TILE),
+    }))
+    const timer = setTimeout(() => {
+      reactionTimersRef.current.delete(timer)
+      setCallReactions((prev) => {
+        const left = prev[key].filter((r) => r.id !== id) // the timers go with the reactions when the call ends
+        const next = { ...prev }
+        if (left.length > 0) next[key] = left
+        else delete next[key]
+        return next
+      })
+    }, REACTION_MS)
+    reactionTimersRef.current.add(timer)
   }
 
   function clearReconnect(peerId) {
@@ -1268,6 +1335,12 @@ export default function Room({
     setRemoteStreams({})
     setRemoteScreens({})
     setRemoteVideoOff({})
+    setRaisedHands({})
+    setHandRaised(false)
+    handRaisedRef.current = false
+    reactionTimersRef.current.forEach(clearTimeout)
+    reactionTimersRef.current.clear()
+    setCallReactions({})
     stopLocalStream()
     setLocalStream(null)
     callActiveRef.current = false
@@ -1335,6 +1408,18 @@ export default function Room({
     videoMutedRef.current = next
     // A disabled camera track only sends black frames: tell the others, so they can show an avatar instead
     swarmRef.current?.sendToAll({ type: 'VIDEO_STATE', off: next })
+  }
+
+  function handleToggleHand() {
+    const next = !handRaised
+    setHandRaised(next)
+    handRaisedRef.current = next
+    swarmRef.current?.sendToAll({ type: 'HAND_RAISE', raised: next })
+  }
+
+  function handleReact(emoji) {
+    showReaction(LOCAL_REACTIONS, emoji)
+    swarmRef.current?.sendToAll({ type: 'CALL_REACTION', emoji })
   }
 
   async function handleSwitchCamera() {
@@ -1558,6 +1643,9 @@ export default function Room({
               <VideoControls
                 audioMuted={audioMuted}
                 videoMuted={videoMuted}
+                handRaised={handRaised}
+                onToggleHand={handleToggleHand}
+                onReact={handleReact}
                 screenSharing={screenSharing}
                 pipActive={pipActive}
                 onToggleAudio={handleToggleAudio}
@@ -1583,6 +1671,9 @@ export default function Room({
             localUsername={identity.username}
             localVideoMuted={videoMuted}
             remoteVideoOff={remoteVideoOff}
+            raisedHands={raisedHands}
+            localHandRaised={handRaised}
+            reactions={callReactions}
             peerStatus={peerStatus}
             pendingPeerIds={pendingPeerIds}
             callElapsed={embedded ? '' : callElapsed}
@@ -1618,6 +1709,15 @@ export default function Room({
             {videoMuted ? '📵' : '📷'}
             <span>{videoMuted ? 'Cam on' : 'Cam off'}</span>
           </button>
+          <button
+            className={`btn-mobile-control${handRaised ? ' btn-mobile-control--active' : ''}`}
+            onClick={handleToggleHand}
+            aria-pressed={handRaised}
+            aria-label={handRaised ? 'Lower hand' : 'Raise hand'}
+          >
+            ✋<span>{handRaised ? 'Lower' : 'Hand'}</span>
+          </button>
+          <ReactionPicker onReact={handleReact} mobile />
         </div>
       )}
 
@@ -1634,6 +1734,9 @@ export default function Room({
             localUsername={identity.username}
             localVideoMuted={videoMuted}
             remoteVideoOff={remoteVideoOff}
+            raisedHands={raisedHands}
+            localHandRaised={handRaised}
+            reactions={callReactions}
             peerStatus={peerStatus}
             pendingPeerIds={pendingPeerIds}
             showStats={false}
@@ -1708,6 +1811,9 @@ export default function Room({
           <VideoControls
             audioMuted={audioMuted}
             videoMuted={videoMuted}
+            handRaised={handRaised}
+            onToggleHand={handleToggleHand}
+            onReact={handleReact}
             screenSharing={screenSharing}
             pipActive={pipActive}
             onToggleAudio={handleToggleAudio}

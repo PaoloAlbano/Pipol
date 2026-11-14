@@ -21,6 +21,7 @@ const NEED_VIDEO_PLAYBACK = [
   '**/wake-lock.test.js',
   '**/no-devices.test.js',
   '**/call-setup.test.js',
+  '**/hand-reactions.test.js',
 ]
 // Pictures to compare with are only kept for Chromium on macOS
 const VISUAL = ['**/visual.test.js']
