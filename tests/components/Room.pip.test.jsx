@@ -15,6 +15,7 @@ import Room from '../../src/components/Room.jsx'
 vi.mock('../../src/p2p/swarm.js', () => ({
   createRoomSwarm: vi.fn().mockResolvedValue({
     addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     sendToAll: vi.fn(),
     sendToPeer: vi.fn(),
     getPeers: vi.fn().mockReturnValue([]),
