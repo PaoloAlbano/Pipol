@@ -173,6 +173,13 @@ export class WebRTCPeer extends EventTarget {
         this._senders[track.kind === 'audio' ? 'audio' : 'video'] = sender
       }
     }
+    // Somebody without a camera or a microphone still receives the other's: the offer needs a place for it
+    // (an answer takes its places from the offer it answers)
+    if (this.isInitiator) {
+      for (const kind of ['audio', 'video']) {
+        if (!this._senders[kind]) this._pc.addTransceiver(kind, { direction: 'recvonly' })
+      }
+    }
     if (this.screenStream) {
       const [screenTrack] = this.screenStream.getVideoTracks()
       if (screenTrack) this._senders.screen = this._pc.addTrack(screenTrack, this.screenStream)

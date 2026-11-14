@@ -39,6 +39,8 @@ Everybody in a call connects to everybody else (a full mesh): there is no media 
 
 Max encodes the video once per direct connection, so it needs a powerful device when several people are in the call.
 
+**No camera or microphone.** A computer without a camera (unplugged, in use by another app) or without a microphone can still join: it joins with what it has, down to just watching and listening, and the others see an avatar for it. The buttons it cannot use are disabled, and a message says what is missing.
+
 **Screen on.** The screen stays on during a call, so a phone does not lock itself and drop the camera (in browsers that support the Screen Wake Lock; it is taken again if you leave the page and come back).
 
 **Network changes and dropped connections.** If the connection to somebody drops or the device changes network, the call restarts its connection on its own (a few tries, a few seconds apart) instead of ending. If it cannot be kept, or never connects, the call connects to that person again, waiting a little longer after each failure (2 s, 4 s, … up to 30 s), for as long as they are in the call. A picture that freezes while the connection still looks fine is treated the same way: the connection is restarted, and made again if that does not help. If your connection to the relay drops for a few seconds, the others are not told you left, so a call carries on meanwhile.
