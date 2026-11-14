@@ -527,7 +527,7 @@ describe('Room — local screen share and camera', () => {
       expect(screen.getByText(/no camera found/i, { selector: '[role="status"] span' })).toBeInTheDocument()
       expect(swarmMock.sendToPeer).toHaveBeenCalledWith('peer-1', { type: 'VIDEO_STATE', off: true })
 
-      const button = screen.getByTitle('No camera found')
+      const button = screen.getByTitle('No camera in this call')
       expect(button).toBeDisabled()
       expect(screen.getByTitle(/mute microphone/i)).toBeEnabled()
     })
@@ -536,8 +536,8 @@ describe('Room — local screen share and camera', () => {
       missing(false, true)
       await setup()
       await userEvent.click(screen.getByText(/start video call/i))
-      await waitFor(() => screen.getByTitle('No microphone found'))
-      expect(screen.getByTitle('No microphone found')).toBeDisabled()
+      await waitFor(() => screen.getByTitle('No microphone in this call'))
+      expect(screen.getByTitle('No microphone in this call')).toBeDisabled()
       expect(screen.getByText(/joined without audio/i)).toBeInTheDocument()
       expect(media.setAudioMuted).not.toHaveBeenCalled()
     })
@@ -546,7 +546,7 @@ describe('Room — local screen share and camera', () => {
       missing(true, true)
       await setup()
       await userEvent.click(screen.getByText(/start video call/i))
-      await waitFor(() => screen.getByTitle('No camera found'))
+      await waitFor(() => screen.getByTitle('No camera in this call'))
       expect(screen.getByText(/to watch and listen/i)).toBeInTheDocument()
       expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'CALL_INIT' })
     })
@@ -1041,6 +1041,60 @@ describe('Room — direct messages', () => {
   })
 })
 
+// ── Audio-only calls ──────────────────────────────────────────────────────────
+
+describe('Room — audio-only calls', () => {
+  it('starts one without asking for the camera, and tells the others it is off', async () => {
+    setPeers('peer-1')
+    await setup()
+    await userEvent.click(screen.getByText(/start audio call/i))
+    await waitFor(() => screen.getByTitle(/mute microphone/i))
+
+    expect(mockGetLocalStream).toHaveBeenCalledWith({ video: false })
+    expect(swarmMock.sendToPeer).toHaveBeenCalledWith('peer-1', { type: 'VIDEO_STATE', off: true })
+    expect(screen.getByTitle('No camera in this call')).toBeDisabled()
+    expect(screen.getByTitle(/mute microphone/i)).toBeEnabled()
+    expect(document.querySelector('.room-call-notice')).toBeNull() // choosing audio only needs no explaining
+  })
+
+  it('says so when there is no microphone either', async () => {
+    media.getMissingDevices.mockReturnValueOnce({ camera: false, microphone: true })
+    await setup()
+    await userEvent.click(screen.getByText(/start audio call/i))
+    await waitFor(() => screen.getByTitle('No microphone in this call'))
+    expect(screen.getByText(/you can only listen/i)).toBeInTheDocument()
+  })
+
+  it('is joined from the incoming call, keeping the video call as the usual choice', async () => {
+    setPeers('p1')
+    await setup()
+    await fire('call-init', { peerId: 'p1' })
+    await userEvent.click(screen.getByRole('button', { name: /^🎧 audio only$/i }))
+    await waitFor(() => screen.getByTitle('No camera in this call'))
+    expect(mockGetLocalStream).toHaveBeenCalledWith({ video: false })
+  })
+
+  it('is joined from the call in progress in the sidebar', async () => {
+    setPeers('p1')
+    await setup()
+    await fire('call-init', { peerId: 'p1' })
+    await userEvent.click(screen.getByRole('button', { name: /decline/i }))
+    await userEvent.click(screen.getByRole('button', { name: /join with audio only/i }))
+    await waitFor(() => screen.getByTitle('No camera in this call'))
+    expect(mockGetLocalStream).toHaveBeenCalledWith({ video: false })
+  })
+
+  it('asks for the camera again in the next video call', async () => {
+    await setup()
+    await userEvent.click(screen.getByText(/start audio call/i))
+    await waitFor(() => screen.getByTitle(/mute microphone/i))
+    await userEvent.click(screen.getByTitle(/leave video call/i))
+    await userEvent.click(screen.getByText(/start video call/i))
+    await waitFor(() => screen.getByTitle(/turn off camera/i))
+    expect(mockGetLocalStream).toHaveBeenCalledWith({ video: true })
+  })
+})
+
 // ── Peers and incoming calls ──────────────────────────────────────────────────
 
 describe('Room — peers', () => {
@@ -1295,14 +1349,31 @@ describe('Room — call controls on a phone', () => {
     expect(media.setVideoMuted).toHaveBeenLastCalledWith(false)
   })
 
+  it('starts and joins an audio-only call from the top bar', async () => {
+    setPeers('p1')
+    await setup()
+    const header = () => within(document.querySelector('.room-mobile-header'))
+    await userEvent.click(header().getByRole('button', { name: /start audio call/i }))
+    await waitFor(() => document.querySelector('.room-mobile-callbar'))
+    expect(mockGetLocalStream).toHaveBeenCalledWith({ video: false })
+    await userEvent.click(header().getByRole('button', { name: /✕ end/i }))
+
+    mockGetLocalStream.mockClear()
+    await fire('call-init', { peerId: 'p1' })
+    await userEvent.click(screen.getByRole('button', { name: /decline/i }))
+    await userEvent.click(header().getByRole('button', { name: /join with audio only/i }))
+    await waitFor(() => document.querySelector('.room-mobile-callbar'))
+    expect(mockGetLocalStream).toHaveBeenCalledWith({ video: false })
+  })
+
   it('disables the buttons of a camera and a microphone the device does not have', async () => {
     media.getMissingDevices.mockReturnValueOnce({ camera: true, microphone: true })
     await setup()
     await userEvent.click(screen.getByText(/start video call/i))
     await waitFor(() => document.querySelector('.room-mobile-callbar'))
     const bar = document.querySelector('.room-mobile-callbar')
-    expect(within(bar).getByRole('button', { name: 'No microphone found' })).toBeDisabled()
-    expect(within(bar).getByRole('button', { name: 'No camera found' })).toBeDisabled()
+    expect(within(bar).getByRole('button', { name: 'No microphone in this call' })).toBeDisabled()
+    expect(within(bar).getByRole('button', { name: 'No camera in this call' })).toBeDisabled()
   })
 
   it('is not there before the call', async () => {

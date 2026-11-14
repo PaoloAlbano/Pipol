@@ -20,6 +20,7 @@ const NEED_VIDEO_PLAYBACK = [
   '**/call-reconnect.test.js',
   '**/wake-lock.test.js',
   '**/no-devices.test.js',
+  '**/audio-call.test.js',
 ]
 // Pictures to compare with are only kept for Chromium on macOS
 const VISUAL = ['**/visual.test.js']

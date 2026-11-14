@@ -364,6 +364,12 @@
 .btn-call-start:hover {
   opacity: 0.85;
 }
+/* The audio-only call under the video call */
+.btn-call-start + .btn-call-start {
+  margin-top: 8px;
+  background: var(--surface-3);
+  color: var(--text);
+}
 
 /* ── Center: video (only during call) ───────────────────────── */
 .room-main {

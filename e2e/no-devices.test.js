@@ -51,8 +51,8 @@ test.describe('Call without camera and microphone', () => {
 
         // Bob is told why he cannot use them, and cannot turn them on
         await expect(bob.getByRole('status').filter({ hasText: /watch and listen/i })).toBeVisible({ timeout: 20000 })
-        await expect(bob.getByTitle('No camera found').first()).toBeDisabled()
-        await expect(bob.getByTitle('No microphone found').first()).toBeDisabled()
+        await expect(bob.getByTitle('No camera in this call').first()).toBeDisabled()
+        await expect(bob.getByTitle('No microphone in this call').first()).toBeDisabled()
 
         // Alice shows an avatar for Bob
         await expect(alice.locator('.video-avatar')).toHaveCount(1, { timeout: 20000 })

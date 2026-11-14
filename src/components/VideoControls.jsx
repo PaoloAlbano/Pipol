@@ -31,7 +31,7 @@ export default function VideoControls({
         className={`control-btn ${audioMuted ? 'control-btn--active' : ''}`}
         onClick={onToggleAudio}
         disabled={audioUnavailable}
-        title={audioUnavailable ? 'No microphone found' : audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+        title={audioUnavailable ? 'No microphone in this call' : audioMuted ? 'Unmute microphone' : 'Mute microphone'}
       >
         {audioMuted ? '🔇' : '🎙️'}
         <span className="control-label">{audioMuted ? 'Unmute' : 'Mute'}</span>
@@ -41,7 +41,7 @@ export default function VideoControls({
         className={`control-btn ${videoMuted ? 'control-btn--active' : ''}`}
         onClick={onToggleVideo}
         disabled={videoUnavailable}
-        title={videoUnavailable ? 'No camera found' : videoMuted ? 'Turn on camera' : 'Turn off camera'}
+        title={videoUnavailable ? 'No camera in this call' : videoMuted ? 'Turn on camera' : 'Turn off camera'}
       >
         {videoMuted ? '📵' : '📷'}
         <span className="control-label">{videoMuted ? 'Cam on' : 'Cam off'}</span>

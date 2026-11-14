@@ -53,6 +53,11 @@ function copyStyleSheets(from, to) {
 /** How long a message typed before the message store is ready waits for it (ms). */
 const NO_MISSING_DEVICES = { camera: false, microphone: false }
 
+function noticeForCall({ camera, microphone }, audioOnly) {
+  if (!audioOnly) return missingDevicesNotice({ camera, microphone })
+  return microphone ? 'No microphone found (or it is in use): you can only listen.' : ''
+}
+
 function missingDevicesNotice({ camera, microphone }) {
   if (camera && microphone) return 'No camera or microphone found: you joined to watch and listen.'
   if (camera) return 'No camera found (or it is in use): you joined without video.'
@@ -1225,15 +1230,16 @@ export default function Room({
     [activeThread?.id, isDM, channelName, roomCode, onMessageSent]
   )
 
-  async function handleStartCall() {
+  /** `audioOnly`: the camera is not asked for, and stays off for the whole call. */
+  async function handleStartCall({ audioOnly = false } = {}) {
     try {
-      const stream = await getLocalStream()
+      const stream = await getLocalStream({ video: !audioOnly })
       setLocalStream(stream)
       // Without a camera or a microphone the call is joined all the same, with what there is
       const missing = getMissingDevices()
-      setMissingDevices(missing)
-      setCallNotice(missingDevicesNotice(missing))
-      if (missing.camera) {
+      setMissingDevices({ camera: audioOnly || missing.camera, microphone: missing.microphone })
+      setCallNotice(noticeForCall(missing, audioOnly))
+      if (audioOnly || missing.camera) {
         videoMutedRef.current = true // the others are told our camera is off when connections are made below
         setVideoMutedState(true)
       }
@@ -1293,9 +1299,9 @@ export default function Room({
     setIncomingCall(null)
   }
 
-  async function handleJoinCall() {
+  async function handleJoinCall({ audioOnly = false } = {}) {
     setIncomingCall(null)
-    await handleStartCall()
+    await handleStartCall({ audioOnly })
   }
 
   function handleToggleAudio() {
@@ -1395,6 +1401,9 @@ export default function Room({
               <button className="btn btn-primary" onClick={handleJoinCall}>
                 Join
               </button>
+              <button className="btn btn-secondary" onClick={() => handleJoinCall({ audioOnly: true })}>
+                🎧 Audio only
+              </button>
               <button className="btn btn-secondary" onClick={handleDeclineCall}>
                 Decline
               </button>
@@ -1418,14 +1427,32 @@ export default function Room({
           </div>
           <span className="room-mobile-peers">👥 {peers.length + 1}</span>
           {callInProgress && !callActive && (
-            <button className="btn-mobile-call btn-mobile-call--pulse" onClick={handleJoinCall}>
-              📹 {callPeerIds.size}
-            </button>
+            <>
+              <button className="btn-mobile-call btn-mobile-call--pulse" onClick={handleJoinCall}>
+                📹 {callPeerIds.size}
+              </button>
+              <button
+                className="btn-mobile-call"
+                onClick={() => handleJoinCall({ audioOnly: true })}
+                aria-label="Join with audio only"
+              >
+                🎧
+              </button>
+            </>
           )}
           {!callInProgress && !callActive && (
-            <button className="btn-mobile-call" onClick={handleStartCall}>
-              📹 Call
-            </button>
+            <>
+              <button className="btn-mobile-call" onClick={handleStartCall}>
+                📹 Call
+              </button>
+              <button
+                className="btn-mobile-call"
+                onClick={() => handleStartCall({ audioOnly: true })}
+                aria-label="Start audio call"
+              >
+                🎧
+              </button>
+            </>
           )}
           {callActive && hasMultipleCameras && (
             <button className="btn-mobile-call" onClick={handleSwitchCamera} title="Switch camera">
@@ -1496,6 +1523,14 @@ export default function Room({
               <button className="call-in-progress-join" onClick={handleJoinCall}>
                 Join
               </button>
+              <button
+                className="call-in-progress-join"
+                onClick={() => handleJoinCall({ audioOnly: true })}
+                title="Join with audio only"
+                aria-label="Join with audio only"
+              >
+                🎧
+              </button>
             </div>
           )}
 
@@ -1517,9 +1552,14 @@ export default function Room({
           {/* Call controls */}
           <div className="room-sidebar-footer">
             {!callActive ? (
-              <button className="btn btn-call-start" onClick={handleStartCall}>
-                📹 Start Video Call
-              </button>
+              <>
+                <button className="btn btn-call-start" onClick={handleStartCall}>
+                  📹 Start Video Call
+                </button>
+                <button className="btn btn-call-start" onClick={() => handleStartCall({ audioOnly: true })}>
+                  🎧 Start Audio Call
+                </button>
+              </>
             ) : (
               <VideoControls
                 audioMuted={audioMuted}
@@ -1574,7 +1614,11 @@ export default function Room({
             disabled={missingDevices.microphone}
             aria-pressed={audioMuted}
             aria-label={
-              missingDevices.microphone ? 'No microphone found' : audioMuted ? 'Unmute microphone' : 'Mute microphone'
+              missingDevices.microphone
+                ? 'No microphone in this call'
+                : audioMuted
+                  ? 'Unmute microphone'
+                  : 'Mute microphone'
             }
           >
             {audioMuted ? '🔇' : '🎙️'}
@@ -1585,7 +1629,9 @@ export default function Room({
             onClick={handleToggleVideo}
             disabled={missingDevices.camera}
             aria-pressed={videoMuted}
-            aria-label={missingDevices.camera ? 'No camera found' : videoMuted ? 'Turn on camera' : 'Turn off camera'}
+            aria-label={
+              missingDevices.camera ? 'No camera in this call' : videoMuted ? 'Turn on camera' : 'Turn off camera'
+            }
           >
             {videoMuted ? '📵' : '📷'}
             <span>{videoMuted ? 'Cam on' : 'Cam off'}</span>
