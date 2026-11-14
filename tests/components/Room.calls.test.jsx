@@ -1295,6 +1295,16 @@ describe('Room — call controls on a phone', () => {
     expect(media.setVideoMuted).toHaveBeenLastCalledWith(false)
   })
 
+  it('disables the buttons of a camera and a microphone the device does not have', async () => {
+    media.getMissingDevices.mockReturnValueOnce({ camera: true, microphone: true })
+    await setup()
+    await userEvent.click(screen.getByText(/start video call/i))
+    await waitFor(() => document.querySelector('.room-mobile-callbar'))
+    const bar = document.querySelector('.room-mobile-callbar')
+    expect(within(bar).getByRole('button', { name: 'No microphone found' })).toBeDisabled()
+    expect(within(bar).getByRole('button', { name: 'No camera found' })).toBeDisabled()
+  })
+
   it('is not there before the call', async () => {
     await setup()
     expect(document.querySelector('.room-mobile-callbar')).toBeNull()

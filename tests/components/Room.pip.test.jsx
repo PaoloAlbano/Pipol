@@ -9,6 +9,7 @@
 import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Room from '../../src/components/Room.jsx'
+import * as media from '../../src/webrtc/media.js'
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -368,6 +369,28 @@ describe('Room PiP — the whole call is in the window', () => {
 
     await waitFor(() => expect(pipWin.document.querySelectorAll('.video-tile').length).toBeGreaterThan(0))
     expect(pipWin.document.body.textContent).toContain('tester (you)')
+  })
+
+  it('has the camera and microphone buttons of the window enabled when the device has them', async () => {
+    const { user } = await renderWithActiveCall()
+    injectVideoElement()
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+
+    await waitFor(() => expect(pipWin.document.querySelectorAll('button').length).toBe(3))
+    expect([...pipWin.document.querySelectorAll('button')].some((b) => b.disabled)).toBe(false)
+  })
+
+  it('disables the buttons of what the device does not have', async () => {
+    media.getMissingDevices.mockReturnValueOnce({ camera: true, microphone: false })
+    const { user } = await renderWithActiveCall()
+    injectVideoElement()
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+
+    await waitFor(() => expect(pipWin.document.querySelectorAll('button').length).toBe(3))
+    const [mic, camera, end] = pipWin.document.querySelectorAll('button')
+    expect(mic).toBeEnabled()
+    expect(camera).toBeDisabled()
+    expect(end).toBeEnabled()
   })
 
   it('keeps the pictures of the window silent: the sound comes from the page', async () => {

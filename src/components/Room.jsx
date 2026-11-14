@@ -765,6 +765,16 @@ export default function Room({
       const vBtn = makeBtn(videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
       vBtn.addEventListener('click', () => pipHandlersRef.current.video())
 
+      // What this device does not have cannot be turned on from here either
+      for (const [btn, unavailable] of [
+        [aBtn, missingDevices.microphone],
+        [vBtn, missingDevices.camera],
+      ]) {
+        btn.disabled = unavailable
+        btn.style.opacity = unavailable ? '0.4' : ''
+        btn.style.cursor = unavailable ? 'not-allowed' : 'pointer'
+      }
+
       const endBtn = makeBtn('✕', 'End call', false)
       endBtn.style.background = '#7f1d1d'
       endBtn.style.borderColor = '#991b1b'
@@ -1289,14 +1299,12 @@ export default function Room({
   }
 
   function handleToggleAudio() {
-    if (missingDevices.microphone) return
     const next = !audioMuted
     setAudioMuted(next)
     setAudioMutedState(next)
   }
 
   function handleToggleVideo() {
-    if (missingDevices.camera) return
     const next = !videoMuted
     setVideoMuted(next)
     setVideoMutedState(next)
