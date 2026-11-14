@@ -11,6 +11,7 @@ import { reconnectDelay } from '../webrtc/reconnect.js'
 import { useWakeLock } from '../webrtc/useWakeLock.js'
 import {
   getLocalStream,
+  getMissingDevices,
   stopLocalStream,
   setAudioMuted,
   setVideoMuted,
@@ -50,6 +51,15 @@ function copyStyleSheets(from, to) {
 }
 
 /** How long a message typed before the message store is ready waits for it (ms). */
+const NO_MISSING_DEVICES = { camera: false, microphone: false }
+
+function missingDevicesNotice({ camera, microphone }) {
+  if (camera && microphone) return 'No camera or microphone found: you joined to watch and listen.'
+  if (camera) return 'No camera found (or it is in use): you joined without video.'
+  if (microphone) return 'No microphone found (or it is in use): you joined without audio.'
+  return ''
+}
+
 const STORE_WAIT_MS = 10_000
 
 function deferred() {
@@ -162,6 +172,8 @@ export default function Room({
   const [audioMuted, setAudioMutedState] = useState(false)
   const [videoMuted, setVideoMutedState] = useState(false)
   const videoMutedRef = useRef(false) // read by ensureRTCPeer, which may run from a stale closure
+  const [missingDevices, setMissingDevices] = useState(NO_MISSING_DEVICES) // what this device could not give
+  const [callNotice, setCallNotice] = useState('')
   const [remoteVideoOff, setRemoteVideoOff] = useState({}) // peerId → true while their camera is off
   const [peerStatus, setPeerStatus] = useState({}) // peerId → 'connecting' | 'connected' | 'poor' | 'reconnecting'
   const callPeerIdsRef = useRef(new Set()) // the same as callPeerIds, for code that outlives a render
@@ -753,6 +765,16 @@ export default function Room({
       const vBtn = makeBtn(videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
       vBtn.addEventListener('click', () => pipHandlersRef.current.video())
 
+      // What this device does not have cannot be turned on from here either
+      for (const [btn, unavailable] of [
+        [aBtn, missingDevices.microphone],
+        [vBtn, missingDevices.camera],
+      ]) {
+        btn.disabled = unavailable
+        btn.style.opacity = unavailable ? '0.4' : ''
+        btn.style.cursor = unavailable ? 'not-allowed' : 'pointer'
+      }
+
       const endBtn = makeBtn('✕', 'End call', false)
       endBtn.style.background = '#7f1d1d'
       endBtn.style.borderColor = '#991b1b'
@@ -1207,6 +1229,15 @@ export default function Room({
     try {
       const stream = await getLocalStream()
       setLocalStream(stream)
+      // Without a camera or a microphone the call is joined all the same, with what there is
+      const missing = getMissingDevices()
+      setMissingDevices(missing)
+      setCallNotice(missingDevicesNotice(missing))
+      if (missing.camera) {
+        videoMutedRef.current = true // the others are told our camera is off when connections are made below
+        setVideoMutedState(true)
+      }
+      if (missing.microphone) setAudioMutedState(true)
       // Start from fresh TURN credentials (a tab can stay open for days)
       await swarmRef.current?.refreshIceConfig?.().catch(() => {})
       // Set the ref now: signalling that arrives before the next render must not be dropped
@@ -1251,6 +1282,8 @@ export default function Room({
     setAudioMutedState(false)
     setVideoMutedState(false)
     videoMutedRef.current = false
+    setMissingDevices(NO_MISSING_DEVICES)
+    setCallNotice('')
     setScreenSharing(false)
     setLayout('grid')
     setSpotlightPeerId(null)
@@ -1344,6 +1377,14 @@ export default function Room({
   return (
     <div className={`room-layout ${callActive ? 'room-layout--call' : ''}`}>
       {relayUnreachable && <div className="room-relay-banner">Cannot reach relay server — retrying…</div>}
+      {callActive && callNotice && (
+        <div className="room-call-notice" role="status">
+          <span>{callNotice}</span>
+          <button onClick={() => setCallNotice('')} aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
       {/* ── Incoming call modal ── */}
       {incomingCall && !callActive && (
         <div className="call-modal-overlay">
@@ -1483,6 +1524,8 @@ export default function Room({
               <VideoControls
                 audioMuted={audioMuted}
                 videoMuted={videoMuted}
+                audioUnavailable={missingDevices.microphone}
+                videoUnavailable={missingDevices.camera}
                 screenSharing={screenSharing}
                 pipActive={pipActive}
                 onToggleAudio={handleToggleAudio}
@@ -1528,8 +1571,11 @@ export default function Room({
           <button
             className={`btn-mobile-control${audioMuted ? ' btn-mobile-control--active' : ''}`}
             onClick={handleToggleAudio}
+            disabled={missingDevices.microphone}
             aria-pressed={audioMuted}
-            aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+            aria-label={
+              missingDevices.microphone ? 'No microphone found' : audioMuted ? 'Unmute microphone' : 'Mute microphone'
+            }
           >
             {audioMuted ? '🔇' : '🎙️'}
             <span>{audioMuted ? 'Unmute' : 'Mute'}</span>
@@ -1537,8 +1583,9 @@ export default function Room({
           <button
             className={`btn-mobile-control${videoMuted ? ' btn-mobile-control--active' : ''}`}
             onClick={handleToggleVideo}
+            disabled={missingDevices.camera}
             aria-pressed={videoMuted}
-            aria-label={videoMuted ? 'Turn on camera' : 'Turn off camera'}
+            aria-label={missingDevices.camera ? 'No camera found' : videoMuted ? 'Turn on camera' : 'Turn off camera'}
           >
             {videoMuted ? '📵' : '📷'}
             <span>{videoMuted ? 'Cam on' : 'Cam off'}</span>
@@ -1633,6 +1680,8 @@ export default function Room({
           <VideoControls
             audioMuted={audioMuted}
             videoMuted={videoMuted}
+            audioUnavailable={missingDevices.microphone}
+            videoUnavailable={missingDevices.camera}
             screenSharing={screenSharing}
             pipActive={pipActive}
             onToggleAudio={handleToggleAudio}

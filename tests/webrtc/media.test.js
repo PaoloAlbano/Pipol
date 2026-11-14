@@ -76,6 +76,94 @@ describe('getLocalStream', () => {
   })
 })
 
+// ── Missing devices ────────────────────────────────────────────────────────────
+
+describe('getLocalStream — a camera or a microphone that is not there', () => {
+  const failure = (name) => Object.assign(new Error(name), { name })
+  /** getUserMedia that answers by what is asked: { audio, video } → stream, or an error. */
+  function devices({ camera = true, microphone = true, combined = true } = {}) {
+    const mic = makeFakeTrack('audio')
+    const cam = makeFakeTrack('video')
+    navigator.mediaDevices.getUserMedia = vi.fn(async ({ audio, video }) => {
+      if (audio && video && !combined) throw failure('NotFoundError')
+      if (video && !camera) throw failure('NotFoundError')
+      if (audio && !microphone) throw failure('NotFoundError')
+      return makeFakeStream([...(video ? [cam] : []), ...(audio ? [mic] : [])])
+    })
+    return { mic, cam }
+  }
+
+  it('gives the camera and the microphone with one request when both are there', async () => {
+    devices()
+    const stream = await media.getLocalStream()
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledOnce()
+    expect(stream.getTracks()).toHaveLength(2)
+    expect(media.getMissingDevices()).toEqual({ camera: false, microphone: false })
+  })
+
+  it('keeps the microphone when there is no camera', async () => {
+    const { mic } = devices({ camera: false })
+    const stream = await media.getLocalStream()
+    expect(stream.getTracks()).toEqual([mic])
+    expect(media.getMissingDevices()).toEqual({ camera: true, microphone: false })
+  })
+
+  it('keeps the camera when there is no microphone', async () => {
+    const { cam } = devices({ microphone: false })
+    const stream = await media.getLocalStream()
+    expect(stream.getTracks()).toEqual([cam])
+    expect(media.getMissingDevices()).toEqual({ camera: false, microphone: true })
+  })
+
+  it('gives an empty stream when there is neither, so the call can still be watched', async () => {
+    devices({ camera: false, microphone: false })
+    const stream = await media.getLocalStream()
+    expect(stream.getTracks()).toHaveLength(0)
+    expect(media.getMissingDevices()).toEqual({ camera: true, microphone: true })
+    expect(media.getActiveLocalStream()).toBe(stream)
+  })
+
+  it('treats a device that is busy like one that is missing', async () => {
+    navigator.mediaDevices.getUserMedia = vi.fn(async ({ video }) => {
+      if (video) throw failure('NotReadableError')
+      return makeFakeStream([makeFakeTrack('audio')])
+    })
+    const stream = await media.getLocalStream()
+    expect(stream.getTracks()).toHaveLength(1)
+    expect(media.getMissingDevices().camera).toBe(true)
+  })
+
+  it('does not hide a refused permission', async () => {
+    navigator.mediaDevices.getUserMedia = vi.fn().mockRejectedValue(failure('NotAllowedError'))
+    await expect(media.getLocalStream()).rejects.toMatchObject({ name: 'NotAllowedError' })
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledOnce()
+  })
+
+  it('stops what it had opened when the other device is refused', async () => {
+    const cam = makeFakeTrack('video')
+    navigator.mediaDevices.getUserMedia = vi.fn(async ({ audio, video }) => {
+      if (audio && video) throw failure('NotFoundError')
+      if (video) return makeFakeStream([cam])
+      throw failure('NotAllowedError')
+    })
+    await expect(media.getLocalStream()).rejects.toMatchObject({ name: 'NotAllowedError' })
+    expect(cam.stop).toHaveBeenCalled()
+  })
+
+  it('is not asked to restart an empty stream when the page comes back to the foreground', async () => {
+    devices({ camera: false, microphone: false })
+    await media.getLocalStream()
+    expect(media.resumeVideoTracks()).toBe(true)
+  })
+
+  it('forgets what was missing when the stream is stopped', async () => {
+    devices({ camera: false })
+    await media.getLocalStream()
+    media.stopLocalStream()
+    expect(media.getMissingDevices()).toEqual({ camera: false, microphone: false })
+  })
+})
+
 // ── setAudioMuted ──────────────────────────────────────────────────────────────
 
 describe('setAudioMuted', () => {

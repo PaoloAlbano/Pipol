@@ -9,12 +9,14 @@
 import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Room from '../../src/components/Room.jsx'
+import * as media from '../../src/webrtc/media.js'
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
 vi.mock('../../src/p2p/swarm.js', () => ({
   createRoomSwarm: vi.fn().mockResolvedValue({
     addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     sendToAll: vi.fn(),
     sendToPeer: vi.fn(),
     getPeers: vi.fn().mockReturnValue([]),
@@ -24,15 +26,17 @@ vi.mock('../../src/p2p/swarm.js', () => ({
 }))
 
 vi.mock('../../src/p2p/autobase.js', () => ({
-  MessageStore: vi.fn().mockImplementation(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-    getHistory: vi.fn().mockResolvedValue([]),
-    getLastTimestamp: vi.fn().mockResolvedValue(0),
-    getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
-    addMessage: vi.fn().mockResolvedValue(null),
-    close: vi.fn().mockResolvedValue(undefined),
-  })),
+  MessageStore: vi.fn().mockImplementation(function () {
+    return {
+      init: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      getHistory: vi.fn().mockResolvedValue([]),
+      getLastTimestamp: vi.fn().mockResolvedValue(0),
+      getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
+      addMessage: vi.fn().mockResolvedValue(null),
+      close: vi.fn().mockResolvedValue(undefined),
+    }
+  }),
 }))
 
 vi.mock('../../src/webrtc/peer.js', () => ({ WebRTCPeer: vi.fn() }))
@@ -40,6 +44,7 @@ vi.mock('../../src/webrtc/peer.js', () => ({ WebRTCPeer: vi.fn() }))
 const mockGetLocalStream = vi.fn()
 vi.mock('../../src/webrtc/media.js', () => ({
   getLocalStream: (...args) => mockGetLocalStream(...args),
+  getMissingDevices: vi.fn(() => ({ camera: false, microphone: false })),
   stopLocalStream: vi.fn(),
   setAudioMuted: vi.fn(),
   setVideoMuted: vi.fn(),
@@ -364,6 +369,28 @@ describe('Room PiP — the whole call is in the window', () => {
 
     await waitFor(() => expect(pipWin.document.querySelectorAll('.video-tile').length).toBeGreaterThan(0))
     expect(pipWin.document.body.textContent).toContain('tester (you)')
+  })
+
+  it('has the camera and microphone buttons of the window enabled when the device has them', async () => {
+    const { user } = await renderWithActiveCall()
+    injectVideoElement()
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+
+    await waitFor(() => expect(pipWin.document.querySelectorAll('button').length).toBe(3))
+    expect([...pipWin.document.querySelectorAll('button')].some((b) => b.disabled)).toBe(false)
+  })
+
+  it('disables the buttons of what the device does not have', async () => {
+    media.getMissingDevices.mockReturnValueOnce({ camera: true, microphone: false })
+    const { user } = await renderWithActiveCall()
+    injectVideoElement()
+    await user.click(screen.getByTitle(/open picture-in-picture/i))
+
+    await waitFor(() => expect(pipWin.document.querySelectorAll('button').length).toBe(3))
+    const [mic, camera, end] = pipWin.document.querySelectorAll('button')
+    expect(mic).toBeEnabled()
+    expect(camera).toBeDisabled()
+    expect(end).toBeEnabled()
   })
 
   it('keeps the pictures of the window silent: the sound comes from the page', async () => {
