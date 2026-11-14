@@ -143,6 +143,13 @@ setInterval(() => {
   }
 }, HEARTBEAT_MS).unref()
 
+// A connection that drops without saying goodbye (a phone changing network, a tunnel) is given time to come back
+// with the same peerId before the others are told it left: a call between them can carry on meanwhile. A client
+// that leaves on purpose sends `leave` and is dropped at once. 0 turns the wait off.
+const graceEnv = process.env.PEER_LEFT_GRACE_MS
+const graceMs = graceEnv === undefined || graceEnv === '' ? NaN : Number(graceEnv)
+const PEER_LEFT_GRACE_MS = Number.isFinite(graceMs) ? graceMs : 10_000
+
 // A client that cannot keep up (its send buffer keeps growing) is cut off instead of using the relay's memory;
 // it reconnects and catches up through the history sync.
 const MAX_CLIENT_BUFFER = (Number(process.env.MAX_CLIENT_BUFFER_MB) || 32) * 1024 * 1024
@@ -205,6 +212,11 @@ wssSignal.on('connection', (ws) => {
       return
     }
 
+    if (msg.type === 'leave') {
+      ws.leftOnPurpose = true
+      return
+    }
+
     // Forward signaling messages (offer/answer/ice) to the target peer
     if (msg.type === 'signal' && msg.to && roomCode) {
       const room = rooms.get(roomCode)
@@ -234,12 +246,10 @@ wssSignal.on('connection', (ws) => {
     }
   })
 
-  ws.on('close', () => {
-    if (!peerId || !roomCode) return
+  // Takes the peer out of the room and tells the rest, unless it came back on a newer connection meanwhile
+  function dropPeer() {
     const room = rooms.get(roomCode)
-    if (!room) return
-    // The peer may have reconnected before this old connection was found dead: the newer one is theirs now
-    if (room.get(peerId) !== ws) return
+    if (!room || room.get(peerId) !== ws) return
     room.delete(peerId)
     if (room.size === 0) rooms.delete(roomCode)
     for (const [, peerWs] of room) {
@@ -248,6 +258,18 @@ wssSignal.on('connection', (ws) => {
       }
     }
     if (!hideSensitive) console.log(`[signal] ${peerId.slice(0, 8)}… left room "${roomCode}"  (room size: ${room.size})`)
+  }
+
+  ws.on('close', () => {
+    if (!peerId || !roomCode) return
+    if (rooms.get(roomCode)?.get(peerId) !== ws) return
+    if (ws.leftOnPurpose || PEER_LEFT_GRACE_MS <= 0) {
+      dropPeer()
+      return
+    }
+    // The peer stays in the room meanwhile; if it joins again, its new connection replaces this one and the timer
+    // finds nothing to do
+    setTimeout(dropPeer, PEER_LEFT_GRACE_MS).unref()
   })
 })
 

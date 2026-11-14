@@ -840,6 +840,8 @@ export class RoomSwarm extends EventTarget {
     this._leaving = true
     this._outbox = []
     clearTimeout(this._wsReconnectTimer)
+    // Said before closing: the relay gives a connection that just drops time to come back before telling the room
+    if (this._ws?.readyState === WebSocket.OPEN) this._ws.send(JSON.stringify({ type: 'leave' }))
     this._ws?.close()
     for (const peer of this.peers.values()) {
       peer.dc?.close()

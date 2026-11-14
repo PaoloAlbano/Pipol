@@ -26,6 +26,7 @@ let relay
 
 before(async () => {
   relay = await startRelay({
+    PEER_LEFT_GRACE_MS: '0',
     HEARTBEAT_INTERVAL_MS: '200',
     MAX_CLIENT_BUFFER_MB: '1',
     RELAY_STATS_INTERVAL_SEC: '1',
