@@ -48,6 +48,7 @@ vi.mock('../../src/webrtc/peer.js', () => ({ WebRTCPeer: vi.fn() }))
 const mockGetLocalStream = vi.fn()
 vi.mock('../../src/webrtc/media.js', () => ({
   getLocalStream: (...args) => mockGetLocalStream(...args),
+  getMissingDevices: vi.fn(() => ({ camera: false, microphone: false })),
   stopLocalStream: vi.fn(),
   setAudioMuted: vi.fn(),
   setVideoMuted: vi.fn(),

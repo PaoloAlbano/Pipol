@@ -88,10 +88,59 @@ let _localStream = null
 let _currentFacingMode = 'user'
 let _screenTrack = null
 let _screenStream = null
+let _missing = { camera: false, microphone: false }
+
+/** A device that is not there, or that cannot be opened now (in use by another app, switched off). */
+const isUnavailable = (err) =>
+  ['NotFoundError', 'DevicesNotFoundError', 'NotReadableError', 'TrackStartError'].includes(err?.name)
+
+/**
+ * What the last stream could not get: a device that is not there (or is busy) does not stop the call, the
+ * person joins with the rest.
+ * @returns {{ camera: boolean, microphone: boolean }}
+ */
+export function getMissingDevices() {
+  return { ..._missing }
+}
+
+/**
+ * Camera and microphone one at a time, for when asking for both failed because one of them is missing.
+ * Whatever can be opened is kept; with nothing at all the stream is empty (the call can still be watched).
+ * Any other error (permission denied...) is not about a missing device and is thrown.
+ */
+async function openWhatIsThere({ video, audio }, quality, audioConstraints) {
+  const tracks = []
+  const errors = []
+  const attempt = async (kind, open) => {
+    try {
+      tracks.push(...(await open()).getTracks())
+    } catch (err) {
+      errors.push(err)
+      _missing[kind] = true
+    }
+  }
+  if (video) {
+    await attempt('camera', () =>
+      firstAccepted(cameraConstraints(quality), (constraints) =>
+        navigator.mediaDevices.getUserMedia({ audio: false, video: { ...constraints, facingMode: 'user' } })
+      )
+    )
+  }
+  if (audio) {
+    await attempt('microphone', () => navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false }))
+  }
+  const other = errors.find((err) => !isUnavailable(err))
+  if (other) {
+    tracks.forEach((track) => track.stop())
+    throw other
+  }
+  return new MediaStream(tracks)
+}
 
 /**
  * Request camera and/or microphone access.
  * Returns the existing stream if already acquired.
+ * If the camera or the microphone is missing the stream has what is left, down to nothing (see getMissingDevices).
  * @param {{ video?: boolean, audio?: boolean }} constraints
  * @returns {Promise<MediaStream>}
  */
@@ -99,12 +148,22 @@ export async function getLocalStream({ video = true, audio = true } = {}) {
   if (_localStream) return _localStream
   const quality = getVideoQuality()
   _currentFacingMode = 'user'
+  _missing = { camera: false, microphone: false }
   const audioConstraints = audio ? { echoCancellation: true, noiseSuppression: true } : false
-  const stream = video
-    ? await firstAccepted(cameraConstraints(quality), (constraints) =>
-        navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: { ...constraints, facingMode: 'user' } })
-      )
-    : await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false })
+  let stream
+  try {
+    stream = video
+      ? await firstAccepted(cameraConstraints(quality), (constraints) =>
+          navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+            video: { ...constraints, facingMode: 'user' },
+          })
+        )
+      : await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false })
+  } catch (err) {
+    if (!isUnavailable(err)) throw err
+    stream = await openWhatIsThere({ video, audio }, quality, audioConstraints)
+  }
   stream.getVideoTracks().forEach((track) => setContentHint(track, quality))
   _localStream = stream
   return _localStream
@@ -213,6 +272,8 @@ export function pauseVideoTracks() {
 /** Resume video tracks. Returns true if tracks are alive, false if they need restart. */
 export function resumeVideoTracks() {
   if (!_localStream) return false
+  // A call joined without camera or microphone has nothing that the system could take away
+  if (_localStream.getTracks().length === 0) return true
   const videoTracks = _localStream.getVideoTracks()
   // If there are no video tracks (video muted) we use the audio tracks to
   // determine whether the stream is still alive.
@@ -240,6 +301,7 @@ export function stopLocalStream() {
     _localStream.getTracks().forEach((track) => track.stop())
     _localStream = null
   }
+  _missing = { camera: false, microphone: false }
 }
 
 /**

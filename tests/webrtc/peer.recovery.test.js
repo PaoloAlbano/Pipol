@@ -67,6 +67,7 @@ class FakePC {
     return sender
   }
   removeTrack() {}
+  addTransceiver() {}
   async createOffer(options) {
     this.offerOptions.push(options)
     return { type: 'offer', sdp: 'offer' }

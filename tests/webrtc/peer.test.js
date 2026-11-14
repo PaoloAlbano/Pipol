@@ -14,7 +14,11 @@ class FakePC {
     this.remoteDescription = null
     this.localDescription = null
     this.senders = []
+    this.added = [] // transceivers added without a track
     pcs.push(this)
+  }
+  addTransceiver(kind, init) {
+    this.added.push({ kind, ...init })
   }
   getTransceivers() {
     return this.senders.map((sender) => ({ mid: sender.mid ?? null, sender }))
@@ -83,6 +87,28 @@ async function connectedInitiator(screen = null) {
   await peer.handleAnswer({ type: 'answer', sdp: 'a' })
   return { peer, offers, pc: pcs[0] }
 }
+
+describe('WebRTCPeer — without a camera or a microphone', () => {
+  it('as the one who offers, leaves a place to receive what it cannot send', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio')), null)
+    await peer.init()
+    expect(pcs[0].senders).toHaveLength(1)
+    expect(pcs[0].added).toEqual([{ kind: 'video', direction: 'recvonly' }])
+  })
+
+  it('with nothing to send, receives both', async () => {
+    const peer = new WebRTCPeer('p', true, stream(), null)
+    await peer.init()
+    expect(pcs[0].added.map((t) => t.kind)).toEqual(['audio', 'video'])
+  })
+
+  it('adds nothing when it sends both, or when it answers (the offer brings the places)', async () => {
+    await new WebRTCPeer('p', true, stream(track('audio'), track('video')), null).init()
+    await new WebRTCPeer('q', false, stream(), null).init()
+    expect(pcs[0].added).toEqual([])
+    expect(pcs[1].added).toEqual([])
+  })
+})
 
 describe('WebRTCPeer — screen share', () => {
   it('sends the screen stream in the initial offer when already sharing', async () => {

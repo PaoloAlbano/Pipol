@@ -19,6 +19,7 @@ const NEED_VIDEO_PLAYBACK = [
   '**/ice-restart.test.js',
   '**/call-reconnect.test.js',
   '**/wake-lock.test.js',
+  '**/no-devices.test.js',
 ]
 // Pictures to compare with are only kept for Chromium on macOS
 const VISUAL = ['**/visual.test.js']
