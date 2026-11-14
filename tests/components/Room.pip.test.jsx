@@ -24,15 +24,17 @@ vi.mock('../../src/p2p/swarm.js', () => ({
 }))
 
 vi.mock('../../src/p2p/autobase.js', () => ({
-  MessageStore: vi.fn().mockImplementation(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-    getHistory: vi.fn().mockResolvedValue([]),
-    getLastTimestamp: vi.fn().mockResolvedValue(0),
-    getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
-    addMessage: vi.fn().mockResolvedValue(null),
-    close: vi.fn().mockResolvedValue(undefined),
-  })),
+  MessageStore: vi.fn().mockImplementation(function () {
+    return {
+      init: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      getHistory: vi.fn().mockResolvedValue([]),
+      getLastTimestamp: vi.fn().mockResolvedValue(0),
+      getLocalCoreKey: vi.fn().mockReturnValue('fake-key'),
+      addMessage: vi.fn().mockResolvedValue(null),
+      close: vi.fn().mockResolvedValue(undefined),
+    }
+  }),
 }))
 
 vi.mock('../../src/webrtc/peer.js', () => ({ WebRTCPeer: vi.fn() }))
