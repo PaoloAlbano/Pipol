@@ -1,0 +1,35 @@
+/* The version of the app, in a corner of the screen: small, but readable */
+.version-label {
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: text;
+}
+.version-label:hover,
+.version-label:focus-visible {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+/* At the end of a card, centered (login) */
+.version-label--inline {
+  display: block;
+  margin: 14px auto 0;
+}
+
+/* At the bottom of the settings, on the right */
+.version-label--settings {
+  display: block;
+  margin: 6px 16px 0 auto;
+}
+
+/* Under the card of the home page */
+.version-label--home {
+  display: block;
+  margin: 10px auto 0;
+}

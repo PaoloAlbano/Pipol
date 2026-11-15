@@ -10,6 +10,7 @@ import { hasBiometricUnlock, isBiometricUnlockAvailable, unlockWithBiometrics } 
 import { fetchProviders, startOIDCFlow } from '../p2p/oidc.js'
 import EmojiPicker from './EmojiPicker.jsx'
 import '../styles/login.css'
+import VersionLabel from './VersionLabel.jsx'
 
 const AUTH_URL = import.meta.env.VITE_AUTH_URL || ''
 
@@ -190,6 +191,7 @@ export default function LoginScreen({ onLogin, preferGuest = false }) {
               Use passphrase instead
             </button>
           </p>
+          <VersionLabel className="version-label--inline" />
         </div>
       </div>
     )
@@ -230,6 +232,7 @@ export default function LoginScreen({ onLogin, preferGuest = false }) {
               Create a permanent identity instead
             </button>
           </p>
+          <VersionLabel className="version-label--inline" />
         </div>
       </div>
     )
@@ -543,6 +546,7 @@ export default function LoginScreen({ onLogin, preferGuest = false }) {
             Create new identity
           </button>
         )}
+        <VersionLabel className="version-label--inline" />
       </div>
     </div>
   )
