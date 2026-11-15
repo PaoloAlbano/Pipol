@@ -167,6 +167,9 @@ make e2e-browsers  # the same tests in WebKit (Safari's engine) and Firefox; fir
 make lint          # ESLint
 make format        # Prettier
 ```
+
+Releases and versions (one version for the app, the relay and the auth server, made by itself from the commit messages; release notes and Docker images): [Releases](docs/releasing.md).
+
 ## Known limitations
 
 | Area | Limitation | Potential improvement |

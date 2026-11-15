@@ -19,6 +19,11 @@
 
 FROM node:24-slim
 
+# The version and the commit this image was built for, shown in Settings; set by the release
+ARG GIT_COMMIT=
+ARG APP_VERSION=
+ENV GIT_COMMIT=$GIT_COMMIT APP_VERSION=$APP_VERSION
+
 # nginx serves the built app; corepack provides pnpm for the install below
 RUN apt-get update \
  && apt-get install -y --no-install-recommends nginx \

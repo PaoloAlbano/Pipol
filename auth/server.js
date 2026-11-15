@@ -9,6 +9,7 @@
 import http from 'http'
 import { derive, DeriveError, getPublicProviders } from './src/derive.js'
 import { html } from './src/landing.js'
+import { getVersionInfo, describeVersion } from './src/version.js'
 
 const PORT = process.env.PORT ?? 8080
 
@@ -82,6 +83,11 @@ async function handleRequest(req, res) {
     return
   }
 
+  if (url.pathname === '/version' && req.method === 'GET') {
+    sendJson(res, 200, getVersionInfo(), origin)
+    return
+  }
+
   if (url.pathname === '/providers' && req.method === 'GET') {
     sendJson(res, 200, getPublicProviders(process.env), origin)
     return
@@ -124,5 +130,6 @@ const server = http.createServer((req, res) => {
 })
 
 server.listen(PORT, () => {
+  console.log(`[pipol-auth] running ${describeVersion(getVersionInfo())}`)
   console.log(`[pipol-auth] listening on port ${PORT}`)
 })

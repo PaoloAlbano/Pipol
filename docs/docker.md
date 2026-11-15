@@ -34,6 +34,10 @@ Open <http://localhost:8080>. Two browsers (or one normal and one private window
 
 > **Secure context.** Camera, microphone and the cryptography of the app only work on `https://` pages and on `http://localhost`. On any other address you need HTTPS, and then the relay must be `wss://` (a secure page cannot open a plain `ws://` connection).
 
+## Published images
+
+Every [release](releasing.md) publishes the three images on the GitHub container registry (`ghcr.io/paoloalbano/pipol-web`, `pipol-relay` and `pipol-auth`), tagged `x.y.z`, `x.y` and `latest`. They can be used instead of building them: pull a version, not `latest`, on a server. An image built from a release says its version (the app in *Settings*, the servers at `GET /version`).
+
 ## Where the app finds the relay and the auth server
 
 The app is static: the addresses are fixed into it when it is built. The web image builds it **when the container starts**, from its environment, so you choose them with `-e` instead of at `docker build` time. The build takes a few seconds. An address that is not a valid `http`, `https`, `ws` or `wss` URL stops the container with a clear message before anything is built.
