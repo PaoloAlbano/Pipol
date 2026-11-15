@@ -110,6 +110,61 @@ describe('WebRTCPeer — without a camera or a microphone', () => {
   })
 })
 
+describe('WebRTCPeer — a camera or microphone turned on later', () => {
+  it('sends it from then on and renegotiates', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio')), null)
+    const offers = []
+    peer.addEventListener('offer', (e) => offers.push(e.detail.sdp))
+    await peer.init()
+    await peer.handleAnswer({ type: 'answer', sdp: 'a' })
+    expect(offers).toHaveLength(1)
+
+    const camera = track('video')
+    const localStream = stream(track('audio'), camera)
+    await peer.addLocalTrack(camera, localStream)
+
+    expect(pcs[0].senders.map((s) => s.track)).toContain(camera)
+    expect(offers).toHaveLength(2)
+  })
+
+  it('takes the place of the video that was missing, not a second one', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio')), null)
+    await peer.init()
+    await peer.handleAnswer({ type: 'answer', sdp: 'a' })
+    await peer.addLocalTrack(track('video'), stream())
+    await peer.addLocalTrack(track('video'), stream()) // already sending video: nothing to add
+    expect(pcs[0].senders.filter((s) => s.track?.kind === 'video')).toHaveLength(1)
+  })
+
+  it('works for the microphone too', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('video')), null)
+    await peer.init()
+    await peer.handleAnswer({ type: 'answer', sdp: 'a' })
+    const mic = track('audio')
+    await peer.addLocalTrack(mic, stream(mic))
+    expect(pcs[0].senders.map((s) => s.track)).toContain(mic)
+  })
+
+  it('waits for the answer to the first offer before renegotiating', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio')), null)
+    const offers = []
+    peer.addEventListener('offer', (e) => offers.push(e.detail.sdp))
+    await peer.init()
+    await peer.addLocalTrack(track('video'), stream())
+    expect(offers).toHaveLength(1)
+    await peer.handleAnswer({ type: 'answer', sdp: 'a' })
+    expect(offers).toHaveLength(2)
+  })
+
+  it('does nothing once closed', async () => {
+    const peer = new WebRTCPeer('p', true, stream(track('audio')), null)
+    await peer.init()
+    peer.close()
+    await peer.addLocalTrack(track('video'), stream())
+    expect(pcs[0].senders.filter((s) => s.track?.kind === 'video')).toHaveLength(0)
+  })
+})
+
 describe('WebRTCPeer — screen share', () => {
   it('sends the screen stream in the initial offer when already sharing', async () => {
     const screen = stream(track('video'))

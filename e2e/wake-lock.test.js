@@ -5,7 +5,7 @@
  * go when it ends.
  */
 import { test, expect } from '@playwright/test'
-import { joinQuickRoom } from './helpers.js'
+import { joinQuickRoom, startCall } from './helpers.js'
 
 function fakeWakeLock() {
   window.__locks = []
@@ -38,7 +38,7 @@ test.describe('Screen wake lock', () => {
       await page.waitForTimeout(1500)
       expect(await page.evaluate(held)).toEqual([])
 
-      await page.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
+      await startCall(page)
       await expect.poll(() => page.evaluate(held), { timeout: 10000 }).toEqual(['screen'])
 
       await page

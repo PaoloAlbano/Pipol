@@ -39,7 +39,9 @@ Everybody in a call connects to everybody else (a full mesh): there is no media 
 
 Max encodes the video once per direct connection, so it needs a powerful device when several people are in the call.
 
-**No camera or microphone.** A computer without a camera (unplugged, in use by another app) or without a microphone can still join: it joins with what it has, down to just watching and listening, and the others see an avatar for it. The buttons it cannot use are disabled, and a message says what is missing.
+**Starting a call.** *Start call* (and *Join*, when somebody else started one) first asks what to start with: the microphone and the camera, each on or off, remembered for the next time. What is left off is not asked of the browser, so a call with the camera off is an audio call, and the others see your avatar. During the call, the camera and microphone buttons turn on what you left off.
+
+**No camera or microphone.** A computer without a camera (unplugged, in use by another app) or without a microphone can still join: it joins with what it has, down to just watching and listening, and a message says what is missing. Plug it in and the button turns it on during the call.
 
 **Screen on.** The screen stays on during a call, so a phone does not lock itself and drop the camera (in browsers that support the Screen Wake Lock; it is taken again if you leave the page and come back).
 

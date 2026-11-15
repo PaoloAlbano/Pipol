@@ -149,6 +149,11 @@ export async function getLocalStream({ video = true, audio = true } = {}) {
   const quality = getVideoQuality()
   _currentFacingMode = 'user'
   _missing = { camera: false, microphone: false }
+  // Neither asked for: a call to watch and listen. Devices can be turned on later (see enableDevice).
+  if (!video && !audio) {
+    _localStream = new MediaStream()
+    return _localStream
+  }
   const audioConstraints = audio ? { echoCancellation: true, noiseSuppression: true } : false
   let stream
   try {
@@ -167,6 +172,31 @@ export async function getLocalStream({ video = true, audio = true } = {}) {
   stream.getVideoTracks().forEach((track) => setContentHint(track, quality))
   _localStream = stream
   return _localStream
+}
+
+/**
+ * Turns on, during a call, a device that was not asked for at the start or was not there: opens it and adds its
+ * track to the local stream (a new stream object, so that whoever shows it notices).
+ * Errors are thrown as they come (NotAllowedError, NotFoundError...).
+ * @param {'camera' | 'microphone'} kind
+ * @returns {Promise<{ stream: MediaStream, track: MediaStreamTrack }>}
+ */
+export async function enableDevice(kind) {
+  const quality = getVideoQuality()
+  const opened =
+    kind === 'camera'
+      ? await firstAccepted(cameraConstraints(quality), (constraints) =>
+          navigator.mediaDevices.getUserMedia({ audio: false, video: { ...constraints, facingMode: 'user' } })
+        )
+      : await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: false,
+        })
+  const [track] = kind === 'camera' ? opened.getVideoTracks() : opened.getAudioTracks()
+  if (kind === 'camera') setContentHint(track, quality)
+  _missing[kind] = false
+  _localStream = new MediaStream([..._localStream.getTracks(), track])
+  return { stream: _localStream, track }
 }
 
 /** The camera after the one in use (cycling), for phones that do not say which camera faces which way. */

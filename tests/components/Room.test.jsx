@@ -17,6 +17,7 @@ import Room from '../../src/components/Room.jsx'
 import { createRoomSwarm } from '../../src/p2p/swarm.js'
 import * as media from '../../src/webrtc/media.js'
 import { WebRTCPeer } from '../../src/webrtc/peer.js'
+import { clickStartCall, clickJoinCall } from './callUi.js'
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ const mockGetLocalStream = vi.fn()
 vi.mock('../../src/webrtc/media.js', () => ({
   getLocalStream: (...args) => mockGetLocalStream(...args),
   getMissingDevices: vi.fn(() => ({ camera: false, microphone: false })),
+  enableDevice: vi.fn(),
   stopLocalStream: vi.fn(),
   setAudioMuted: vi.fn(),
   setVideoMuted: vi.fn(),
@@ -126,7 +128,7 @@ async function setup(props = {}) {
 async function setupWithCall(props = {}) {
   mockGetLocalStream.mockResolvedValue(new MediaStream())
   await setup(props)
-  await userEvent.click(screen.getByText(/start video call/i))
+  await clickStartCall()
   await waitFor(() => screen.getByTitle(/mute microphone/i))
 }
 
@@ -151,7 +153,7 @@ describe('Room — initial rendering', () => {
 
   it('shows "Start Video Call" button when not in a call', async () => {
     await setup()
-    expect(screen.getByText(/start video call/i)).toBeInTheDocument()
+    expect(screen.getByText(/start call/i)).toBeInTheDocument()
   })
 
   it('does not show VideoControls when not in a call', async () => {
@@ -170,7 +172,7 @@ describe('Room — initial rendering', () => {
 describe('Room — call lifecycle', () => {
   it('calls getLocalStream when "Start Video Call" is clicked', async () => {
     await setup()
-    await userEvent.click(screen.getByText(/start video call/i))
+    await clickStartCall()
     expect(mockGetLocalStream).toHaveBeenCalled()
   })
 
@@ -182,13 +184,13 @@ describe('Room — call lifecycle', () => {
   it('hides VideoControls and shows "Start Video Call" again after ending a call', async () => {
     await setupWithCall()
     await userEvent.click(screen.getByTitle(/leave video call/i))
-    await waitFor(() => screen.getByText(/start video call/i))
+    await waitFor(() => screen.getByText(/start call/i))
     expect(screen.queryByTitle(/mute microphone/i)).toBeNull()
   })
 
   it('broadcasts CALL_INIT when starting a call', async () => {
     await setup()
-    await userEvent.click(screen.getByText(/start video call/i))
+    await clickStartCall()
     await waitFor(() =>
       expect(swarmMock.sendToAll).toHaveBeenCalledWith(expect.objectContaining({ type: 'CALL_INIT' }))
     )
@@ -209,7 +211,7 @@ describe('Room — call duration timer', () => {
     try {
       mockGetLocalStream.mockResolvedValue(new MediaStream())
       await setup()
-      await userEvent.click(screen.getByText(/start video call/i))
+      await clickStartCall()
       await waitFor(() => screen.getByTitle(/mute microphone/i))
       // Advance 2 seconds
       await act(async () => {
@@ -227,7 +229,7 @@ describe('Room — call duration timer', () => {
     try {
       mockGetLocalStream.mockResolvedValue(new MediaStream())
       await setup()
-      await userEvent.click(screen.getByText(/start video call/i))
+      await clickStartCall()
       await waitFor(() => screen.getByTitle(/mute microphone/i))
 
       await act(async () => {
@@ -250,7 +252,7 @@ describe('Room — call duration timer', () => {
     try {
       mockGetLocalStream.mockResolvedValue(new MediaStream())
       await setup()
-      await userEvent.click(screen.getByText(/start video call/i))
+      await clickStartCall()
       await waitFor(() => screen.getByTitle(/mute microphone/i))
       await act(async () => {
         vi.advanceTimersByTime(2000)
@@ -258,7 +260,7 @@ describe('Room — call duration timer', () => {
       await waitFor(() => screen.getByLabelText(/call duration/i))
 
       await userEvent.click(screen.getByTitle(/leave video call/i))
-      await waitFor(() => screen.getByText(/start video call/i))
+      await waitFor(() => screen.getByText(/start call/i))
       expect(screen.queryByLabelText(/call duration/i)).toBeNull()
     } finally {
       vi.useRealTimers()
@@ -277,7 +279,7 @@ describe('Room — incoming call modal', () => {
       fireSwarmEvent('call-init', { peerId: 'peer-1' })
     })
 
-    expect(screen.getByText(/bob has started a video call/i)).toBeInTheDocument()
+    expect(screen.getByText(/bob has started a call/i)).toBeInTheDocument()
   })
 
   it('dismisses the modal when "Decline" is clicked', async () => {
@@ -289,10 +291,10 @@ describe('Room — incoming call modal', () => {
     })
 
     await userEvent.click(screen.getByRole('button', { name: /decline/i }))
-    expect(screen.queryByText(/has started a video call/i)).toBeNull()
+    expect(screen.queryByText(/has started a call/i)).toBeNull()
   })
 
-  it('dismisses the modal and starts the call when "Join" is clicked', async () => {
+  it('dismisses the modal and starts the call when "Join" is clicked and confirmed', async () => {
     swarmMock.peers.set('peer-1', { username: 'bob' })
     await setup()
 
@@ -300,11 +302,9 @@ describe('Room — incoming call modal', () => {
       fireSwarmEvent('call-init', { peerId: 'peer-1' })
     })
 
-    // The modal has a "Join" button; pick the one inside the modal overlay
-    const modal = screen.getByText(/has started a video call/i).closest('.call-modal')
-    await userEvent.click(modal.querySelector('button'))
+    await clickJoinCall()
     await waitFor(() => expect(mockGetLocalStream).toHaveBeenCalled())
-    expect(screen.queryByText(/has started a video call/i)).toBeNull()
+    expect(screen.queryByText(/has started a call/i)).toBeNull()
   })
 })
 
@@ -674,7 +674,7 @@ describe('Room — offers that cross', () => {
   async function startCallWithPeer(peerId) {
     await setup()
     swarmMock.getPeers.mockReturnValue([{ id: peerId, username: 'bob' }])
-    await userEvent.click(screen.getByText(/start video call/i))
+    await clickStartCall()
     await waitFor(() => expect(instances).toHaveLength(1))
   }
 

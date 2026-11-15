@@ -597,7 +597,11 @@ export class WebRTCPeer extends EventTarget {
    */
   async replaceVideoTrack(track) {
     await this._senders.video?.replaceTrack(track).catch(() => {})
-    // The new camera may deliver another size: work out the limits again
+    this._syncQualityForNewCamera()
+  }
+
+  /** A new camera may deliver another size: the limits are worked out again. */
+  _syncQualityForNewCamera() {
     this._appliedLimits = this._quality === MAX_PROFILE ? null : JSON.stringify(null)
     this._syncQuality().catch(() => {})
   }
@@ -608,6 +612,22 @@ export class WebRTCPeer extends EventTarget {
    */
   async replaceAudioTrack(track) {
     await this._senders.audio?.replaceTrack(track).catch(() => {})
+  }
+
+  /**
+   * Starts sending a camera or microphone that was not there when the connection was made (renegotiates). It takes
+   * the place left for it in the session, if there is one.
+   * @param {MediaStreamTrack} track
+   * @param {MediaStream} stream  The local stream that now has it
+   */
+  async addLocalTrack(track, stream) {
+    const kind = track.kind === 'audio' ? 'audio' : 'video'
+    if (this._closed || !this._pc || this._senders[kind]) return
+    this.localStream = stream
+    this._senders[kind] = this._pc.addTrack(track, stream)
+    if (kind === 'video') this._syncQualityForNewCamera()
+    this._needsNegotiation = true
+    await this._flushRenegotiation()
   }
 
   /**

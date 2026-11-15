@@ -47,6 +47,7 @@ vi.mock('../../src/webrtc/peer.js', () => ({ WebRTCPeer: vi.fn() }))
 vi.mock('../../src/webrtc/media.js', () => ({
   getLocalStream: vi.fn().mockResolvedValue(new MediaStream()),
   getMissingDevices: vi.fn(() => ({ camera: false, microphone: false })),
+  enableDevice: vi.fn(),
   stopLocalStream: vi.fn(),
   setAudioMuted: vi.fn(),
   setVideoMuted: vi.fn(),

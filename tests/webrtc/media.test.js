@@ -164,6 +164,82 @@ describe('getLocalStream — a camera or a microphone that is not there', () => 
   })
 })
 
+// ── Nothing asked for, and turning a device on later ───────────────────────────
+
+describe('getLocalStream — nothing asked for', () => {
+  it('opens nothing and gives an empty stream, to watch and listen', async () => {
+    const stream = await media.getLocalStream({ video: false, audio: false })
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled()
+    expect(stream.getTracks()).toHaveLength(0)
+    expect(media.getActiveLocalStream()).toBe(stream)
+    expect(media.getMissingDevices()).toEqual({ camera: false, microphone: false })
+  })
+
+  it('asks only for the microphone, or only for the camera, as told', async () => {
+    await media.getLocalStream({ video: false, audio: true })
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith(
+      expect.objectContaining({ video: false, audio: expect.anything() })
+    )
+    media.stopLocalStream()
+    await media.getLocalStream({ video: true, audio: false })
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith(
+      expect.objectContaining({ audio: false, video: expect.anything() })
+    )
+  })
+})
+
+describe('enableDevice', () => {
+  it('opens the camera during the call and adds it to the stream, as a new stream', async () => {
+    const mic = makeFakeTrack('audio')
+    const cam = makeFakeTrack('video')
+    navigator.mediaDevices.getUserMedia = vi.fn(async ({ video }) => makeFakeStream(video ? [cam] : [mic]))
+    const before = await media.getLocalStream({ video: false, audio: true })
+
+    const { stream, track } = await media.enableDevice('camera')
+
+    expect(track).toBe(cam)
+    expect(stream).not.toBe(before) // a new object, so that whoever shows it notices
+    expect(stream.getTracks()).toEqual([mic, cam])
+    expect(media.getActiveLocalStream()).toBe(stream)
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith(
+      expect.objectContaining({ audio: false, video: expect.objectContaining({ facingMode: 'user' }) })
+    )
+  })
+
+  it('opens the microphone during the call', async () => {
+    const mic = makeFakeTrack('audio')
+    navigator.mediaDevices.getUserMedia = vi.fn(async ({ video }) => makeFakeStream(video ? [] : [mic]))
+    await media.getLocalStream({ video: false, audio: false })
+
+    const { stream, track } = await media.enableDevice('microphone')
+
+    expect(track).toBe(mic)
+    expect(stream.getTracks()).toEqual([mic])
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith(
+      expect.objectContaining({ video: false, audio: expect.objectContaining({ echoCancellation: true }) })
+    )
+  })
+
+  it('is not missing any more once it is on', async () => {
+    const failure = Object.assign(new Error('none'), { name: 'NotFoundError' })
+    navigator.mediaDevices.getUserMedia = vi.fn().mockRejectedValue(failure)
+    await media.getLocalStream()
+    expect(media.getMissingDevices().camera).toBe(true)
+
+    navigator.mediaDevices.getUserMedia = vi.fn(async () => makeFakeStream([makeFakeTrack('video')]))
+    await media.enableDevice('camera')
+    expect(media.getMissingDevices().camera).toBe(false)
+  })
+
+  it('gives the errors as they come', async () => {
+    await media.getLocalStream({ video: false, audio: false })
+    navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('no'), { name: 'NotAllowedError' }))
+    await expect(media.enableDevice('camera')).rejects.toMatchObject({ name: 'NotAllowedError' })
+  })
+})
+
 // ── setAudioMuted ──────────────────────────────────────────────────────────────
 
 describe('setAudioMuted', () => {

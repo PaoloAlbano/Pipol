@@ -4,7 +4,7 @@
  * somebody who joins, or comes back to, the call while another is sharing has to see the screen.
  */
 import { test, expect } from '@playwright/test'
-import { joinQuickRoom } from './helpers.js'
+import { joinQuickRoom, startCall, joinCall } from './helpers.js'
 
 /** getDisplayMedia that needs no picker: a canvas whose colour changes, captured as a stream. */
 function fakeScreen() {
@@ -52,7 +52,7 @@ test.describe('Screen share', () => {
       await pageA.waitForTimeout(2500)
 
       // Alice starts the call and shares her screen before Bob is in the call
-      await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
+      await startCall(pageA)
       await pageA
         .getByTitle(/share screen/i)
         .first()
@@ -60,7 +60,7 @@ test.describe('Screen share', () => {
       await expect(pageA.getByTitle(/stop screen share/i).first()).toBeVisible()
 
       // Bob joins: he sees the screen
-      await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+      await joinCall(pageB)
       await screenIsPlaying(pageB)
 
       // Bob leaves and joins again while Alice keeps sharing
@@ -69,7 +69,7 @@ test.describe('Screen share', () => {
         .first()
         .click()
       await expect(pageB.locator('.video-tile')).toHaveCount(0)
-      await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+      await joinCall(pageB)
       await screenIsPlaying(pageB)
     } finally {
       await ctxA.close()

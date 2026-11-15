@@ -8,10 +8,12 @@ import { signOp, verifyOp } from '../p2p/signing.js'
 import { WebRTCPeer } from '../webrtc/peer.js'
 import { sdpFingerprint } from '../webrtc/sdp.js'
 import { reconnectDelay } from '../webrtc/reconnect.js'
+import { getCallDefaults, setCallDefaults } from '../webrtc/callDefaults.js'
 import { useWakeLock } from '../webrtc/useWakeLock.js'
 import {
   getLocalStream,
   getMissingDevices,
+  enableDevice,
   stopLocalStream,
   setAudioMuted,
   setVideoMuted,
@@ -26,6 +28,7 @@ import ChatMessages from './ChatMessages.jsx'
 import ChatInput from './ChatInput.jsx'
 import VideoGrid from './VideoGrid.jsx'
 import VideoControls from './VideoControls.jsx'
+import CallSetupModal from './CallSetupModal.jsx'
 import ThreadPanel from './ThreadPanel.jsx'
 import { containsMention } from '../p2p/notifications.js'
 import '../styles/room.css'
@@ -51,7 +54,7 @@ function copyStyleSheets(from, to) {
 }
 
 /** How long a message typed before the message store is ready waits for it (ms). */
-const NO_MISSING_DEVICES = { camera: false, microphone: false }
+const NO_DEVICES_OFF = { camera: false, microphone: false }
 
 function missingDevicesNotice({ camera, microphone }) {
   if (camera && microphone) return 'No camera or microphone found: you joined to watch and listen.'
@@ -172,7 +175,8 @@ export default function Room({
   const [audioMuted, setAudioMutedState] = useState(false)
   const [videoMuted, setVideoMutedState] = useState(false)
   const videoMutedRef = useRef(false) // read by ensureRTCPeer, which may run from a stale closure
-  const [missingDevices, setMissingDevices] = useState(NO_MISSING_DEVICES) // what this device could not give
+  const [devicesOff, setDevicesOff] = useState(NO_DEVICES_OFF) // camera and microphone with no track now: not asked for, or not there
+  const [callSetup, setCallSetup] = useState(null) // { mode: 'start' | 'join', caller? } while the choice of what to start with is open
   const [callNotice, setCallNotice] = useState('')
   const [remoteVideoOff, setRemoteVideoOff] = useState({}) // peerId → true while their camera is off
   const [peerStatus, setPeerStatus] = useState({}) // peerId → 'connecting' | 'connected' | 'poor' | 'reconnecting'
@@ -227,8 +231,7 @@ export default function Room({
 
   // Start call when triggered externally (e.g. ChannelHeader 📹 button)
   useEffect(() => {
-    if (startCallTrigger > 0 && !callActiveRef.current) handleStartCall()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (startCallTrigger > 0 && !callActiveRef.current) openCallSetup('start')
   }, [startCallTrigger])
 
   // The screen stays on during a call (a phone that locks itself stops the camera and drops the call)
@@ -765,16 +768,6 @@ export default function Room({
       const vBtn = makeBtn(videoMuted ? '📵' : '📷', videoMuted ? 'Cam on' : 'Cam off', videoMuted)
       vBtn.addEventListener('click', () => pipHandlersRef.current.video())
 
-      // What this device does not have cannot be turned on from here either
-      for (const [btn, unavailable] of [
-        [aBtn, missingDevices.microphone],
-        [vBtn, missingDevices.camera],
-      ]) {
-        btn.disabled = unavailable
-        btn.style.opacity = unavailable ? '0.4' : ''
-        btn.style.cursor = unavailable ? 'not-allowed' : 'pointer'
-      }
-
       const endBtn = makeBtn('✕', 'End call', false)
       endBtn.style.background = '#7f1d1d'
       endBtn.style.borderColor = '#991b1b'
@@ -1225,19 +1218,20 @@ export default function Room({
     [activeThread?.id, isDM, channelName, roomCode, onMessageSent]
   )
 
-  async function handleStartCall() {
+  /** `camera` and `microphone`: what to start with. What is left off is not asked of the browser. */
+  async function handleStartCall({ camera = true, microphone = true } = {}) {
     try {
-      const stream = await getLocalStream()
+      const stream = await getLocalStream({ video: camera, audio: microphone })
       setLocalStream(stream)
       // Without a camera or a microphone the call is joined all the same, with what there is
       const missing = getMissingDevices()
-      setMissingDevices(missing)
+      setDevicesOff({ camera: !camera || missing.camera, microphone: !microphone || missing.microphone })
       setCallNotice(missingDevicesNotice(missing))
-      if (missing.camera) {
+      if (!camera || missing.camera) {
         videoMutedRef.current = true // the others are told our camera is off when connections are made below
         setVideoMutedState(true)
       }
-      if (missing.microphone) setAudioMutedState(true)
+      if (!microphone || missing.microphone) setAudioMutedState(true)
       // Start from fresh TURN credentials (a tab can stay open for days)
       await swarmRef.current?.refreshIceConfig?.().catch(() => {})
       // Set the ref now: signalling that arrives before the next render must not be dropped
@@ -1282,7 +1276,7 @@ export default function Room({
     setAudioMutedState(false)
     setVideoMutedState(false)
     videoMutedRef.current = false
-    setMissingDevices(NO_MISSING_DEVICES)
+    setDevicesOff(NO_DEVICES_OFF)
     setCallNotice('')
     setScreenSharing(false)
     setLayout('grid')
@@ -1293,18 +1287,48 @@ export default function Room({
     setIncomingCall(null)
   }
 
-  async function handleJoinCall() {
+  function openCallSetup(mode, caller) {
     setIncomingCall(null)
-    await handleStartCall()
+    setCallSetup({ mode, caller })
+  }
+
+  async function handleConfirmCallSetup(choice) {
+    setCallSetup(null)
+    setCallDefaults(choice)
+    await handleStartCall(choice)
+  }
+
+  /** Turns on, during the call, a camera or microphone that is off because it was not asked for or was not there. */
+  async function handleEnableDevice(kind) {
+    try {
+      const { stream, track } = await enableDevice(kind)
+      setLocalStream(stream)
+      setDevicesOff((prev) => ({ ...prev, [kind]: false }))
+      setCallNotice('')
+      if (kind === 'camera') {
+        videoMutedRef.current = false
+        setVideoMutedState(false)
+        swarmRef.current?.sendToAll({ type: 'VIDEO_STATE', off: false })
+      } else {
+        setAudioMutedState(false)
+      }
+      for (const rtcPeer of Object.values(rtcPeersRef.current)) await rtcPeer.addLocalTrack(track, stream)
+    } catch (err) {
+      console.warn('[room] could not turn on the', kind, err)
+      if (err.name === 'NotAllowedError') alert(`Permission to use the ${kind} was denied.`)
+      else setCallNotice(`No ${kind} found (or it is in use).`)
+    }
   }
 
   function handleToggleAudio() {
+    if (devicesOff.microphone) return handleEnableDevice('microphone')
     const next = !audioMuted
     setAudioMuted(next)
     setAudioMutedState(next)
   }
 
   function handleToggleVideo() {
+    if (devicesOff.camera) return handleEnableDevice('camera')
     const next = !videoMuted
     setVideoMuted(next)
     setVideoMutedState(next)
@@ -1390,9 +1414,9 @@ export default function Room({
         <div className="call-modal-overlay">
           <div className="call-modal">
             <div className="call-modal-icon">📹</div>
-            <p className="call-modal-title">{incomingCall.username} has started a video call</p>
+            <p className="call-modal-title">{incomingCall.username} has started a call</p>
             <div className="call-modal-actions">
-              <button className="btn btn-primary" onClick={handleJoinCall}>
+              <button className="btn btn-primary" onClick={() => openCallSetup('join', incomingCall.username)}>
                 Join
               </button>
               <button className="btn btn-secondary" onClick={handleDeclineCall}>
@@ -1401,6 +1425,16 @@ export default function Room({
             </div>
           </div>
         </div>
+      )}
+      {/* ── What to start the call with ── */}
+      {callSetup && !callActive && (
+        <CallSetupModal
+          mode={callSetup.mode}
+          caller={callSetup.caller}
+          defaults={getCallDefaults()}
+          onConfirm={handleConfirmCallSetup}
+          onCancel={() => setCallSetup(null)}
+        />
       )}
       {/* ── Mobile top bar (mounted only on small screens, not in embedded mode) ── */}
       {mobileView && !embedded && (
@@ -1418,12 +1452,12 @@ export default function Room({
           </div>
           <span className="room-mobile-peers">👥 {peers.length + 1}</span>
           {callInProgress && !callActive && (
-            <button className="btn-mobile-call btn-mobile-call--pulse" onClick={handleJoinCall}>
+            <button className="btn-mobile-call btn-mobile-call--pulse" onClick={() => openCallSetup('join')}>
               📹 {callPeerIds.size}
             </button>
           )}
           {!callInProgress && !callActive && (
-            <button className="btn-mobile-call" onClick={handleStartCall}>
+            <button className="btn-mobile-call" onClick={() => openCallSetup('start')}>
               📹 Call
             </button>
           )}
@@ -1493,7 +1527,7 @@ export default function Room({
             <div className="call-in-progress">
               <span className="call-in-progress-dot" />
               <span className="call-in-progress-text">Call in progress · {callPeerIds.size}</span>
-              <button className="call-in-progress-join" onClick={handleJoinCall}>
+              <button className="call-in-progress-join" onClick={() => openCallSetup('join')}>
                 Join
               </button>
             </div>
@@ -1517,15 +1551,13 @@ export default function Room({
           {/* Call controls */}
           <div className="room-sidebar-footer">
             {!callActive ? (
-              <button className="btn btn-call-start" onClick={handleStartCall}>
-                📹 Start Video Call
+              <button className="btn btn-call-start" onClick={() => openCallSetup('start')}>
+                📹 Start call
               </button>
             ) : (
               <VideoControls
                 audioMuted={audioMuted}
                 videoMuted={videoMuted}
-                audioUnavailable={missingDevices.microphone}
-                videoUnavailable={missingDevices.camera}
                 screenSharing={screenSharing}
                 pipActive={pipActive}
                 onToggleAudio={handleToggleAudio}
@@ -1571,11 +1603,8 @@ export default function Room({
           <button
             className={`btn-mobile-control${audioMuted ? ' btn-mobile-control--active' : ''}`}
             onClick={handleToggleAudio}
-            disabled={missingDevices.microphone}
             aria-pressed={audioMuted}
-            aria-label={
-              missingDevices.microphone ? 'No microphone found' : audioMuted ? 'Unmute microphone' : 'Mute microphone'
-            }
+            aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
           >
             {audioMuted ? '🔇' : '🎙️'}
             <span>{audioMuted ? 'Unmute' : 'Mute'}</span>
@@ -1583,9 +1612,8 @@ export default function Room({
           <button
             className={`btn-mobile-control${videoMuted ? ' btn-mobile-control--active' : ''}`}
             onClick={handleToggleVideo}
-            disabled={missingDevices.camera}
             aria-pressed={videoMuted}
-            aria-label={missingDevices.camera ? 'No camera found' : videoMuted ? 'Turn on camera' : 'Turn off camera'}
+            aria-label={videoMuted ? 'Turn on camera' : 'Turn off camera'}
           >
             {videoMuted ? '📵' : '📷'}
             <span>{videoMuted ? 'Cam on' : 'Cam off'}</span>
@@ -1680,8 +1708,6 @@ export default function Room({
           <VideoControls
             audioMuted={audioMuted}
             videoMuted={videoMuted}
-            audioUnavailable={missingDevices.microphone}
-            videoUnavailable={missingDevices.camera}
             screenSharing={screenSharing}
             pipActive={pipActive}
             onToggleAudio={handleToggleAudio}
