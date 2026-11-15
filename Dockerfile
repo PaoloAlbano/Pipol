@@ -17,7 +17,7 @@
 # None of the variables is a secret: they end up in the JavaScript sent to every browser (the Turnstile site key
 # is public by design), so the "secrets in ARG/ENV" check, which only looks at the names, is skipped.
 
-FROM node:24-slim
+FROM node:26-slim
 
 # The version and the commit this image was built for, shown in Settings; set by the release
 ARG GIT_COMMIT=
