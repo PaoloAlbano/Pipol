@@ -34,6 +34,10 @@ Open <http://localhost:8080>. Two browsers (or one normal and one private window
 
 > **Secure context.** Camera, microphone and the cryptography of the app only work on `https://` pages and on `http://localhost`. On any other address you need HTTPS, and then the relay must be `wss://` (a secure page cannot open a plain `ws://` connection).
 
+## Checked on every change
+
+The [Docker workflow](../.github/workflows/docker.yml) builds the three images, without publishing them, whenever a pull request or a push touches what goes into them: a Dockerfile, the nginx files, the dependencies. This is what catches a base image that Dependabot bumps and that no longer has something the Dockerfile uses.
+
 ## Published images
 
 Every [release](releasing.md) publishes the three images on the GitHub container registry (`ghcr.io/paoloalbano/pipol-web`, `pipol-relay` and `pipol-auth`), tagged `x.y.z`, `x.y` and `latest`. They can be used instead of building them: pull a version, not `latest`, on a server. An image built from a release says its version (the app in *Settings*, the servers at `GET /version`).

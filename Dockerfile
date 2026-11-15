@@ -24,11 +24,13 @@ ARG GIT_COMMIT=
 ARG APP_VERSION=
 ENV GIT_COMMIT=$GIT_COMMIT APP_VERSION=$APP_VERSION
 
-# nginx serves the built app; corepack provides pnpm for the install below
+# nginx serves the built app. pnpm is installed with npm, at the version of `packageManager` in package.json: the Node
+# images no longer carry corepack (they dropped it with Node 25), which used to provide it
+ARG PNPM_VERSION=10.5.0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends nginx \
  && rm -rf /var/lib/apt/lists/* \
- && corepack enable
+ && npm install -g pnpm@${PNPM_VERSION}
 
 # Everything below runs as the unprivileged `node` user, which also owns /app (the build writes to it)
 RUN mkdir /app && chown node:node /app
