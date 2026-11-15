@@ -50,8 +50,9 @@ export function useCallShortcuts(active, handlers, pipWindow = null) {
       if (event.code === 'Space') {
         // A button or link with the focus uses Space to be pressed
         if (!h.talk || el?.closest(PRESSABLE)) return
-        event.preventDefault()
         if (!event.repeat && !talking && h.talk.start()) talking = true
+        // The key is taken from the page (it would scroll) only while it is the push-to-talk key
+        if (talking) event.preventDefault()
         return
       }
       if (event.repeat) return

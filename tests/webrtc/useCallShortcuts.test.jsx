@@ -148,9 +148,23 @@ describe('useCallShortcuts — push-to-talk', () => {
     expect(handlers.talk.start).toHaveBeenCalledOnce()
   })
 
-  it('takes Space from the page (it would scroll)', () => {
+  it('takes Space from the page (it would scroll) while it is the push-to-talk key, including when it repeats', () => {
     setup()
     expect(fireEvent.keyDown(window, { ...space })).toBe(false)
+    expect(fireEvent.keyDown(window, { ...space, repeat: true })).toBe(false)
+  })
+
+  it('leaves Space to the page when there is nothing to talk with, so it still scrolls', () => {
+    setup({ talk: { start: vi.fn(() => false), end: vi.fn() } })
+    expect(fireEvent.keyDown(window, { ...space })).toBe(true)
+    expect(fireEvent.keyDown(window, { ...space, repeat: true })).toBe(true)
+  })
+
+  it('does not start again when Space is pressed a second time without being let go', () => {
+    const { handlers } = setup()
+    fireEvent.keyDown(window, { ...space })
+    fireEvent.keyDown(window, { ...space })
+    expect(handlers.talk.start).toHaveBeenCalledOnce()
   })
 
   it('has nothing to stop when there was nothing to start (the microphone is open already)', () => {
