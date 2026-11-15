@@ -69,6 +69,11 @@ describe('LoginScreen — identity mode (default)', () => {
     expect(screen.getByLabelText('Passphrase')).toBeInTheDocument()
   })
 
+  it('shows the version of the app', () => {
+    setup()
+    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
+  })
+
   it('shows the confirm passphrase and display name fields in create mode', () => {
     setup()
     expect(screen.getByLabelText(/confirm passphrase/i)).toBeInTheDocument()
@@ -177,6 +182,12 @@ describe('LoginScreen — guest mode', () => {
     mockHasBiometricUnlock.mockReturnValue(false)
   })
 
+  it('shows the version of the app', () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: /continue as guest/i }))
+    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
+  })
+
   it('switches to guest mode when the guest button is clicked', async () => {
     setup()
     fireEvent.click(screen.getByRole('button', { name: /continue as guest/i }))
@@ -229,6 +240,11 @@ describe('LoginScreen — biometric mode', () => {
     })
     mockHasBiometricUnlock.mockReturnValue(true)
     mockIsBiometricUnlockAvailable.mockResolvedValue(true)
+  })
+
+  it('shows the version of the app', () => {
+    setup()
+    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
   })
 
   it('starts in biometric mode when biometric unlock is configured', () => {

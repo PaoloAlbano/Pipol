@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { parseInviteUrl } from '../p2p/workspace.js'
 import { generateRoomCode } from '../p2p/storage.js'
 import '../styles/home.css'
+import VersionLabel from './VersionLabel.jsx'
 
 /**
  * Home — onboarding screen.
@@ -248,6 +249,7 @@ export default function Home({
             GitHub
           </a>
         </div>
+        <VersionLabel className="version-label--home" />
       </div>
     </div>
   )
