@@ -471,6 +471,34 @@ describe('storage — generateUsername', () => {
     const names = new Set(Array.from({ length: 20 }, () => storage.generateUsername()))
     expect(names.size).toBeGreaterThan(1)
   })
+
+  it('has many words to combine, none twice, each a short lowercase word', () => {
+    for (const words of [storage.ADJECTIVES, storage.NOUNS]) {
+      expect(new Set(words).size).toBe(words.length)
+      words.forEach((w) => expect(w).toMatch(/^[a-z]{2,8}$/))
+    }
+    expect(storage.ADJECTIVES.length * storage.NOUNS.length).toBeGreaterThanOrEqual(2500)
+  })
+
+  it('draws the adjective and the noun from the lists', () => {
+    for (let i = 0; i < 50; i++) {
+      const [adjective, noun] = storage.generateUsername().split('-')
+      expect(storage.ADJECTIVES).toContain(adjective)
+      expect(storage.NOUNS).toContain(noun)
+    }
+  })
+
+  it('can give the first and the last word of each list', () => {
+    const random = vi.spyOn(Math, 'random')
+    try {
+      random.mockReturnValue(0)
+      expect(storage.generateUsername()).toBe(`${storage.ADJECTIVES[0]}-${storage.NOUNS[0]}`)
+      random.mockReturnValue(0.999999)
+      expect(storage.generateUsername()).toBe(`${storage.ADJECTIVES.at(-1)}-${storage.NOUNS.at(-1)}`)
+    } finally {
+      random.mockRestore()
+    }
+  })
 })
 
 describe('storage — generateRoomCode', () => {

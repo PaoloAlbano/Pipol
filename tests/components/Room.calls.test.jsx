@@ -12,6 +12,7 @@ import { createRoomSwarm } from '../../src/p2p/swarm.js'
 import { MessageStore } from '../../src/p2p/autobase.js'
 import { WebRTCPeer } from '../../src/webrtc/peer.js'
 import { reconnectDelay } from '../../src/webrtc/reconnect.js'
+import { REACTION_MS } from '../../src/webrtc/callReactions.js'
 import * as media from '../../src/webrtc/media.js'
 import { sendImageFile } from '../../src/p2p/file-transfer.js'
 import { encryptDM, decryptDM } from '../../src/p2p/dm-crypto.js'
@@ -1224,6 +1225,122 @@ describe('Room — what to start the call with', () => {
   })
 })
 
+// ── Raised hands and reactions ────────────────────────────────────────────────
+
+describe('Room — raised hands and reactions', () => {
+  const cam = { id: 'cam-1' }
+  async function callWithPeer() {
+    setPeers('peer-1')
+    await startCall()
+    await act(async () => {
+      rtcPeers[0].dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: cam } }))
+    })
+  }
+  const reactionsOf = (text) =>
+    [...document.querySelectorAll('.video-tile')]
+      .find((t) => t.textContent.includes(text))
+      ?.querySelectorAll('.video-reaction')
+
+  it('shows the hand of somebody who raises it, and takes it away when they lower it', async () => {
+    await callWithPeer()
+    await fire('hand-raise', { peerId: 'peer-1', raised: true })
+    expect(screen.getByRole('img', { name: 'peer-1 raised a hand' })).toBeInTheDocument()
+    await fire('hand-raise', { peerId: 'peer-1', raised: true }) // again: nothing changes
+    expect(screen.getAllByRole('img', { name: /raised a hand/i })).toHaveLength(1)
+
+    await fire('hand-raise', { peerId: 'peer-1', raised: false })
+    expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
+    await fire('hand-raise', { peerId: 'peer-1', raised: false }) // lowering a hand that is not up: nothing
+  })
+
+  it('forgets a hand when the person ends their call or leaves', async () => {
+    await callWithPeer()
+    await fire('hand-raise', { peerId: 'peer-1', raised: true })
+    await fire('call-end', { peerId: 'peer-1' })
+    await fire('call-init', { peerId: 'peer-1' })
+    await act(async () => {
+      rtcPeers.at(-1).dispatchEvent(new CustomEvent('remote-stream', { detail: { stream: cam } }))
+    })
+    expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
+
+    await fire('hand-raise', { peerId: 'peer-1', raised: true })
+    await fire('peer-left', { id: 'peer-1' })
+    expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
+  })
+
+  it('raises and lowers our hand, telling the others', async () => {
+    await startCall()
+    await userEvent.click(screen.getByTitle('Raise hand'))
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'HAND_RAISE', raised: true })
+    expect(screen.getByRole('img', { name: 'alice raised a hand' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByTitle('Lower hand'))
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'HAND_RAISE', raised: false })
+    expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
+  })
+
+  it('tells somebody who connects later that our hand is up, and says nothing when it is down', async () => {
+    await startCall()
+    await fire('call-init', { peerId: 'peer-8' })
+    expect(swarmMock.sendToPeer).not.toHaveBeenCalledWith('peer-8', expect.objectContaining({ type: 'HAND_RAISE' }))
+
+    await userEvent.click(screen.getByTitle('Raise hand'))
+    await fire('call-init', { peerId: 'peer-9' })
+    expect(swarmMock.sendToPeer).toHaveBeenCalledWith('peer-9', { type: 'HAND_RAISE', raised: true })
+  })
+
+  it('lowers our hand and clears the tiles when the call ends', async () => {
+    await startCall()
+    await userEvent.click(screen.getByTitle('Raise hand'))
+    await userEvent.click(screen.getByTitle(/leave video call/i))
+    await clickStartCall()
+    await waitFor(() => screen.getByTitle('Raise hand'))
+    expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
+  })
+
+  describe('reactions', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+    const advance = (ms) => act(async () => vi.advanceTimersByTime(ms))
+
+    it('sends ours, shows it on our tile for a few seconds', async () => {
+      await startCall()
+      await userEvent.click(screen.getByTitle(/send a reaction/i))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'React 🎉' }))
+      expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'CALL_REACTION', emoji: '🎉' })
+      expect(reactionsOf('(you)')).toHaveLength(1)
+
+      await advance(REACTION_MS)
+      expect(reactionsOf('(you)')).toHaveLength(0)
+    })
+
+    it('shows what the others send on their tile, each for its own few seconds', async () => {
+      await callWithPeer()
+      await fire('call-reaction', { peerId: 'peer-1', emoji: '👍' })
+      await advance(REACTION_MS / 2)
+      await fire('call-reaction', { peerId: 'peer-1', emoji: '😮' })
+      expect(reactionsOf('peer-1')).toHaveLength(2)
+
+      await advance(REACTION_MS / 2 + 100) // the first is over, the second is not
+      expect(reactionsOf('peer-1')).toHaveLength(1)
+      expect(reactionsOf('peer-1')[0].textContent).toBe('😮')
+
+      await advance(REACTION_MS)
+      expect(reactionsOf('peer-1')).toHaveLength(0)
+    })
+
+    it('shows at most a few at once on a tile', async () => {
+      await callWithPeer()
+      for (let i = 0; i < 9; i++) await fire('call-reaction', { peerId: 'peer-1', emoji: '👏' })
+      expect(reactionsOf('peer-1')).toHaveLength(6)
+    })
+  })
+})
+
 // ── Peers and incoming calls ──────────────────────────────────────────────────
 
 describe('Room — peers', () => {
@@ -1497,6 +1614,18 @@ describe('Room — call controls on a phone', () => {
     await userEvent.click(header.getByRole('button', { name: /📹 1/ }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Join now' }))
     await waitFor(() => document.querySelector('.room-mobile-callbar'))
+  })
+
+  it('raises the hand and sends a reaction from the bar', async () => {
+    await startCall()
+    const bar = within(document.querySelector('.room-mobile-callbar'))
+    await userEvent.click(bar.getByRole('button', { name: 'Raise hand' }))
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'HAND_RAISE', raised: true })
+    expect(bar.getByRole('button', { name: 'Lower hand' })).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(bar.getByTitle(/send a reaction/i))
+    await userEvent.click(bar.getByRole('menuitem', { name: 'React 👍' }))
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'CALL_REACTION', emoji: '👍' })
   })
 
   it('is not there before the call', async () => {

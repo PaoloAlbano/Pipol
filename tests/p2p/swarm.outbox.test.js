@@ -71,6 +71,7 @@ describe('RoomSwarm — signaling kept while the relay connection is down', () =
       'SCREEN_SHARE_START',
       'SCREEN_SHARE_END',
       'VIDEO_STATE',
+      'HAND_RAISE',
     ]
     for (const type of types) swarm.sendToPeer(ALICE, { type })
     swarm.sendToAll({ type: 'CALL_INIT' })
@@ -97,6 +98,13 @@ describe('RoomSwarm — signaling kept while the relay connection is down', () =
     swarm.sendToPeer(ALICE, { type: 'MSG', message: { id: '1' } })
     swarm.sendToAll({ type: 'TYPING', username: 'me' })
     swarm.sendToPeer(ALICE, { type: 'HISTORY_REQ' })
+    expect(swarm._outbox).toHaveLength(0)
+  })
+
+  it('does not keep a reaction: it is only worth showing at the time', () => {
+    const { swarm } = makeSwarm()
+    offline(swarm)
+    swarm.sendToAll({ type: 'CALL_REACTION', emoji: '👍' })
     expect(swarm._outbox).toHaveLength(0)
   })
 

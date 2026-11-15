@@ -205,6 +205,41 @@ describe('RoomSwarm two-peer — VIDEO_STATE', () => {
   })
 })
 
+describe('RoomSwarm two-peer — HAND_RAISE and CALL_REACTION', () => {
+  it('tells the other peer that the hand is up, and down again', () => {
+    const { swarmA, swarmB } = makeConnectedPair()
+    const hands = collect(swarmB, 'hand-raise')
+    swarmA.sendToAll({ type: 'HAND_RAISE', raised: true })
+    swarmA.sendToAll({ type: 'HAND_RAISE', raised: false })
+    expect(hands.map((h) => h.raised)).toEqual([true, false])
+    expect(hands[0].peerId).toBeTruthy()
+  })
+
+  it('treats anything but true as hand down', () => {
+    const { swarmA, swarmB } = makeConnectedPair()
+    const hands = collect(swarmB, 'hand-raise')
+    swarmA.sendToAll({ type: 'HAND_RAISE', raised: 'yes' })
+    swarmA.sendToAll({ type: 'HAND_RAISE' })
+    expect(hands.map((h) => h.raised)).toEqual([false, false])
+  })
+
+  it('delivers a reaction from the list', () => {
+    const { swarmA, swarmB } = makeConnectedPair()
+    const reactions = collect(swarmB, 'call-reaction')
+    swarmA.sendToAll({ type: 'CALL_REACTION', emoji: '👏' })
+    expect(reactions.map((r) => r.emoji)).toEqual(['👏'])
+    expect(reactions[0].peerId).toBeTruthy()
+  })
+
+  it('drops a reaction that is not in the list, so nobody can put anything on a tile', () => {
+    const { swarmA, swarmB } = makeConnectedPair()
+    const reactions = collect(swarmB, 'call-reaction')
+    swarmA.sendToAll({ type: 'CALL_REACTION', emoji: 'a long text that is not a reaction' })
+    swarmA.sendToAll({ type: 'CALL_REACTION' })
+    expect(reactions).toHaveLength(0)
+  })
+})
+
 describe('RoomSwarm two-peer — TYPING', () => {
   it('TYPING from A reaches B with channelName and username', () => {
     const { swarmA, swarmB } = makeConnectedPair()
