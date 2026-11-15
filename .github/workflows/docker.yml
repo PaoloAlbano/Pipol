@@ -1,0 +1,57 @@
+name: Docker
+
+# Builds the three images (without publishing them) when something that goes into them changes: a base image that
+# Dependabot bumps, a Dockerfile, the nginx files of the app image. Without this, a base image that no longer has
+# what the Dockerfile uses (it happened with corepack in the Node images) is only found when a release publishes them.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - docker/**
+      - relay/Dockerfile
+      - relay/package*.json
+      - auth/Dockerfile
+      - auth/package.json
+      - auth/pnpm-lock.yaml
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/docker.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - docker/**
+      - relay/Dockerfile
+      - relay/package*.json
+      - auth/Dockerfile
+      - auth/package.json
+      - auth/pnpm-lock.yaml
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/docker.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: pipol-web, context: . }
+          - { image: pipol-relay, context: relay }
+          - { image: pipol-auth, context: auth }
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
