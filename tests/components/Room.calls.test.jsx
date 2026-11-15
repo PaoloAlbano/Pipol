@@ -532,7 +532,7 @@ describe('Room — local screen share and camera', () => {
       await startCall()
       expect(screen.getByText(/no camera found/i, { selector: '[role="status"] span' })).toBeInTheDocument()
       expect(swarmMock.sendToPeer).toHaveBeenCalledWith('peer-1', { type: 'VIDEO_STATE', off: true })
-      expect(screen.getByTitle('Turn on camera')).toBeEnabled()
+      expect(screen.getByTitle(/^turn on camera/i)).toBeEnabled()
       expect(screen.getByTitle(/mute microphone/i)).toBeEnabled()
     })
 
@@ -540,7 +540,7 @@ describe('Room — local screen share and camera', () => {
       missing(false, true)
       await setup()
       await clickStartCall()
-      await waitFor(() => screen.getByTitle('Unmute microphone'))
+      await waitFor(() => screen.getByTitle(/^unmute microphone/i))
       expect(screen.getByText(/joined without audio/i)).toBeInTheDocument()
       expect(media.setAudioMuted).not.toHaveBeenCalled()
     })
@@ -549,7 +549,7 @@ describe('Room — local screen share and camera', () => {
       missing(true, true)
       await setup()
       await clickStartCall()
-      await waitFor(() => screen.getByTitle('Turn on camera'))
+      await waitFor(() => screen.getByTitle(/^turn on camera/i))
       expect(screen.getByText(/to watch and listen/i)).toBeInTheDocument()
       expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'CALL_INIT' })
     })
@@ -1076,7 +1076,7 @@ describe('Room — what to start the call with', () => {
     setPeers('peer-1')
     await setup()
     await clickStartCall(userEvent, { camera: false })
-    await waitFor(() => screen.getByTitle('Turn on camera'))
+    await waitFor(() => screen.getByTitle(/^turn on camera/i))
 
     expect(mockGetLocalStream).toHaveBeenCalledWith({ video: false, audio: true })
     expect(swarmMock.sendToPeer).toHaveBeenCalledWith('peer-1', { type: 'VIDEO_STATE', off: true })
@@ -1087,14 +1087,14 @@ describe('Room — what to start the call with', () => {
   it('does not ask for a microphone left off', async () => {
     await setup()
     await clickStartCall(userEvent, { microphone: false })
-    await waitFor(() => screen.getByTitle('Unmute microphone'))
+    await waitFor(() => screen.getByTitle(/^unmute microphone/i))
     expect(mockGetLocalStream).toHaveBeenCalledWith({ video: true, audio: false })
   })
 
   it('asks for nothing when both are left off, and joins to watch and listen', async () => {
     await setup()
     await clickStartCall(userEvent, { camera: false, microphone: false })
-    await waitFor(() => screen.getByTitle('Turn on camera'))
+    await waitFor(() => screen.getByTitle(/^turn on camera/i))
     expect(mockGetLocalStream).toHaveBeenCalledWith({ video: false, audio: false })
     expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'CALL_INIT' })
   })
@@ -1102,7 +1102,7 @@ describe('Room — what to start the call with', () => {
   it('remembers the choice for the next call', async () => {
     await setup()
     await clickStartCall(userEvent, { camera: false })
-    await waitFor(() => screen.getByTitle('Turn on camera'))
+    await waitFor(() => screen.getByTitle(/^turn on camera/i))
     await userEvent.click(screen.getByTitle(/leave video call/i))
 
     await userEvent.click(screen.getByRole('button', { name: /start call/i }))
@@ -1131,7 +1131,7 @@ describe('Room — what to start the call with', () => {
     await fire('call-init', { peerId: 'p1' })
     await userEvent.click(screen.getByRole('button', { name: /decline/i }))
     await clickJoinCall(userEvent, { camera: false })
-    await waitFor(() => screen.getByTitle('Turn on camera'))
+    await waitFor(() => screen.getByTitle(/^turn on camera/i))
     expect(mockGetLocalStream).toHaveBeenCalledWith({ video: false, audio: true })
   })
 
@@ -1140,11 +1140,11 @@ describe('Room — what to start the call with', () => {
       setPeers('peer-1')
       await setup()
       await clickStartCall(userEvent, { camera: false })
-      await waitFor(() => screen.getByTitle('Turn on camera'))
+      await waitFor(() => screen.getByTitle(/^turn on camera/i))
       const stream = new MediaStream([cam])
       media.enableDevice.mockResolvedValueOnce({ stream, track: cam })
 
-      await userEvent.click(screen.getByTitle('Turn on camera'))
+      await userEvent.click(screen.getByTitle(/^turn on camera/i))
 
       await waitFor(() => screen.getByTitle(/turn off camera/i))
       expect(media.enableDevice).toHaveBeenCalledWith('camera')
@@ -1157,11 +1157,11 @@ describe('Room — what to start the call with', () => {
       setPeers('peer-1')
       await setup()
       await clickStartCall(userEvent, { microphone: false })
-      await waitFor(() => screen.getByTitle('Unmute microphone'))
+      await waitFor(() => screen.getByTitle(/^unmute microphone/i))
       const stream = new MediaStream([mic])
       media.enableDevice.mockResolvedValueOnce({ stream, track: mic })
 
-      await userEvent.click(screen.getByTitle('Unmute microphone'))
+      await userEvent.click(screen.getByTitle(/^unmute microphone/i))
 
       await waitFor(() => screen.getByTitle(/^mute microphone/i))
       expect(media.enableDevice).toHaveBeenCalledWith('microphone')
@@ -1188,13 +1188,13 @@ describe('Room — what to start the call with', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       await setup()
       await clickStartCall(userEvent, { camera: false })
-      await waitFor(() => screen.getByTitle('Turn on camera'))
+      await waitFor(() => screen.getByTitle(/^turn on camera/i))
       media.enableDevice.mockRejectedValueOnce(Object.assign(new Error('none'), { name: 'NotFoundError' }))
 
-      await userEvent.click(screen.getByTitle('Turn on camera'))
+      await userEvent.click(screen.getByTitle(/^turn on camera/i))
 
       await waitFor(() => screen.getByText('No camera found (or it is in use).'))
-      expect(screen.getByTitle('Turn on camera')).toBeInTheDocument()
+      expect(screen.getByTitle(/^turn on camera/i)).toBeInTheDocument()
     })
 
     it('alerts when the permission is refused', async () => {
@@ -1202,10 +1202,10 @@ describe('Room — what to start the call with', () => {
       const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
       await setup()
       await clickStartCall(userEvent, { microphone: false })
-      await waitFor(() => screen.getByTitle('Unmute microphone'))
+      await waitFor(() => screen.getByTitle(/^unmute microphone/i))
       media.enableDevice.mockRejectedValueOnce(Object.assign(new Error('no'), { name: 'NotAllowedError' }))
 
-      await userEvent.click(screen.getByTitle('Unmute microphone'))
+      await userEvent.click(screen.getByTitle(/^unmute microphone/i))
 
       await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(expect.stringMatching(/permission.*microphone/i)))
     })
@@ -1213,9 +1213,9 @@ describe('Room — what to start the call with', () => {
     it('uses the normal toggle again once the device is on', async () => {
       await setup()
       await clickStartCall(userEvent, { camera: false })
-      await waitFor(() => screen.getByTitle('Turn on camera'))
+      await waitFor(() => screen.getByTitle(/^turn on camera/i))
       media.enableDevice.mockResolvedValueOnce({ stream: new MediaStream([cam]), track: cam })
-      await userEvent.click(screen.getByTitle('Turn on camera'))
+      await userEvent.click(screen.getByTitle(/^turn on camera/i))
       await waitFor(() => screen.getByTitle(/turn off camera/i))
 
       await userEvent.click(screen.getByTitle(/turn off camera/i))
@@ -1270,11 +1270,11 @@ describe('Room — raised hands and reactions', () => {
 
   it('raises and lowers our hand, telling the others', async () => {
     await startCall()
-    await userEvent.click(screen.getByTitle('Raise hand'))
+    await userEvent.click(screen.getByTitle(/^raise hand/i))
     expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'HAND_RAISE', raised: true })
     expect(screen.getByRole('img', { name: 'alice raised a hand' })).toBeInTheDocument()
 
-    await userEvent.click(screen.getByTitle('Lower hand'))
+    await userEvent.click(screen.getByTitle(/^lower hand/i))
     expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'HAND_RAISE', raised: false })
     expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
   })
@@ -1284,17 +1284,17 @@ describe('Room — raised hands and reactions', () => {
     await fire('call-init', { peerId: 'peer-8' })
     expect(swarmMock.sendToPeer).not.toHaveBeenCalledWith('peer-8', expect.objectContaining({ type: 'HAND_RAISE' }))
 
-    await userEvent.click(screen.getByTitle('Raise hand'))
+    await userEvent.click(screen.getByTitle(/^raise hand/i))
     await fire('call-init', { peerId: 'peer-9' })
     expect(swarmMock.sendToPeer).toHaveBeenCalledWith('peer-9', { type: 'HAND_RAISE', raised: true })
   })
 
   it('lowers our hand and clears the tiles when the call ends', async () => {
     await startCall()
-    await userEvent.click(screen.getByTitle('Raise hand'))
+    await userEvent.click(screen.getByTitle(/^raise hand/i))
     await userEvent.click(screen.getByTitle(/leave video call/i))
     await clickStartCall()
-    await waitFor(() => screen.getByTitle('Raise hand'))
+    await waitFor(() => screen.getByTitle(/^raise hand/i))
     expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
   })
 
@@ -1338,6 +1338,106 @@ describe('Room — raised hands and reactions', () => {
       for (let i = 0; i < 9; i++) await fire('call-reaction', { peerId: 'peer-1', emoji: '👏' })
       expect(reactionsOf('peer-1')).toHaveLength(6)
     })
+  })
+})
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+
+describe('Room — keyboard shortcuts in a call', () => {
+  const press = (init) => fireEvent.keyDown(document.body, init)
+  const release = (init) => fireEvent.keyUp(document.body, init)
+  const space = { key: ' ', code: 'Space' }
+
+  it('M mutes and unmutes, V turns the camera off and on, H raises and lowers the hand', async () => {
+    await startCall()
+    press({ key: 'm' })
+    expect(media.setAudioMuted).toHaveBeenLastCalledWith(true)
+    await waitFor(() => screen.getByTitle(/^unmute microphone/i))
+    press({ key: 'm' })
+    expect(media.setAudioMuted).toHaveBeenLastCalledWith(false)
+
+    press({ key: 'v' })
+    expect(media.setVideoMuted).toHaveBeenLastCalledWith(true)
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'VIDEO_STATE', off: true })
+
+    press({ key: 'h' })
+    expect(swarmMock.sendToAll).toHaveBeenCalledWith({ type: 'HAND_RAISE', raised: true })
+  })
+
+  it('does nothing outside a call, nor while writing a message', async () => {
+    await setup()
+    press({ key: 'h' })
+    expect(swarmMock.sendToAll).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'HAND_RAISE' }))
+
+    await clickStartCall()
+    await waitFor(() => screen.getByTitle(/mute microphone/i))
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'h' })
+    expect(swarmMock.sendToAll).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'HAND_RAISE' }))
+  })
+
+  it('M and V turn on a camera and a microphone that are off, as the buttons do', async () => {
+    media.getMissingDevices.mockReturnValueOnce({ camera: true, microphone: true })
+    media.enableDevice.mockResolvedValue({ stream: new MediaStream(), track: { kind: 'audio' } })
+    await setup()
+    await clickStartCall()
+    await waitFor(() => screen.getByTitle(/^turn on camera/i))
+    press({ key: 'm' })
+    await waitFor(() => expect(media.enableDevice).toHaveBeenCalledWith('microphone'))
+    press({ key: 'v' })
+    await waitFor(() => expect(media.enableDevice).toHaveBeenCalledWith('camera'))
+  })
+
+  it('push-to-talk is left out while the microphone is off: there is nothing to open', async () => {
+    media.getMissingDevices.mockReturnValueOnce({ camera: false, microphone: true })
+    await setup()
+    await clickStartCall()
+    await waitFor(() => screen.getByTitle(/^unmute microphone/i))
+    expect(fireEvent.keyDown(document.body, space)).toBe(true) // not taken from the page
+    release(space)
+    expect(media.setAudioMuted).not.toHaveBeenCalled()
+  })
+
+  it('push-to-talk: the microphone is open while Space is held, and muted again after', async () => {
+    await startCall()
+    press({ key: 'm' })
+    await waitFor(() => screen.getByTitle(/^unmute microphone/i))
+
+    press(space)
+    expect(media.setAudioMuted).toHaveBeenLastCalledWith(false)
+    await waitFor(() => screen.getByTitle(/^mute microphone/i))
+
+    release(space)
+    expect(media.setAudioMuted).toHaveBeenLastCalledWith(true)
+    await waitFor(() => screen.getByTitle(/^unmute microphone/i))
+  })
+
+  it('push-to-talk does nothing when the microphone is already open', async () => {
+    await startCall()
+    media.setAudioMuted.mockClear()
+    press(space)
+    release(space)
+    expect(media.setAudioMuted).not.toHaveBeenCalled()
+  })
+
+  it('a call ended with Space held does not leave the next one muted', async () => {
+    await startCall()
+    press({ key: 'm' })
+    await waitFor(() => screen.getByTitle(/^unmute microphone/i))
+    press(space)
+    await userEvent.click(screen.getByTitle(/leave video call/i))
+    release(space)
+
+    await clickStartCall()
+    await waitFor(() => screen.getByTitle(/^mute microphone/i))
+  })
+
+  it('shows the keys in the titles of the buttons', async () => {
+    await startCall()
+    expect(screen.getByTitle('Mute microphone (M)')).toBeInTheDocument()
+    expect(screen.getByTitle('Turn off camera (V)')).toBeInTheDocument()
+    expect(screen.getByTitle('Raise hand (H)')).toBeInTheDocument()
+    press({ key: 'm' })
+    await waitFor(() => screen.getByTitle('Unmute microphone (M, or hold Space to talk)'))
   })
 })
 

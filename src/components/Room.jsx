@@ -11,6 +11,7 @@ import { reconnectDelay } from '../webrtc/reconnect.js'
 import { getCallDefaults, setCallDefaults } from '../webrtc/callDefaults.js'
 import { REACTION_MS, MAX_REACTIONS_PER_TILE } from '../webrtc/callReactions.js'
 import { useWakeLock } from '../webrtc/useWakeLock.js'
+import { useCallShortcuts } from '../webrtc/useCallShortcuts.js'
 import {
   getLocalStream,
   getMissingDevices,
@@ -184,6 +185,7 @@ export default function Room({
   const [raisedHands, setRaisedHands] = useState({}) // peerId → true while their hand is raised
   const [handRaised, setHandRaised] = useState(false)
   const handRaisedRef = useRef(false) // read by ensureRTCPeer, which may run from a stale closure
+  const talkingRef = useRef(false) // the microphone is open only while the push-to-talk key is held
   const [callReactions, setCallReactions] = useState({}) // peerId (or LOCAL_REACTIONS) → [{ id, emoji }] shown on the tile
   const reactionTimersRef = useRef(new Set())
   const reactionIdRef = useRef(0)
@@ -246,6 +248,17 @@ export default function Room({
 
   // The screen stays on during a call (a phone that locks itself stops the camera and drops the call)
   useWakeLock(callActive)
+  useCallShortcuts(
+    callActive,
+    {
+      // M and V turn on a device that is off, as the buttons do; push-to-talk needs a microphone that is on
+      toggleAudio: handleToggleAudio,
+      toggleVideo: handleToggleVideo,
+      toggleHand: handleToggleHand,
+      talk: devicesOff.microphone ? undefined : { start: handleTalkStart, end: handleTalkEnd },
+    },
+    pipHost?.ownerDocument.defaultView ?? null
+  )
 
   // ── Keep TURN credentials valid during a call ─────────────────────────────
   // Credentials expire (the relay's /ice endpoint hands out short-lived ones): renew them on the live
@@ -1350,6 +1363,7 @@ export default function Room({
     setVideoMutedState(false)
     videoMutedRef.current = false
     setDevicesOff(NO_DEVICES_OFF)
+    talkingRef.current = false
     setCallNotice('')
     setScreenSharing(false)
     setLayout('grid')
@@ -1398,6 +1412,22 @@ export default function Room({
     const next = !audioMuted
     setAudioMuted(next)
     setAudioMutedState(next)
+  }
+
+  /** Push-to-talk: while muted, the microphone is open as long as the key is held. False: nothing to start. */
+  function handleTalkStart() {
+    if (!audioMuted || talkingRef.current) return false
+    talkingRef.current = true
+    setAudioMuted(false)
+    setAudioMutedState(false)
+    return true
+  }
+
+  function handleTalkEnd() {
+    if (!talkingRef.current) return
+    talkingRef.current = false
+    setAudioMuted(true)
+    setAudioMutedState(true)
   }
 
   function handleToggleVideo() {
