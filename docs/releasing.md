@@ -21,15 +21,15 @@ When a merge brings several commits, the biggest change decides. A merge made on
 
 ## How a release is made
 
-Nothing to do. After every push to `main`, the [Release workflow](../.github/workflows/release.yml):
+Nothing to do. When the CI workflow (the tests) has finished on a merge to `main`, and **only if it passed**, the [Release workflow](../.github/workflows/release.yml):
 
 1. looks at the commits since the last tag (`scripts/next-version.mjs`, with the rules above);
-2. if they make a version, creates the tag `vx.y.z` on that commit and a GitHub release whose notes list the changes by type, with the pull request each came from;
+2. if they make a version, creates the tag `vx.y.z` on the commit that was tested and a GitHub release whose notes list the changes by type, with the pull request each came from;
 3. builds and publishes the three Docker images of that version.
 
-The releases page of the repository is the changelog. Two merges close together are released one after the other, each from the tag of the previous.
+A merge whose tests fail is not released, and the next one that passes releases the commits of both. The releases page of the repository is the changelog. Two merges close together are released one after the other, each from the tag of the previous.
 
-The branch rule that requires the check `test` before a merge is what makes a release safe: only code whose tests passed reaches `main`, and so a release.
+The branch rule that requires the check `test` before a merge already keeps broken code out of `main`; waiting for the tests on the merge itself covers the rest.
 
 To see what the next release would be, without making it:
 

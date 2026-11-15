@@ -2,10 +2,13 @@ name: Release
 
 # Every merge to main that changes something for the users (a `feat:` or a `fix:` in the commit messages) makes a new
 # version, by itself: the tag, the GitHub release with its notes, and the Docker images of that version.
-# Nothing is written in the repository: the version is the tag. See docs/releasing.md.
+# It starts when the CI workflow has finished on the merge, and only if it passed: a commit whose tests fail is not
+# released. Nothing is written in the repository: the version is the tag. See docs/releasing.md.
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 permissions:
@@ -18,14 +21,18 @@ concurrency:
 
 jobs:
   release:
+    # The tests of that commit passed
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     outputs:
       released: ${{ steps.next.outputs.release }}
       version: ${{ steps.next.outputs.version }}
       tag: ${{ steps.next.outputs.tag }}
     steps:
+      # The commit the tests ran on, not the latest one of main (a later merge may have arrived meanwhile)
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0 # the history and the tags decide the version
 
       - uses: actions/setup-node@v7
@@ -41,7 +48,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.next.outputs.tag }}
-        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file release-notes.md
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: gh release create "$TAG" --target "$SHA" --title "$TAG" --notes-file release-notes.md
 
   images:
     needs: release
@@ -94,7 +102,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            GIT_COMMIT=${{ github.sha }}
+            GIT_COMMIT=${{ github.event.workflow_run.head_sha }}
             APP_VERSION=${{ needs.release.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
