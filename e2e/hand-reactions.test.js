@@ -3,7 +3,7 @@
  * Raised hands and reactions in a call between two browsers: what one does shows on their tile for the other.
  */
 import { test, expect } from '@playwright/test'
-import { joinQuickRoom } from './helpers.js'
+import { joinQuickRoom, startCall, joinCall } from './helpers.js'
 
 test.describe('Raised hands and reactions', () => {
   test.setTimeout(90_000)
@@ -18,8 +18,8 @@ test.describe('Raised hands and reactions', () => {
     try {
       await Promise.all([joinQuickRoom(pageA, room, 'alice-e2e'), joinQuickRoom(pageB, room, 'bob-e2e')])
       await pageA.waitForTimeout(2500)
-      await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
-      await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+      await startCall(pageA)
+      await joinCall(pageB)
       await expect(pageA.locator('.video-tile')).toHaveCount(2, { timeout: 20000 })
 
       // Bob raises his hand: Alice sees it on his tile, and he on his own

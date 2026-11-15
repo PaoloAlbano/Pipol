@@ -1293,7 +1293,7 @@ describe('Room — raised hands and reactions', () => {
     await startCall()
     await userEvent.click(screen.getByTitle('Raise hand'))
     await userEvent.click(screen.getByTitle(/leave video call/i))
-    await userEvent.click(screen.getByText(/start video call/i))
+    await clickStartCall()
     await waitFor(() => screen.getByTitle('Raise hand'))
     expect(screen.queryByRole('img', { name: /raised a hand/i })).toBeNull()
   })
