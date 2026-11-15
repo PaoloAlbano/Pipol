@@ -1,10 +1,14 @@
-# Dependabot is used for security updates only.
+# The npm packages: Dependabot is used for security updates only.
 # `open-pull-requests-limit: 0` disables routine version bumps, so the version
 # ranges in package.json stay under our control. Security PRs (which need
 # "Dependabot security updates" enabled in the repo settings) are still opened,
 # grouped into a single PR per directory.
 # Note: GitHub raises security PRs as soon as an advisory is published; the
 # weekly schedule below only applies to version updates.
+#
+# The base images of the Dockerfiles (the app, the relay and the auth server) are
+# the exception: there is no advisory for them, so their updates are routine, once
+# a month, in a single PR.
 version: 2
 updates:
   - package-ecosystem: npm # also covers pnpm lockfiles
@@ -44,4 +48,17 @@ updates:
     groups:
       security:
         applies-to: security-updates
+        patterns: ['*']
+
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /auth
+      - /relay
+    schedule:
+      interval: monthly
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    groups:
+      base-images:
         patterns: ['*']
