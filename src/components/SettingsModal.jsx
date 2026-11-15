@@ -29,6 +29,7 @@ import {
 } from '../p2p/webauthn.js'
 import { getNotificationPermission, requestNotificationPermission } from '../p2p/notifications.js'
 import '../styles/settings.css'
+import { versionLabel } from '../version.js'
 
 const QUALITIES = [
   { value: '480p', label: '480p', desc: 'Low bandwidth' },
@@ -595,6 +596,8 @@ export default function SettingsModal({
           )}
         </div>
         {/* settings-body */}
+
+        <p className="settings-version">Pipol {versionLabel()}</p>
 
         <div className="settings-footer">
           <button className="btn btn-secondary" onClick={onClose}>

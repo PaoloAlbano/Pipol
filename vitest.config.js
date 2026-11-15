@@ -21,5 +21,7 @@ export default defineConfig({
   },
   define: {
     __ALLOW_IDENTITY_RESET__: false,
+    __APP_VERSION__: JSON.stringify('0.0.0-test'),
+    __APP_COMMIT__: JSON.stringify('abc1234'),
   },
 })

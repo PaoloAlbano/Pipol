@@ -5,7 +5,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY server.js ice.js ice-guard.js turnstile.js usage-guard.js ./
+COPY server.js ice.js ice-guard.js turnstile.js usage-guard.js version.js ./
+
+# The version and the commit this image was built for (shown by /version); set by the release
+ARG GIT_COMMIT=
+ARG APP_VERSION=
+ENV GIT_COMMIT=$GIT_COMMIT APP_VERSION=$APP_VERSION
 
 ENV PORT=8787
 EXPOSE 8787

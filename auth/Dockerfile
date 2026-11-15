@@ -9,6 +9,11 @@ RUN pnpm install --frozen-lockfile --prod
 COPY server.js providers.json ./
 COPY src ./src
 
+# The version and the commit this image was built for (shown by /version); set by the release
+ARG GIT_COMMIT=
+ARG APP_VERSION=
+ENV GIT_COMMIT=$GIT_COMMIT APP_VERSION=$APP_VERSION
+
 ENV PORT=8080
 EXPOSE 8080
 

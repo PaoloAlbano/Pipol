@@ -1,6 +1,6 @@
 {
   "name": "pipol",
-  "version": "1.0.0",
+  "version": "0.0.0-development",
   "type": "module",
   "packageManager": "pnpm@10.5.0",
   "description": "Fully P2P group chat and video chat PWA.",

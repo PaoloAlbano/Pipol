@@ -7,8 +7,12 @@ import { createIceProvider, isIceDisabled } from './ice.js'
 import { createIceGuard } from './ice-guard.js'
 import { createTurnstile } from './turnstile.js'
 import { createUsageGuard } from './usage-guard.js'
+import { getVersionInfo, describeVersion } from './version.js'
 
 const PORT = process.env.PORT || 8787
+
+const versionInfo = getVersionInfo()
+console.log(`[relay] running ${describeVersion(versionInfo)}`)
 
 const dht = new DHT()
 await dht.ready()
@@ -99,6 +103,17 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(502, { ...cors, 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'ice-unavailable' }))
     }
+    return
+  }
+
+  // Which version is running (any origin: the app may show it)
+  if (req.url?.split('?')[0] === '/version') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store',
+    })
+    res.end(JSON.stringify(versionInfo))
     return
   }
 
