@@ -4,7 +4,7 @@
  * so it is one). The fallback through a TURN relay is covered by the unit tests, which can fake the route.
  */
 import { test, expect } from '@playwright/test'
-import { joinQuickRoom } from './helpers.js'
+import { joinQuickRoom, startCall, joinCall } from './helpers.js'
 
 const QUALITY_KEY = 'p2p-chat:video-quality'
 
@@ -43,8 +43,8 @@ test.describe('Video quality', () => {
     const [pageA, pageB] = await Promise.all(contexts.map((c) => c.newPage()))
     await Promise.all([joinQuickRoom(pageA, room, 'alice-e2e'), joinQuickRoom(pageB, room, 'bob-e2e')])
     await pageA.waitForTimeout(2500)
-    await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
-    await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+    await startCall(pageA)
+    await joinCall(pageB)
     return { contexts, pageA, pageB }
   }
 

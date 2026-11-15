@@ -7,7 +7,7 @@
  * the other side, which never noticed anything, replaces its old connection when the new offer arrives.
  */
 import { test, expect } from '@playwright/test'
-import { joinQuickRoom, sendMessage, waitForMessage } from './helpers.js'
+import { joinQuickRoom, sendMessage, waitForMessage, startCall, joinCall } from './helpers.js'
 
 /** Keeps every RTCPeerConnection of the page, and tells which ones carry the call (those with our camera). */
 function recordPeerConnections() {
@@ -78,8 +78,8 @@ test.describe('Reconnecting', () => {
     try {
       await Promise.all([joinQuickRoom(pageA, room, 'alice-e2e'), joinQuickRoom(pageB, room, 'bob-e2e')])
       await pageA.waitForTimeout(2500)
-      await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
-      await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+      await startCall(pageA)
+      await joinCall(pageB)
       await expect.poll(() => pageA.evaluate(callState), { timeout: 30000 }).toBe('connected')
       await expect.poll(() => pageB.evaluate(callState), { timeout: 30000 }).toBe('connected')
       await remoteVideoPlays(pageA)
@@ -117,8 +117,8 @@ test.describe('Reconnecting', () => {
     try {
       await Promise.all([joinQuickRoom(pageA, room, 'alice-e2e'), joinQuickRoom(pageB, room, 'bob-e2e')])
       await pageA.waitForTimeout(2500)
-      await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
-      await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+      await startCall(pageA)
+      await joinCall(pageB)
       await expect.poll(() => pageA.evaluate(callState), { timeout: 30000 }).toBe('connected')
       await expect.poll(() => pageB.evaluate(callState), { timeout: 30000 }).toBe('connected')
       await expect.poll(() => pageA.evaluate(() => window.__chatLink().length), { timeout: 30000 }).toBe(1)
@@ -158,8 +158,8 @@ test.describe('Reconnecting', () => {
     try {
       await Promise.all([joinQuickRoom(pageA, room, 'alice-e2e'), joinQuickRoom(pageB, room, 'bob-e2e')])
       await pageA.waitForTimeout(2500)
-      await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
-      await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+      await startCall(pageA)
+      await joinCall(pageB)
 
       // Whatever the speed, once it works nothing is left over the tiles
       await remoteVideoPlays(pageA)

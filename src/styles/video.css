@@ -192,12 +192,6 @@
   background: var(--surface-3);
 }
 
-.control-btn:disabled,
-.btn-mobile-control:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .control-btn--active {
   background: var(--surface-3);
   border-color: var(--primary);

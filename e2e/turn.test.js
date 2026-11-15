@@ -18,7 +18,7 @@ import { createConnection } from 'node:net'
 import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { joinQuickRoom } from './helpers.js'
+import { joinQuickRoom, startCall, joinCall } from './helpers.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -454,8 +454,8 @@ test.describe('Calls through a real coturn', () => {
     const room = `e2e-${Date.now()}-turn-call`
     await Promise.all([joinQuickRoom(pageA, room, 'alice-e2e'), joinQuickRoom(pageB, room, 'bob-e2e')])
     await pageA.waitForTimeout(2500)
-    await pageA.getByRole('button', { name: /start video call/i }).click({ timeout: 15_000 })
-    await pageB.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20_000 })
+    await startCall(pageA)
+    await joinCall(pageB)
     await expect.poll(() => pageA.evaluate(callState), { timeout: 40_000 }).toBe('connected')
     await expect.poll(() => pageB.evaluate(callState), { timeout: 40_000 }).toBe('connected')
     return { contexts, pageA, pageB }

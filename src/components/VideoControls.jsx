@@ -5,8 +5,6 @@ import '../styles/video.css'
  *
  * @param {boolean}  audioMuted
  * @param {boolean}  videoMuted
- * @param {boolean}  audioUnavailable  no microphone on this device: the button is disabled
- * @param {boolean}  videoUnavailable  no camera on this device: the button is disabled
  * @param {function} onToggleAudio
  * @param {function} onToggleVideo
  * @param {function} onEndCall
@@ -14,8 +12,6 @@ import '../styles/video.css'
 export default function VideoControls({
   audioMuted,
   videoMuted,
-  audioUnavailable = false,
-  videoUnavailable = false,
   screenSharing,
   pipActive,
   onToggleAudio,
@@ -30,8 +26,7 @@ export default function VideoControls({
       <button
         className={`control-btn ${audioMuted ? 'control-btn--active' : ''}`}
         onClick={onToggleAudio}
-        disabled={audioUnavailable}
-        title={audioUnavailable ? 'No microphone in this call' : audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+        title={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
       >
         {audioMuted ? '🔇' : '🎙️'}
         <span className="control-label">{audioMuted ? 'Unmute' : 'Mute'}</span>
@@ -40,8 +35,7 @@ export default function VideoControls({
       <button
         className={`control-btn ${videoMuted ? 'control-btn--active' : ''}`}
         onClick={onToggleVideo}
-        disabled={videoUnavailable}
-        title={videoUnavailable ? 'No camera in this call' : videoMuted ? 'Turn on camera' : 'Turn off camera'}
+        title={videoMuted ? 'Turn on camera' : 'Turn off camera'}
       >
         {videoMuted ? '📵' : '📷'}
         <span className="control-label">{videoMuted ? 'Cam on' : 'Cam off'}</span>

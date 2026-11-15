@@ -63,3 +63,41 @@ export async function sendMessage(page, text) {
 export async function waitForMessage(page, text, timeout = 15000) {
   await expect(page.getByText(text, { exact: false })).toBeVisible({ timeout })
 }
+
+/**
+ * The window that asks what to start a call with: the switches set as wanted, then its confirm button.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ camera?: boolean, microphone?: boolean, confirm: string }} options
+ */
+async function confirmCallSetup(page, { camera = true, microphone = true, confirm }) {
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible({ timeout: 20000 })
+  for (const [name, wanted] of [
+    ['Microphone', microphone],
+    ['Camera', camera],
+  ]) {
+    const toggle = dialog.getByRole('switch', { name })
+    if (((await toggle.getAttribute('aria-checked')) === 'true') !== wanted) await toggle.click()
+  }
+  await dialog.getByRole('button', { name: confirm }).click()
+}
+
+/**
+ * Start a call: "Start call", then the choice of what to start with (both on unless told otherwise).
+ * @param {import('@playwright/test').Page} page
+ * @param {{ camera?: boolean, microphone?: boolean }} [options]
+ */
+export async function startCall(page, options = {}) {
+  await page.getByRole('button', { name: /start call/i }).click({ timeout: 15000 })
+  await confirmCallSetup(page, { ...options, confirm: 'Start call' })
+}
+
+/**
+ * Join the call of somebody else: "Join", then the choice of what to join with.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ camera?: boolean, microphone?: boolean }} [options]
+ */
+export async function joinCall(page, options = {}) {
+  await page.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+  await confirmCallSetup(page, { ...options, confirm: 'Join now' })
+}

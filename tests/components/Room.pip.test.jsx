@@ -9,7 +9,7 @@
 import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Room from '../../src/components/Room.jsx'
-import * as media from '../../src/webrtc/media.js'
+import { clickStartCall } from './callUi.js'
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -45,6 +45,7 @@ const mockGetLocalStream = vi.fn()
 vi.mock('../../src/webrtc/media.js', () => ({
   getLocalStream: (...args) => mockGetLocalStream(...args),
   getMissingDevices: vi.fn(() => ({ camera: false, microphone: false })),
+  enableDevice: vi.fn(),
   stopLocalStream: vi.fn(),
   setAudioMuted: vi.fn(),
   setVideoMuted: vi.fn(),
@@ -148,8 +149,8 @@ async function renderWithActiveCall(extraProps = {}) {
   mockGetLocalStream.mockResolvedValue(new MediaStream())
   const user = userEvent.setup()
   render(<Room {...defaultProps} {...extraProps} />)
-  await waitFor(() => screen.getByText(/start video call/i))
-  await user.click(screen.getByText(/start video call/i))
+  await waitFor(() => screen.getByText(/start call/i))
+  await clickStartCall(user)
   await waitFor(() => screen.getByTitle(/mute microphone/i))
   return { user }
 }
@@ -195,7 +196,7 @@ describe('Room PiP — auto-trigger Document PiP on tab hide', () => {
   it('does NOT call requestWindow when no call is active', async () => {
     mockGetLocalStream.mockResolvedValue(new MediaStream())
     render(<Room {...defaultProps} />)
-    await waitFor(() => screen.getByText(/start video call/i))
+    await waitFor(() => screen.getByText(/start call/i))
     // Do NOT click start call — callActive remains false
     injectVideoElement()
 
@@ -369,26 +370,6 @@ describe('Room PiP — the whole call is in the window', () => {
 
     await waitFor(() => expect(pipWin.document.querySelectorAll('.video-tile').length).toBeGreaterThan(0))
     expect(pipWin.document.body.textContent).toContain('tester (you)')
-  })
-
-  it('has the camera and microphone buttons of the window enabled when the device has them', async () => {
-    const { user } = await renderWithActiveCall()
-    injectVideoElement()
-    await user.click(screen.getByTitle(/open picture-in-picture/i))
-
-    await waitFor(() => expect(pipWin.document.querySelectorAll('button').length).toBe(3))
-    expect([...pipWin.document.querySelectorAll('button')].some((b) => b.disabled)).toBe(false)
-  })
-
-  it('disables the buttons of what the device does not have', async () => {
-    media.getMissingDevices.mockReturnValueOnce({ camera: true, microphone: false })
-    const { user } = await renderWithActiveCall()
-    injectVideoElement()
-    await user.click(screen.getByTitle(/open picture-in-picture/i))
-
-    await waitFor(() => expect(pipWin.document.querySelectorAll('button').length).toBe(3))
-    const [mic, camera, end] = pipWin.document.querySelectorAll('button')
-    expect([mic.disabled, camera.disabled, end.disabled]).toEqual([false, true, false])
   })
 
   it('keeps the pictures of the window silent: the sound comes from the page', async () => {

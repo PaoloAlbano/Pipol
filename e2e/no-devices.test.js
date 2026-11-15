@@ -4,7 +4,7 @@
  * see an avatar for them.
  */
 import { test, expect } from '@playwright/test'
-import { joinQuickRoom } from './helpers.js'
+import { joinQuickRoom, startCall, joinCall } from './helpers.js'
 
 /** Like a computer whose camera and microphone are unplugged. */
 function noDevices() {
@@ -46,13 +46,13 @@ test.describe('Call without camera and microphone', () => {
         await alice.waitForTimeout(2500)
 
         const [starter, joiner] = bobStarts ? [bob, alice] : [alice, bob]
-        await starter.getByRole('button', { name: /start video call/i }).click({ timeout: 15000 })
-        await joiner.getByRole('button', { name: 'Join', exact: true }).first().click({ timeout: 20000 })
+        await startCall(starter)
+        await joinCall(joiner)
 
-        // Bob is told why he cannot use them, and cannot turn them on
+        // Bob is told why he has neither, and they show as off
         await expect(bob.getByRole('status').filter({ hasText: /watch and listen/i })).toBeVisible({ timeout: 20000 })
-        await expect(bob.getByTitle('No camera in this call').first()).toBeDisabled()
-        await expect(bob.getByTitle('No microphone in this call').first()).toBeDisabled()
+        await expect(bob.getByTitle('Turn on camera').first()).toBeVisible()
+        await expect(bob.getByTitle('Unmute microphone').first()).toBeVisible()
 
         // Alice shows an avatar for Bob
         await expect(alice.locator('.video-avatar')).toHaveCount(1, { timeout: 20000 })
