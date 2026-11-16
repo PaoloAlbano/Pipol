@@ -1,19 +1,10 @@
-/* The version of the app, in a corner of the screen: small, but readable */
+/* The version of the app: small, but readable */
 .version-label {
+  margin: 0;
   padding: 4px 8px;
-  font: inherit;
   font-size: 12px;
   color: var(--text-muted);
-  background: none;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
   user-select: text;
-}
-.version-label:hover,
-.version-label:focus-visible {
-  color: var(--text);
-  background: var(--surface-2);
 }
 
 /* At the end of a card, centered (login) */

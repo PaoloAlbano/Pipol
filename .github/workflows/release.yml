@@ -51,6 +51,23 @@ jobs:
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: gh release create "$TAG" --target "$SHA" --title "$TAG" --notes-file release-notes.md
 
+      # The branch that Cloudflare Pages builds for production: this commit, and a file with the version. One build per
+      # release, and it already knows the version (a build from git does not know the tag). The branch is only ever
+      # written here, by force: it is not a place to work. See docs/releasing.md.
+      - name: Publish the release to the branch Cloudflare Pages deploys
+        if: ${{ steps.next.outputs.release == 'true' }}
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          VERSION: ${{ steps.next.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --detach "$SHA"
+          echo "$VERSION" > release-version.txt
+          git add release-version.txt
+          git commit -m "release $VERSION"
+          git push --force origin HEAD:refs/heads/release
+
   images:
     needs: release
     if: ${{ needs.release.outputs.released == 'true' }}
