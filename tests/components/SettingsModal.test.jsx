@@ -86,7 +86,7 @@ describe('SettingsModal — rendering', () => {
 
   it('shows the version of the app and the commit it was built from', () => {
     setup()
-    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
+    expect(screen.getByText('Pipol v0.0.0-test')).toBeInTheDocument()
   })
 
   it('displays video quality section', () => {

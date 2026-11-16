@@ -23,6 +23,6 @@ beforeEach(() => {
 describe('Home', () => {
   it('shows the version of the app and the commit', () => {
     setup()
-    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
+    expect(screen.getByText('Pipol v0.0.0-test')).toBeInTheDocument()
   })
 })

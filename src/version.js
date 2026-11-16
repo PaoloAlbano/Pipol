@@ -2,7 +2,7 @@
 export const APP_VERSION = __APP_VERSION__
 export const APP_COMMIT = __APP_COMMIT__
 
-/** "v0.3.0 · abc1234", the part that is known, or "dev build". */
+/** "v0.3.0" for a release; the commit for a build that is not one; "dev build" when nothing is known. */
 export function versionLabel(version = APP_VERSION, commit = APP_COMMIT) {
-  return [version && `v${version}`, commit].filter(Boolean).join(' · ') || 'dev build'
+  return version ? `v${version}` : commit || 'dev build'
 }

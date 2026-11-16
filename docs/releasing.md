@@ -59,9 +59,9 @@ What a deployment can say depends on how it was built:
 
 | Where | What it says |
 |-------|-------------|
-| **The app on pipol.dev** (Cloudflare Pages, the branch `release`) | `Pipol v0.3.0 · abc1234`: the version of the release and its commit. See [below](#the-app-on-cloudflare-pages) |
+| **The app on pipol.dev** (Cloudflare Pages, the branch `release`) | `Pipol v0.3.0`: only the version of the release. See [below](#the-app-on-cloudflare-pages) |
 | **The preview of a branch** (Cloudflare Pages, `main` included) | `Pipol abc1234`: only the commit, since a branch is not in any release |
-| **The Docker images** | The app: `Pipol v0.3.0 · abc1234`; the servers: `GET /version` → `{ "name": "…", "version": "0.3.0", "commit": "abc1234" }`. The version is also written in the log at start-up |
+| **The Docker images** | The app: `Pipol v0.3.0`; the servers: `GET /version` → `{ "name": "…", "version": "0.3.0", "commit": "abc1234" }`. The version is also written in the log at start-up |
 | **The relay and the auth server built from git** (for instance on Render) | `GET /version`: `{ "name": "…", "version": null, "commit": "abc1234" }`; the commit comes from `RENDER_GIT_COMMIT` (or `GIT_COMMIT`) |
 
 The version is also in *Settings*, at the bottom, and on the login screen and the home page. To know which release a commit belongs to, look at the releases page, or run `git describe --tags --contains <commit>`. To have the version on the servers too, run the published images instead of building from git.
