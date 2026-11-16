@@ -59,11 +59,27 @@ What a deployment can say depends on how it was built:
 
 | Where | What it says |
 |-------|-------------|
-| **The app on Cloudflare Pages**, built from git | *Settings*, at the bottom: only the commit (`abc1234`), since it is not a release build |
+| **The app on pipol.dev** (Cloudflare Pages, the branch `release`) | `Pipol v0.3.0 · abc1234`: the version of the release and its commit. See [below](#the-app-on-cloudflare-pages) |
+| **The preview of a branch** (Cloudflare Pages, `main` included) | `Pipol abc1234`: only the commit, since a branch is not in any release |
+| **The Docker images** | The app: `Pipol v0.3.0 · abc1234`; the servers: `GET /version` → `{ "name": "…", "version": "0.3.0", "commit": "abc1234" }`. The version is also written in the log at start-up |
 | **The relay and the auth server built from git** (for instance on Render) | `GET /version`: `{ "name": "…", "version": null, "commit": "abc1234" }`; the commit comes from `RENDER_GIT_COMMIT` (or `GIT_COMMIT`) |
-| **The Docker images** | The app: `Pipol v0.3.0 · abc1234` in *Settings*; the servers: `{ "name": "…", "version": "0.3.0", "commit": "abc1234" }`. The version is also written in the log at start-up |
 
-To know which release a commit belongs to, look at the releases page, or run `git describe --tags --contains <commit>`. To have the version everywhere, run the published images instead of building from git.
+The version is also in *Settings*, at the bottom, and on the login screen and the home page. To know which release a commit belongs to, look at the releases page, or run `git describe --tags --contains <commit>`. To have the version on the servers too, run the published images instead of building from git.
+
+### The app on Cloudflare Pages
+
+A build from git does not know the version, since the version is the tag. So the release tells it: after creating the tag, the Release workflow writes the branch **`release`**: the commit that was released, plus one commit with the file `release-version.txt` that holds the version (`0.3.0`). Cloudflare Pages builds that branch as the production one, so:
+
+- **One build per release**, and it already knows the version. A merge that makes no release (`docs:`, `test:`, `ci:`, `chore:`, `refactor:`) does not build the app in production, since nothing changed for the users. If a change to the app should reach pipol.dev, call it `fix:`.
+- The branch is rewritten by force at every release, from the commit that was tested: do not work on it.
+- Every other branch, `main` included, is a preview and shows only the commit.
+
+To set it up, **in this order**:
+
+1. Merge the pull request that adds this, and wait for the next release: the branch `release` is created by it (check that it exists on GitHub).
+2. In Cloudflare: *Workers & Pages*, the project, *Settings*, *Builds*, *Branch control*, change the **production branch** from `main` to `release`.
+
+Nothing else changes: the variables of the project, the domain (pipol.dev) and the headers stay as they are. Until step 2, pipol.dev is built from `main`, as before, and shows no version.
 
 ## Compatibility
 
@@ -73,4 +89,4 @@ To know which release a commit belongs to, look at the releases page, or run `gi
 
 ## What does not change
 
-Cloudflare Pages still publishes the app on every push to `main`: the tag marks a version, it does not decide when the site is deployed.
+The previews of the branches (Cloudflare Pages) are still built on every push, for any branch but `release`.

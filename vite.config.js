@@ -6,6 +6,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import http from 'http'
 import { execSync } from 'child_process'
+import { resolveVersion } from './scripts/resolve-version.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -34,10 +35,10 @@ function httpRedirectPlugin({ httpPort = 5174, httpsPort = 5173 } = {}) {
 
 const noSsl = process.env.VITE_NO_SSL === '1'
 
-// The version of the release the app is built for (APP_VERSION, set by the release when it builds the Docker image;
-// empty for any other build) and the commit it is built from, shown in Settings. The commit comes from the host that
-// builds it (Cloudflare Pages, GitHub Actions, the Docker image) or from git when run from a checkout.
-const appVersion = process.env.APP_VERSION || ''
+// The version of the release the app is built for (see scripts/resolve-version.mjs; empty for a build that is not for
+// a release) and the commit it is built from, both shown in the app. The commit comes from the host that builds it
+// (Cloudflare Pages, GitHub Actions, the Docker image) or from git when run from a checkout.
+const appVersion = resolveVersion({ file: path.resolve(__dirname, 'release-version.txt') })
 function appCommit() {
   const fromHost = process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || process.env.GIT_COMMIT
   if (fromHost) return fromHost.slice(0, 7)
