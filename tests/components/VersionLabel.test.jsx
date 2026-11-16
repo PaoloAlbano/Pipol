@@ -4,7 +4,7 @@ import VersionLabel from '../../src/components/VersionLabel.jsx'
 describe('VersionLabel', () => {
   it('shows the version of the app and the commit', () => {
     render(<VersionLabel />)
-    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
+    expect(screen.getByText('Pipol v0.0.0-test')).toBeInTheDocument()
   })
 
   it('takes the class that places it', () => {

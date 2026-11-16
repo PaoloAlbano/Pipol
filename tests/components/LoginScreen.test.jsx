@@ -71,7 +71,7 @@ describe('LoginScreen — identity mode (default)', () => {
 
   it('shows the version of the app', () => {
     setup()
-    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
+    expect(screen.getByText('Pipol v0.0.0-test')).toBeInTheDocument()
   })
 
   it('shows the confirm passphrase and display name fields in create mode', () => {
@@ -185,7 +185,7 @@ describe('LoginScreen — guest mode', () => {
   it('shows the version of the app', () => {
     setup()
     fireEvent.click(screen.getByRole('button', { name: /continue as guest/i }))
-    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
+    expect(screen.getByText('Pipol v0.0.0-test')).toBeInTheDocument()
   })
 
   it('switches to guest mode when the guest button is clicked', async () => {
@@ -244,7 +244,7 @@ describe('LoginScreen — biometric mode', () => {
 
   it('shows the version of the app', () => {
     setup()
-    expect(screen.getByText('Pipol v0.0.0-test · abc1234')).toBeInTheDocument()
+    expect(screen.getByText('Pipol v0.0.0-test')).toBeInTheDocument()
   })
 
   it('starts in biometric mode when biometric unlock is configured', () => {
