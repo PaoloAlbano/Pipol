@@ -2,12 +2,12 @@
 // The web image builds its security headers at start-up from public/_headers plus the addresses the app was given.
 // A mistake here either breaks the app (the browser blocks its own relay) or opens the CSP wider than intended.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { connectOrigins, convertHeaders } from '../../docker/headers-to-nginx.mjs'
+import { connectOrigins, convertHeaders, main } from '../../docker/headers-to-nginx.mjs'
 
 const HEADERS = readFileSync('public/_headers', 'utf8')
 const script = path.resolve('docker/headers-to-nginx.mjs')
@@ -119,27 +119,36 @@ describe('convertHeaders', () => {
 })
 
 describe('the command line', () => {
-  const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' })
   const outFile = () => path.join(mkdtempSync(path.join(tmpdir(), 'hdr-')), 'headers.conf')
 
   it('writes the file and exits 0', () => {
     const out = outFile()
-    const result = run('public/_headers', out, 'ws://localhost:8787', 'http://localhost:8081')
-    expect(result.status).toBe(0)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    expect(main(['public/_headers', out, 'ws://localhost:8787', 'http://localhost:8081'])).toBe(0)
     expect(readFileSync(out, 'utf8')).toContain('http://localhost:8081')
+    expect(log).toHaveBeenCalledWith(`Security headers written to ${out}`)
   })
 
   it('exits with an error, and writes nothing, when an address is invalid', () => {
     const out = outFile()
-    const result = run('public/_headers', out, 'localhost:8787')
-    expect(result.status).toBe(1)
-    expect(result.stderr).toMatch(/headers-to-nginx:/)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(main(['public/_headers', out, 'localhost:8787'])).toBe(1)
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/^headers-to-nginx:/))
     expect(existsSync(out)).toBe(false)
   })
 
   it('prints the usage when it is called without arguments', () => {
-    const result = run()
-    expect(result.status).toBe(1)
-    expect(result.stderr).toMatch(/Usage/)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(main([])).toBe(1)
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/Usage/))
+  })
+
+  it('runs as a script, which is how the image uses it', () => {
+    const out = outFile()
+    const result = spawnSync(process.execPath, [script, 'public/_headers', out, 'http://localhost:8081'], {
+      encoding: 'utf8',
+    })
+    expect(result.status).toBe(0)
+    expect(readFileSync(out, 'utf8')).toContain('http://localhost:8081')
   })
 })
