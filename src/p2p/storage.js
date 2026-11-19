@@ -593,6 +593,21 @@ export async function getStore() {
 }
 
 /**
+ * A uniform random integer in [0, max). Values from the part of the 32-bit range that does not divide evenly by `max`
+ * are discarded, so no result is more likely than another (a plain `% max` favours the low ones).
+ * @param {number} max
+ * @returns {number}
+ */
+function randomBelow(max) {
+  const limit = 2 ** 32 - (2 ** 32 % max)
+  let value
+  do {
+    value = webcrypto.getRandomValues(new Uint32Array(1))[0]
+  } while (value >= limit)
+  return value % max
+}
+
+/**
  * Generates a random room code (e.g. "cloud-x7q2p9-river").
  * The words are for readability; the 6-char random middle segment is what
  * actually prevents collisions and blind guessing — words alone only cover
@@ -638,11 +653,8 @@ export function generateRoomCode() {
     'canyon',
     'meadow',
   ]
-  const randomIndex = () => webcrypto.getRandomValues(new Uint32Array(1))[0] % words.length
-  const pick = () => words[randomIndex()]
+  const pick = () => words[randomBelow(words.length)]
   const charset = 'abcdefghijklmnopqrstuvwxyz0123456789'
-  const randomChars = Array.from(webcrypto.getRandomValues(new Uint8Array(6)), (b) => charset[b % charset.length]).join(
-    ''
-  )
+  const randomChars = Array.from({ length: 6 }, () => charset[randomBelow(charset.length)]).join('')
   return `${pick()}-${randomChars}-${pick()}`
 }

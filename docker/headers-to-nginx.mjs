@@ -78,17 +78,29 @@ export function convertHeaders(text, extraConnect = []) {
   return `# Generated from public/_headers by docker/headers-to-nginx.mjs. Do not edit.\n${lines.join('\n')}\n`
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [input, output, ...urls] = process.argv.slice(2)
+/**
+ * The command line: reads the headers file, writes the nginx one.
+ * @param {string[]} args  <_headers file> <output file> [url ...]
+ * @returns {number}  The exit code
+ */
+export function main(args) {
+  const [input, output, ...urls] = args
   if (!input || !output) {
     console.error('Usage: node docker/headers-to-nginx.mjs <_headers file> <output file> [url ...]')
-    process.exit(1)
+    return 1
   }
   try {
     writeFileSync(output, convertHeaders(readFileSync(input, 'utf8'), urls))
   } catch (err) {
     console.error(`headers-to-nginx: ${err.message}`)
-    process.exit(1)
+    return 1
   }
   console.log(`Security headers written to ${output}`)
+  return 0
+}
+
+// Only reached when run as a script (the tests start one to check it); the rest is tested through main()
+/* v8 ignore next 3 */
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exit(main(process.argv.slice(2)))
 }

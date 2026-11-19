@@ -527,4 +527,17 @@ describe('storage — generateRoomCode', () => {
     const codes = new Set(Array.from({ length: 500 }, () => storage.generateRoomCode()))
     expect(codes.size).toBe(500)
   })
+
+  it('discards random values that would make some characters more likely than others', () => {
+    // 36 characters: 2^32 % 36 = 4, so the 4 highest values do not map evenly and must be skipped
+    const biased = new Uint32Array([0xffffffff])
+    const fair = new Uint32Array([37]) // 37 % 36 = 1 -> 'b'
+    const spy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation((array) => {
+      array.set(spy.mock.calls.length % 2 === 1 ? biased : fair)
+      return array
+    })
+    const code = storage.generateRoomCode()
+    spy.mockRestore()
+    expect(code.split('-')[1]).toBe('bbbbbb')
+  })
 })
