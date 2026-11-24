@@ -37,7 +37,7 @@ function setup(overrides = {}) {
     showStats: false,
     peerStats: {},
     layout: 'grid',
-    spotlightPeerId: null,
+    spotlightKey: null,
     onLayoutChange: vi.fn(),
     onSpotlightChange: vi.fn(),
   }
@@ -69,7 +69,7 @@ describe('VideoGrid — layout grid, solo', () => {
         showStats={false}
         peerStats={{}}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -106,7 +106,7 @@ describe('VideoGrid — layout grid, with remote peers', () => {
         showStats={false}
         peerStats={{}}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -126,7 +126,7 @@ describe('VideoGrid — layout grid, with remote peers', () => {
         peers={[1, 2, 3, 4].map((n) => ({ id: `p${n}`, username: `user${n}` }))}
         localUsername="swift-fox"
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -180,7 +180,7 @@ describe('VideoGrid — layout spotlight', () => {
         'peer-2': makeFakeStream(),
       },
       layout: 'spotlight',
-      spotlightPeerId: 'peer-1',
+      spotlightKey: 'peer-1',
       ...overrides,
     })
   }
@@ -195,7 +195,7 @@ describe('VideoGrid — layout spotlight', () => {
         showStats={false}
         peerStats={{}}
         layout="spotlight"
-        spotlightPeerId="peer-1"
+        spotlightKey="peer-1"
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -258,7 +258,7 @@ describe('VideoGrid — layout spotlight', () => {
       peers: ids.map((id) => ({ id, username: id })),
       remoteStreams: Object.fromEntries(ids.map((id) => [id, makeFakeStream()])),
       layout: 'spotlight',
-      spotlightPeerId: 'p1',
+      spotlightKey: 'p1',
     })
     // 5 places in the strip: 3 people, the "+N" tile and you (6 peers, one of them in the main tile)
     expect(document.querySelectorAll('.video-tile--strip')).toHaveLength(4)
@@ -276,6 +276,92 @@ describe('VideoGrid — layout spotlight', () => {
 })
 
 // ── Own camera off, speaking, timer ───────────────────────────────────────────
+
+describe('VideoGrid — a screen shared by somebody who has no camera or microphone in the call', () => {
+  const sharer = { id: 'peer-1', username: 'alice' }
+  const withScreenOnly = (overrides = {}) =>
+    setup({
+      peers: [sharer],
+      remoteStreams: {},
+      remoteScreens: { 'peer-1': makeFakeStream() },
+      ...overrides,
+    })
+
+  it('shows the layout toggle', () => {
+    withScreenOnly()
+    expect(document.querySelector('.video-layout-toggle')).toBeInTheDocument()
+  })
+
+  it('puts the screen in the big tile in spotlight', () => {
+    withScreenOnly({ layout: 'spotlight', spotlightKey: 'peer-1' })
+    expect(document.querySelector('.video-tile--main').textContent).toContain('alice (screen)')
+  })
+
+  it('falls back to the screen when the spotlight points at nobody in the call', () => {
+    withScreenOnly({ layout: 'spotlight', spotlightKey: 'gone' })
+    expect(document.querySelector('.video-tile--main').textContent).toContain('alice (screen)')
+  })
+})
+
+describe('VideoGrid — choosing what is in the big place', () => {
+  const peer1 = { id: 'peer-1', username: 'alice' }
+  const peer2 = { id: 'peer-2', username: 'bob' }
+  const sharing = (overrides = {}) =>
+    setup({
+      peers: [peer1, peer2],
+      remoteStreams: { 'peer-1': makeFakeStream(), 'peer-2': makeFakeStream() },
+      remoteScreens: { 'peer-1': makeFakeStream() },
+      layout: 'spotlight',
+      spotlightKey: 'peer-1:screen',
+      ...overrides,
+    })
+  const tileOf = (text) => [...document.querySelectorAll('.video-tile')].find((t) => t.textContent.includes(text))
+
+  it('puts the screen in the big place when it is the one chosen', () => {
+    sharing()
+    expect(document.querySelector('.video-tile--main').textContent).toContain('alice (screen)')
+  })
+
+  it('lets the camera of somebody who shares a screen take the big place', () => {
+    sharing({ spotlightKey: 'peer-1' })
+    const main = document.querySelector('.video-tile--main')
+    expect(main.textContent).toContain('alice')
+    expect(main.textContent).not.toContain('(screen)')
+  })
+
+  it('chooses the screen from the strip, as a tile of its own', async () => {
+    const { onSpotlightChange } = sharing({ spotlightKey: 'peer-2' })
+    await userEvent.setup().click(tileOf('alice (screen)'))
+    expect(onSpotlightChange).toHaveBeenCalledWith('peer-1:screen')
+  })
+
+  it('takes a tile of the grid to the big place, switching to spotlight', async () => {
+    const { onSpotlightChange, onLayoutChange } = sharing({ layout: 'grid' })
+    await userEvent.setup().click(tileOf('bob'))
+    expect(onSpotlightChange).toHaveBeenCalledWith('peer-2')
+    expect(onLayoutChange).toHaveBeenCalledWith('spotlight')
+  })
+
+  it('does not switch the layout when a thumbnail is chosen in spotlight', async () => {
+    const { onLayoutChange } = sharing()
+    await userEvent.setup().click(tileOf('bob'))
+    expect(onLayoutChange).not.toHaveBeenCalled()
+  })
+
+  it('leaves the big tile, and your own, alone', async () => {
+    const { onSpotlightChange } = sharing()
+    const user = userEvent.setup()
+    await user.click(document.querySelector('.video-tile--main'))
+    await user.click(tileOf('(you)'))
+    expect(onSpotlightChange).not.toHaveBeenCalled()
+  })
+
+  it('does not react to clicks in the Picture-in-Picture window', async () => {
+    const { onSpotlightChange } = sharing({ pip: true, layout: 'grid' })
+    await userEvent.setup().click(tileOf('bob'))
+    expect(onSpotlightChange).not.toHaveBeenCalled()
+  })
+})
 
 describe('VideoGrid — Picture-in-Picture window', () => {
   const peers = [
@@ -423,7 +509,7 @@ describe('VideoGrid — autopictureinpicture attribute', () => {
         showStats={false}
         peerStats={{}}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -446,7 +532,7 @@ describe('VideoGrid — autopictureinpicture attribute', () => {
         showStats={false}
         peerStats={{}}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -473,7 +559,7 @@ describe('VideoGrid — stats overlay: connection route', () => {
         showStats
         peerStats={{ 'peer-a': { rtt: 20, bytesSentPerSec: 1, bytesReceivedPerSec: 1, ...stats } }}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -519,6 +605,42 @@ describe('VideoGrid — stats overlay: connection route', () => {
   })
 })
 
+describe('VideoGrid — stats overlay with a screen share', () => {
+  const peerStats = { 'peer-1': { rtt: 20, localType: 'host', remoteType: 'srflx', relayed: false } }
+  const withScreen = (overrides = {}) =>
+    setup({
+      peers: [{ id: 'peer-1', username: 'alice' }],
+      remoteStreams: { 'peer-1': makeFakeStream() },
+      remoteScreens: { 'peer-1': makeFakeStream() },
+      showStats: true,
+      peerStats,
+      layout: 'spotlight',
+      spotlightKey: 'peer-1:screen',
+      ...overrides,
+    })
+  const tileWithStats = () =>
+    [...document.querySelectorAll('.video-tile')].filter((t) => t.querySelector('.video-stats-badge'))
+
+  it('shows the connection details on the screen when it is the big tile, once', () => {
+    withScreen()
+    const tiles = tileWithStats()
+    expect(tiles).toHaveLength(1)
+    expect(tiles[0].textContent).toContain('(screen)')
+  })
+
+  it('shows them on the camera when that is the big tile', () => {
+    withScreen({ spotlightKey: 'peer-1' })
+    const tiles = tileWithStats()
+    expect(tiles).toHaveLength(1)
+    expect(tiles[0].textContent).not.toContain('(screen)')
+  })
+
+  it('shows them once in the grid, where the tiles are of the same size', () => {
+    withScreen({ layout: 'grid' })
+    expect(tileWithStats()).toHaveLength(1)
+  })
+})
+
 describe('VideoGrid — stats overlay', () => {
   const peer1 = { id: 'peer-1', username: 'alice' }
 
@@ -540,7 +662,7 @@ describe('VideoGrid — stats overlay', () => {
           },
         }}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -566,7 +688,7 @@ describe('VideoGrid — stats overlay', () => {
           },
         }}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -591,7 +713,7 @@ describe('VideoGrid — mirrorVideo prop', () => {
         showStats={false}
         peerStats={{}}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
         mirrorVideo={true}
@@ -610,7 +732,7 @@ describe('VideoGrid — mirrorVideo prop', () => {
         showStats={false}
         peerStats={{}}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
         mirrorVideo={false}
@@ -630,7 +752,7 @@ describe('VideoGrid — mirrorVideo prop', () => {
         showStats={false}
         peerStats={{}}
         layout="grid"
-        spotlightPeerId={null}
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
         mirrorVideo={true}
@@ -664,7 +786,7 @@ describe('VideoGrid — screen share', () => {
     expect(screen.getByText('alice (screen)')).toBeInTheDocument()
   })
 
-  it('puts the screen in the spotlight and the camera in the strip', () => {
+  it('puts the screen in the spotlight and the camera in the strip when nothing else was chosen', () => {
     const { container } = render(
       <VideoGrid
         localStream={makeFakeStream()}
@@ -673,7 +795,7 @@ describe('VideoGrid — screen share', () => {
         peers={peers}
         localUsername="swift-fox"
         layout="spotlight"
-        spotlightPeerId="peer-a"
+        spotlightKey={null}
         onLayoutChange={vi.fn()}
         onSpotlightChange={vi.fn()}
       />
@@ -791,7 +913,7 @@ describe('VideoGrid — connection status', () => {
       remoteStreams: { 'peer-1': makeFakeStream() },
       pendingPeerIds: ['peer-2'],
       layout: 'spotlight',
-      spotlightPeerId: 'peer-1',
+      spotlightKey: 'peer-1',
     })
     const strip = [...container.querySelectorAll('.video-tile--strip')].map((t) => t.textContent).join(' ')
     expect(strip).toContain('bob')

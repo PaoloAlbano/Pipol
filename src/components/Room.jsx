@@ -197,7 +197,7 @@ export default function Room({
   const reconnectRef = useRef({}) // peerId → { attempts, timer, connected }
   const [screenSharing, setScreenSharing] = useState(false)
   const [layout, setLayout] = useState('grid') // 'grid' | 'spotlight'
-  const [spotlightPeerId, setSpotlightPeerId] = useState(null)
+  const [spotlightKey, setSpotlightKey] = useState(null) // key of the tile in the big place: peerId, or peerId:screen
   const [incomingCall, setIncomingCall] = useState(null) // { peerId, username } | null
   const [callPeerIds, setCallPeerIds] = useState(new Set()) // peers currently in a call
   const [peerStats, setPeerStats] = useState({}) // peerId → connection stats
@@ -334,7 +334,7 @@ export default function Room({
       clearRemoteVideoOff(id)
       clearRaisedHand(id)
       setIncomingCall((prev) => (prev?.peerId === id ? null : prev))
-      setSpotlightPeerId((prev) => (prev === id ? null : prev))
+      setSpotlightKey((prev) => (prev === id || prev === `${id}:screen` ? null : prev))
       if (typingPeersRef.current.has(id)) {
         clearTimeout(typingPeersRef.current.get(id)?.timer)
         typingPeersRef.current.delete(id)
@@ -470,7 +470,7 @@ export default function Room({
     function onScreenShareStart(e) {
       // Announced before the renegotiation so ontrack can tell screen from camera
       remoteScreenIdsRef.current[e.detail.peerId] = e.detail.streamId
-      setSpotlightPeerId(e.detail.peerId)
+      setSpotlightKey(`${e.detail.peerId}:screen`)
       setLayout('spotlight')
     }
     function onScreenShareEnd(e) {
@@ -481,7 +481,7 @@ export default function Room({
         delete next[e.detail.peerId]
         return next
       })
-      setSpotlightPeerId((prev) => (prev === e.detail.peerId ? null : prev))
+      setSpotlightKey((prev) => (prev === `${e.detail.peerId}:screen` ? null : prev))
       setLayout('grid')
     }
     function onSwarmError(e) {
@@ -1367,7 +1367,7 @@ export default function Room({
     setCallNotice('')
     setScreenSharing(false)
     setLayout('grid')
-    setSpotlightPeerId(null)
+    setSpotlightKey(null)
   }
 
   function handleDeclineCall() {
@@ -1710,9 +1710,9 @@ export default function Room({
             showStats={showStats}
             peerStats={peerStats}
             layout={layout}
-            spotlightPeerId={spotlightPeerId}
+            spotlightKey={spotlightKey}
             onLayoutChange={setLayout}
-            onSpotlightChange={setSpotlightPeerId}
+            onSpotlightChange={setSpotlightKey}
             mirrorVideo={mirrorVideo}
           />
         </main>
@@ -1772,9 +1772,9 @@ export default function Room({
             showStats={false}
             peerStats={{}}
             layout={layout}
-            spotlightPeerId={spotlightPeerId}
+            spotlightKey={spotlightKey}
             onLayoutChange={setLayout}
-            onSpotlightChange={setSpotlightPeerId}
+            onSpotlightChange={setSpotlightKey}
             mirrorVideo={mirrorVideo}
           />,
           pipHost
