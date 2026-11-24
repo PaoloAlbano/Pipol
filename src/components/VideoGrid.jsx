@@ -10,7 +10,9 @@ import '../styles/video.css'
  *   'spotlight' — one big tile and a strip of thumbnails, at the side of a wide area and below a narrow one
  *
  * A peer sharing their screen has two tiles: their camera and their screen. In spotlight the screen takes the big
- * tile while the camera moves to the strip. Your own tile is always there, last, so nobody is covered by it.
+ * tile by default while the camera moves to the strip. Clicking any tile of somebody else (in the grid or in the
+ * strip) puts it in the big place, whether it is a camera or a screen. Your own tile is always there, last, so nobody
+ * is covered by it.
  *
  * Tiles are placed with absolute positions computed from the real size of the area (see videoLayout.js).
  *
@@ -41,7 +43,7 @@ export default function VideoGrid({
   showStats,
   peerStats,
   layout,
-  spotlightPeerId,
+  spotlightKey,
   onLayoutChange,
   onSpotlightChange,
   mirrorVideo = true,
@@ -56,7 +58,6 @@ export default function VideoGrid({
 
   const peerById = Object.fromEntries(peers.map((p) => [p.id, p]))
   const remoteEntries = Object.entries(remoteStreams)
-  const count = remoteEntries.length
 
   function nameOf(peerId) {
     return peerById[peerId]?.username ?? peerId.slice(0, 8)
@@ -105,10 +106,13 @@ export default function VideoGrid({
     label: `${localUsername} (you)`,
   }
 
-  // Resolve which peer is in the spotlight
-  const resolvedSpotlightId =
-    spotlightPeerId && remoteStreams[spotlightPeerId] ? spotlightPeerId : (remoteEntries[0]?.[0] ?? null)
-  const isSpotlight = layout === 'spotlight' && count > 0 && resolvedSpotlightId !== null
+  // The tile in the big place: the one asked for (a camera or a screen), else a shared screen (its owner may have no
+  // camera or microphone in the call), else the first
+  const resolvedSpotlightKey =
+    spotlightKey && tiles.some((t) => t.key === spotlightKey)
+      ? spotlightKey
+      : (tiles.find((t) => t.screen)?.key ?? tiles[0]?.key ?? null)
+  const isSpotlight = layout === 'spotlight' && resolvedSpotlightKey !== null
 
   // ── Where everything goes ──────────────────────────────────────────────────
   /** @type {{ key: string, tile: object, rect: object, role: 'grid'|'main'|'strip'|'more', hidden?: number }[]} */
@@ -116,9 +120,7 @@ export default function VideoGrid({
   const place = (rect) => ({ ...rect, x: rect.x + PADDING, y: rect.y + PADDING })
 
   if (isSpotlight) {
-    const mainTile =
-      tiles.find((t) => t.peerId === resolvedSpotlightId && t.screen) ??
-      tiles.find((t) => t.peerId === resolvedSpotlightId && !t.screen)
+    const mainTile = tiles.find((t) => t.key === resolvedSpotlightKey)
     const others = tiles.filter((t) => t !== mainTile)
     const geometry = spotlightGeometry(area.width, area.height)
 
@@ -148,13 +150,26 @@ export default function VideoGrid({
     all.forEach((tile, i) => placed.push({ key: tile.key, tile, rect: place(grid.rects[i]), role: 'grid' }))
   }
 
+  // Click on a thumbnail, or on a tile of the grid: it takes the big place
+  function bigger(tile) {
+    onSpotlightChange(tile.key)
+    if (!isSpotlight) onLayoutChange('spotlight')
+  }
+
+  // The connection is one per person, whether they show a camera, a screen or both: the details go on the widest of
+  // their tiles (so on the screen when it is the big one), not on each
+  const widest = {}
+  placed.forEach(({ key, tile, rect }) => {
+    if (tile.peerId && rect.width > (widest[tile.peerId]?.width ?? 0)) widest[tile.peerId] = { key, width: rect.width }
+  })
+
   function statsOf(tile, rect) {
-    if (!showStats || tile.screen || tile.local || rect.width < STATS_MIN_WIDTH) return null
+    if (!showStats || tile.local || rect.width < STATS_MIN_WIDTH || widest[tile.peerId]?.key !== tile.key) return null
     return peerStats?.[tile.peerId] ?? null
   }
 
   // ── Layout toggle ──────────────────────────────────────────────────────────
-  const layoutToggle = count > 0 && (
+  const layoutToggle = tiles.length > 0 && (
     <button
       className="video-layout-toggle"
       onClick={() => onLayoutChange(isSpotlight ? 'grid' : 'spotlight')}
@@ -215,7 +230,7 @@ export default function VideoGrid({
               status={tile.local || tile.screen ? undefined : tile.status}
               fit={tile.screen ? 'contain' : isMain ? cameraFit(rect.width, rect.height) : 'cover'}
               stats={statsOf(tile, rect)}
-              onClick={role === 'strip' && !tile.local ? () => onSpotlightChange(tile.peerId) : undefined}
+              onClick={role !== 'main' && !tile.local && !pip ? () => bigger(tile) : undefined}
             />
           )
         })}
